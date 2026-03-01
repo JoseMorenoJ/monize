@@ -84,6 +84,17 @@ database/
 - No `console.log` in production code; use NestJS `Logger` class
 - Use proxy, not middleware (middleware is deprecated in this project)
 
+### Code Intelligence
+Prefer LSP over Grep/Read for code navigation — it's faster, precise, and avoids reading entire files:
+- `workspaceSymbol` to find where something is defined
+- `findReferences` to see all usages across the codebase
+- `goToDefinition` / `goToImplementation` to jump to source
+- `hover` for type info without reading the file
+    
+Use Grep only when LSP isn't available or for text/pattern searches (comments, strings, config).
+    
+After writing or editing code, check LSP diagnostics and fix errors before proceeding.
+
 ### Security (Do Not Regress)
 - Parameterized queries only (TypeORM QueryBuilder or parameterized raw SQL). Never interpolate user input into SQL strings
 - All controllers use `@UseGuards(AuthGuard('jwt'))` at class level (except health + auth)

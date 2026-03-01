@@ -11,6 +11,7 @@ import {
   PaginatedInvestmentTransactions,
   TopMover,
   SectorWeightingResult,
+  SecurityPrice,
 } from '@/types/investment';
 import { getCached, setCache, invalidateCache } from './apiCache';
 
@@ -224,6 +225,18 @@ export const investmentsApi = {
   // Get price update status
   getPriceStatus: async (): Promise<{ lastUpdated: string | null }> => {
     const response = await apiClient.get('/securities/prices/status');
+    return response.data;
+  },
+
+  // Get price history for a security
+  getSecurityPrices: async (securityId: string, limit = 365): Promise<SecurityPrice[]> => {
+    const cacheKey = `investments:prices:${securityId}:${limit}`;
+    const cached = getCached<SecurityPrice[]>(cacheKey);
+    if (cached) return cached;
+    const response = await apiClient.get<SecurityPrice[]>(`/securities/${securityId}/prices`, {
+      params: { limit },
+    });
+    setCache(cacheKey, response.data, 60_000);
     return response.data;
   },
 

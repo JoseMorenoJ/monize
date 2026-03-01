@@ -23,6 +23,26 @@ import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('RealizedGainsReport');
 
+const MAX_PAGES = 50;
+
+function CustomTooltip({ active, payload, fmtValue }: {
+  active?: boolean;
+  payload?: Array<{ value: number; payload: { symbol: string } }>;
+  fmtValue: (v: number) => string;
+}) {
+  if (!active || !payload?.length) return null;
+  const data = payload[0];
+  const value = data.value;
+  return (
+    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-3">
+      <p className="font-medium text-gray-900 dark:text-gray-100">{data.payload.symbol}</p>
+      <p className={`text-sm ${value >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+        {value >= 0 ? '+' : ''}{fmtValue(value)}
+      </p>
+    </div>
+  );
+}
+
 interface SecurityGain {
   symbol: string;
   name: string;
@@ -65,18 +85,23 @@ export function RealizedGainsReport() {
     return formatCurrencyFull(value);
   }, [isForeign, displayCurrency, formatCurrencyFull]);
 
+  // Fetch accounts once on mount
+  useEffect(() => {
+    investmentsApi.getInvestmentAccounts()
+      .then(setAccounts)
+      .catch((error) => logger.error('Failed to load accounts:', error));
+  }, []);
+
   useEffect(() => {
     if (!isValid) return;
     const loadData = async () => {
       setIsLoading(true);
       try {
         const { start, end } = resolvedRange;
-
-        const accountsData = await investmentsApi.getInvestmentAccounts();
-        let allTransactions: InvestmentTransaction[] = [];
+        const allTransactions: InvestmentTransaction[] = [];
         let page = 1;
         let hasMore = true;
-        while (hasMore) {
+        while (hasMore && page <= MAX_PAGES) {
           const result = await investmentsApi.getTransactions({
             accountIds: selectedAccountId || undefined,
             startDate: start || undefined,
@@ -85,13 +110,12 @@ export function RealizedGainsReport() {
             limit: 200,
             page,
           });
-          allTransactions = [...allTransactions, ...result.data];
+          allTransactions.push(...result.data);
           hasMore = result.pagination.hasMore;
           page++;
         }
 
         setTransactions(allTransactions);
-        setAccounts(accountsData);
       } catch (error) {
         logger.error('Failed to load sell transactions:', error);
       } finally {
@@ -145,35 +169,22 @@ export function RealizedGainsReport() {
   }, [securityGains]);
 
   const totals = useMemo(() => {
-    return securityGains.reduce(
-      (acc, sg) => ({
-        totalProceeds: acc.totalProceeds + sg.totalProceeds,
-        totalCostBasis: acc.totalCostBasis + sg.totalCostBasis,
-        totalGain: acc.totalGain + sg.realizedGain,
-        totalTransactions: acc.totalTransactions + sg.transactionCount,
-      }),
-      { totalProceeds: 0, totalCostBasis: 0, totalGain: 0, totalTransactions: 0 },
-    );
+    let totalProceeds = 0, totalCostBasis = 0, totalGain = 0, totalTransactions = 0, gainers = 0, losers = 0;
+    for (const sg of securityGains) {
+      totalProceeds += sg.totalProceeds;
+      totalCostBasis += sg.totalCostBasis;
+      totalGain += sg.realizedGain;
+      totalTransactions += sg.transactionCount;
+      if (sg.realizedGain > 0) gainers++;
+      else if (sg.realizedGain < 0) losers++;
+    }
+    return { totalProceeds, totalCostBasis, totalGain, totalTransactions, gainers, losers };
   }, [securityGains]);
 
-  const gainers = useMemo(() => securityGains.filter((sg) => sg.realizedGain > 0).length, [securityGains]);
-  const losers = useMemo(() => securityGains.filter((sg) => sg.realizedGain < 0).length, [securityGains]);
-
-  const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: Array<{ value: number; payload: { symbol: string } }> }) => {
-    if (active && payload && payload.length) {
-      const data = payload[0];
-      const value = data.value;
-      return (
-        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-3">
-          <p className="font-medium text-gray-900 dark:text-gray-100">{data.payload.symbol}</p>
-          <p className={`text-sm ${value >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-            {value >= 0 ? '+' : ''}{fmtValue(value)}
-          </p>
-        </div>
-      );
-    }
-    return null;
-  };
+  const sortedTransactions = useMemo(
+    () => [...transactions].sort((a, b) => b.transactionDate.localeCompare(a.transactionDate)),
+    [transactions],
+  );
 
   if (isLoading) {
     return (
@@ -213,9 +224,9 @@ export function RealizedGainsReport() {
           <div className="text-xl font-bold text-gray-900 dark:text-gray-100">
             {securityGains.length}
             <span className="text-sm font-normal text-gray-500 dark:text-gray-400 ml-2">
-              {gainers > 0 && <span className="text-green-600 dark:text-green-400">{gainers} gain</span>}
-              {gainers > 0 && losers > 0 && ' / '}
-              {losers > 0 && <span className="text-red-600 dark:text-red-400">{losers} loss</span>}
+              {totals.gainers > 0 && <span className="text-green-600 dark:text-green-400">{totals.gainers} gain</span>}
+              {totals.gainers > 0 && totals.losers > 0 && ' / '}
+              {totals.losers > 0 && <span className="text-red-600 dark:text-red-400">{totals.losers} loss</span>}
             </span>
           </div>
         </div>
@@ -293,7 +304,7 @@ export function RealizedGainsReport() {
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                   <XAxis type="number" tickFormatter={formatCurrencyAxis} />
                   <YAxis type="category" dataKey="symbol" width={60} tick={{ fontSize: 12 }} />
-                  <Tooltip content={<CustomTooltip />} />
+                  <Tooltip content={<CustomTooltip fmtValue={fmtValue} />} />
                   <Bar
                     dataKey="gain"
                     name="Realized Gain"
@@ -413,9 +424,7 @@ export function RealizedGainsReport() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                {transactions
-                  .sort((a, b) => b.transactionDate.localeCompare(a.transactionDate))
-                  .map((tx) => (
+                {sortedTransactions.map((tx) => (
                   <tr key={tx.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                     <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
                       {format(parseLocalDate(tx.transactionDate), 'MMM d, yyyy')}

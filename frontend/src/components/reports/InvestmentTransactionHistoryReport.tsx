@@ -14,6 +14,8 @@ import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('InvestmentTransactionHistoryReport');
 
+const MAX_PAGES = 50;
+
 const ACTION_LABELS: Record<InvestmentAction, string> = {
   BUY: 'Buy',
   SELL: 'Sell',
@@ -82,18 +84,23 @@ export function InvestmentTransactionHistoryReport() {
     return formatCurrencyFull(value);
   }, [isForeign, displayCurrency, formatCurrencyFull]);
 
+  // Fetch accounts once on mount
+  useEffect(() => {
+    investmentsApi.getInvestmentAccounts()
+      .then(setAccounts)
+      .catch((error) => logger.error('Failed to load accounts:', error));
+  }, []);
+
   useEffect(() => {
     if (!isValid) return;
     const loadData = async () => {
       setIsLoading(true);
       try {
         const { start, end } = resolvedRange;
-
-        const accountsData = await investmentsApi.getInvestmentAccounts();
-        let allTransactions: InvestmentTransaction[] = [];
+        const allTransactions: InvestmentTransaction[] = [];
         let page = 1;
         let hasMore = true;
-        while (hasMore) {
+        while (hasMore && page <= MAX_PAGES) {
           const result = await investmentsApi.getTransactions({
             accountIds: selectedAccountId || undefined,
             startDate: start || undefined,
@@ -102,13 +109,12 @@ export function InvestmentTransactionHistoryReport() {
             limit: 200,
             page,
           });
-          allTransactions = [...allTransactions, ...result.data];
+          allTransactions.push(...result.data);
           hasMore = result.pagination.hasMore;
           page++;
         }
 
         setTransactions(allTransactions);
-        setAccounts(accountsData);
       } catch (error) {
         logger.error('Failed to load investment transactions:', error);
       } finally {
@@ -145,7 +151,10 @@ export function InvestmentTransactionHistoryReport() {
     return map;
   }, [accounts]);
 
-
+  const sortedTransactions = useMemo(
+    () => [...transactions].sort((a, b) => b.transactionDate.localeCompare(a.transactionDate)),
+    [transactions],
+  );
 
   if (isLoading) {
     return (
@@ -295,9 +304,7 @@ export function InvestmentTransactionHistoryReport() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                {transactions
-                  .sort((a, b) => b.transactionDate.localeCompare(a.transactionDate))
-                  .map((tx) => (
+                {sortedTransactions.map((tx) => (
                   <tr key={tx.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                     <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100 whitespace-nowrap">
                       {format(parseLocalDate(tx.transactionDate), 'MMM d, yyyy')}

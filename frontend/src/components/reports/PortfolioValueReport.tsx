@@ -25,6 +25,23 @@ import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('PortfolioValueReport');
 
+function CustomTooltip({ active, payload, fmtFull }: {
+  active?: boolean;
+  payload?: Array<{ value: number; payload: { name: string } }>;
+  fmtFull: (v: number) => string;
+}) {
+  if (!active || !payload?.length) return null;
+  const data = payload[0]?.payload;
+  return (
+    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-3">
+      <p className="font-medium text-gray-900 dark:text-gray-100 mb-1">{data?.name}</p>
+      <p className="text-sm text-emerald-600 dark:text-emerald-400">
+        Portfolio: {fmtFull(payload[0].value)}
+      </p>
+    </div>
+  );
+}
+
 export function PortfolioValueReport() {
   const { formatCurrencyCompact, formatCurrencyAxis, formatCurrency: formatCurrencyFull } = useNumberFormat();
   const { defaultCurrency } = useExchangeRates();
@@ -130,21 +147,6 @@ export function PortfolioValueReport() {
 
     return [Math.min(0, minValue), 'auto'] as [number, 'auto'];
   }, [chartData]);
-
-  const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: Array<{ value: number; payload: { name: string } }> }) => {
-    if (active && payload && payload.length) {
-      const data = payload[0]?.payload;
-      return (
-        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-3">
-          <p className="font-medium text-gray-900 dark:text-gray-100 mb-1">{data?.name}</p>
-          <p className="text-sm text-emerald-600 dark:text-emerald-400">
-            Portfolio: {fmtFull(payload[0].value)}
-          </p>
-        </div>
-      );
-    }
-    return null;
-  };
 
   if (isLoading) {
     return (
@@ -257,7 +259,7 @@ export function PortfolioValueReport() {
                   tickFormatter={fmtAxis}
                   tick={{ fontSize: 12 }}
                 />
-                <Tooltip content={<CustomTooltip />} />
+                <Tooltip content={<CustomTooltip fmtFull={fmtFull} />} />
                 <Area
                   type="monotone"
                   dataKey="Value"

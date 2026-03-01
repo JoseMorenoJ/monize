@@ -160,6 +160,19 @@ export interface TopMover {
   marketValue: number | null;
 }
 
+export interface SecurityPrice {
+  id: number;
+  securityId: string;
+  priceDate: string;
+  openPrice: number | null;
+  highPrice: number | null;
+  lowPrice: number | null;
+  closePrice: number;
+  volume: number | null;
+  source: string | null;
+  createdAt: string;
+}
+
 export interface CreateSecurityData {
   symbol: string;
   name: string;
