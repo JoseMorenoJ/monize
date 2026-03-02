@@ -14,6 +14,10 @@ class TestDto {
   @MaxLength(500)
   @SanitizeHtml()
   description?: string;
+
+  @IsOptional()
+  @SanitizeHtml()
+  tags?: string | string[];
 }
 
 function toDto(plain: Record<string, unknown>): TestDto {
@@ -74,5 +78,23 @@ describe("SanitizeHtml", () => {
   it("handles empty strings", () => {
     const dto = toDto({ name: "" });
     expect(dto.name).toBe("");
+  });
+
+  it("strips angle brackets from each string in an array", () => {
+    const dto = toDto({
+      name: "test",
+      tags: ["<b>bold</b>", "clean", "<script>xss</script>"],
+    });
+    expect(dto.tags).toEqual(["bbold/b", "clean", "scriptxss/script"]);
+  });
+
+  it("passes through non-string items in an array unchanged", () => {
+    const dto = toDto({ name: "test", tags: [123, "<b>text</b>", true] });
+    expect(dto.tags).toEqual([123, "btext/b", true]);
+  });
+
+  it("handles an empty array", () => {
+    const dto = toDto({ name: "test", tags: [] });
+    expect(dto.tags).toEqual([]);
   });
 });

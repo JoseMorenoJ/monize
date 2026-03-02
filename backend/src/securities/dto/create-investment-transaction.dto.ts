@@ -10,6 +10,7 @@ import {
   MaxLength,
 } from "class-validator";
 import { InvestmentAction } from "../entities/investment-transaction.entity";
+import { SanitizeHtml } from "../../common/decorators/sanitize-html.decorator";
 
 export class CreateInvestmentTransactionDto {
   @ApiProperty()
@@ -69,5 +70,6 @@ export class CreateInvestmentTransactionDto {
   @IsOptional()
   @IsString()
   @MaxLength(500)
+  @SanitizeHtml()
   description?: string;
 }

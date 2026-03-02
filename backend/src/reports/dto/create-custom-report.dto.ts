@@ -57,6 +57,7 @@ export class FilterConditionDto {
     oneOf: [{ type: "string" }, { type: "array", items: { type: "string" } }],
   })
   @Validate(IsStringOrStringArray)
+  @SanitizeHtml()
   value: string | string[];
 }
 
@@ -96,6 +97,7 @@ export class ReportFiltersDto {
   @IsOptional()
   @IsString()
   @MaxLength(500)
+  @SanitizeHtml()
   searchText?: string;
 
   @ApiPropertyOptional({

@@ -131,7 +131,7 @@ vi.mock('@/components/ui/Button', () => ({
 }));
 
 vi.mock('@/lib/errors', () => ({
-  getErrorMessage: (error: any, fallback: string) => fallback,
+  getErrorMessage: (_error: any, fallback: string) => fallback,
 }));
 
 describe('ChangePasswordPage', () => {
@@ -176,7 +176,7 @@ describe('ChangePasswordPage', () => {
   it('renders password requirements text', () => {
     render(<ChangePasswordPage />);
     expect(
-      screen.getByText(/Password must be at least 8 characters/),
+      screen.getByText(/Password must be at least 12 characters/),
     ).toBeInTheDocument();
   });
 

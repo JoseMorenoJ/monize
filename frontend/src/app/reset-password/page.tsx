@@ -18,7 +18,7 @@ const schema = z
   .object({
     newPassword: z
       .string()
-      .min(8, 'Password must be at least 8 characters')
+      .min(12, 'Password must be at least 12 characters')
       .regex(/(?=.*[a-z])/, 'Must contain a lowercase letter')
       .regex(/(?=.*[A-Z])/, 'Must contain an uppercase letter')
       .regex(/(?=.*\d)/, 'Must contain a number')

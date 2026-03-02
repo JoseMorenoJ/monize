@@ -76,6 +76,12 @@ export class User {
   @Exclude()
   pendingTwoFactorSecret: string | null;
 
+  @Column({ name: "failed_login_attempts", type: "int", default: 0 })
+  failedLoginAttempts: number;
+
+  @Column({ name: "locked_until", type: "timestamp", nullable: true })
+  lockedUntil: Date | null;
+
   @OneToOne(() => UserPreference, (preference) => preference.user)
   preferences: UserPreference;
 }

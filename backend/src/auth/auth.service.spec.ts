@@ -19,6 +19,8 @@ import { UserPreference } from "../users/entities/user-preference.entity";
 import { TrustedDevice } from "../users/entities/trusted-device.entity";
 import { RefreshToken } from "./entities/refresh-token.entity";
 import { encrypt } from "./crypto.util";
+import { PasswordBreachService } from "./password-breach.service";
+import { EmailService } from "../notifications/email.service";
 
 jest.mock("otplib", () => ({
   verifySync: jest.fn(),
@@ -43,6 +45,8 @@ describe("AuthService", () => {
   let jwtService: Partial<JwtService>;
   let configService: { get: jest.Mock };
   let dataSource: Record<string, jest.Mock>;
+  let passwordBreachService: { isBreached: jest.Mock };
+  let emailService: { sendMail: jest.Mock };
 
   const mockUser = {
     id: "user-1",
@@ -58,6 +62,8 @@ describe("AuthService", () => {
     resetTokenExpiry: null,
     lastLogin: null,
     oidcSubject: null,
+    failedLoginAttempts: 0,
+    lockedUntil: null,
     createdAt: new Date(),
     updatedAt: new Date(),
   };
@@ -103,6 +109,14 @@ describe("AuthService", () => {
       transaction: jest.fn(),
     };
 
+    passwordBreachService = {
+      isBreached: jest.fn().mockResolvedValue(false),
+    };
+
+    emailService = {
+      sendMail: jest.fn().mockResolvedValue(undefined),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
@@ -134,11 +148,17 @@ describe("AuthService", () => {
           },
         },
         { provide: DataSource, useValue: dataSource },
+        { provide: PasswordBreachService, useValue: passwordBreachService },
+        { provide: EmailService, useValue: emailService },
       ],
     }).compile();
 
     service = module.get<AuthService>(AuthService);
     configService = module.get(ConfigService);
+
+    // Spy on logger for security event logging tests (C2+C3)
+    jest.spyOn((service as any).logger, "warn").mockImplementation();
+    jest.spyOn((service as any).logger, "log").mockImplementation();
   });
 
   describe("register", () => {
@@ -205,9 +225,32 @@ describe("AuthService", () => {
         }),
       ).rejects.toThrow(ConflictException);
     });
+
+    it("rejects breached password during registration", async () => {
+      usersRepository.findOne.mockResolvedValue(null);
+      passwordBreachService.isBreached.mockResolvedValue(true);
+
+      await expect(
+        service.register({
+          email: "new@example.com",
+          password: "BreachedPass123!",
+        }),
+      ).rejects.toThrow("found in a data breach");
+    });
   });
 
   describe("login", () => {
+    function mockLoginQueryBuilder() {
+      const builder = {
+        update: jest.fn().mockReturnThis(),
+        set: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        execute: jest.fn().mockResolvedValue({ affected: 1 }),
+      };
+      usersRepository.createQueryBuilder.mockReturnValue(builder);
+      return builder;
+    }
+
     it("returns token pair for valid credentials", async () => {
       const hashedPassword = await bcrypt.hash("ValidPass123!", 10);
       const user = { ...mockUser, passwordHash: hashedPassword };
@@ -223,6 +266,9 @@ describe("AuthService", () => {
       expect(result.user).toBeDefined();
       expect(result.accessToken).toBeDefined();
       expect(result.refreshToken).toBeDefined();
+      expect((service as any).logger.log).toHaveBeenCalledWith(
+        expect.stringContaining("Login successful for email"),
+      );
     });
 
     it("throws for non-existent user", async () => {
@@ -231,10 +277,14 @@ describe("AuthService", () => {
       await expect(
         service.login({ email: "nobody@example.com", password: "pass" }),
       ).rejects.toThrow(UnauthorizedException);
+      expect((service as any).logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining("Login failed: invalid credentials"),
+      );
     });
 
     it("throws for wrong password", async () => {
       const hashedPassword = await bcrypt.hash("CorrectPass", 10);
+      mockLoginQueryBuilder();
       usersRepository.findOne.mockResolvedValue({
         ...mockUser,
         passwordHash: hashedPassword,
@@ -243,6 +293,9 @@ describe("AuthService", () => {
       await expect(
         service.login({ email: "test@example.com", password: "WrongPass" }),
       ).rejects.toThrow(UnauthorizedException);
+      expect((service as any).logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining("Login failed: invalid password"),
+      );
     });
 
     it("throws for inactive user", async () => {
@@ -256,6 +309,9 @@ describe("AuthService", () => {
       await expect(
         service.login({ email: "test@example.com", password: "ValidPass123!" }),
       ).rejects.toThrow("Account is deactivated");
+      expect((service as any).logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining("Login failed: account deactivated"),
+      );
     });
 
     it("returns 2FA required when enabled", async () => {
@@ -277,6 +333,148 @@ describe("AuthService", () => {
       expect(result.requires2FA).toBe(true);
       expect(result.tempToken).toBeDefined();
       expect(result).not.toHaveProperty("accessToken");
+      expect((service as any).logger.log).toHaveBeenCalledWith(
+        expect.stringContaining("Login requires 2FA"),
+      );
+    });
+
+    it("rejects login when account is locked", async () => {
+      usersRepository.findOne.mockResolvedValue({
+        ...mockUser,
+        lockedUntil: new Date(Date.now() + 60000),
+      });
+
+      await expect(
+        service.login({ email: "test@example.com", password: "any" }),
+      ).rejects.toThrow(ForbiddenException);
+      expect((service as any).logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining("account locked"),
+      );
+    });
+
+    it("allows login when lock has expired", async () => {
+      const hashedPassword = await bcrypt.hash("ValidPass123!", 10);
+      mockLoginQueryBuilder();
+      usersRepository.findOne.mockResolvedValue({
+        ...mockUser,
+        passwordHash: hashedPassword,
+        lockedUntil: new Date(Date.now() - 1000),
+        failedLoginAttempts: 5,
+      });
+      preferencesRepository.findOne.mockResolvedValue(null);
+      usersRepository.save.mockResolvedValue(mockUser);
+
+      const result = await service.login({
+        email: "test@example.com",
+        password: "ValidPass123!",
+      });
+
+      expect(result.user).toBeDefined();
+      expect(result.accessToken).toBeDefined();
+    });
+
+    it("increments failed attempts on wrong password", async () => {
+      const hashedPassword = await bcrypt.hash("CorrectPass", 10);
+      const builder = mockLoginQueryBuilder();
+      usersRepository.findOne.mockResolvedValue({
+        ...mockUser,
+        passwordHash: hashedPassword,
+        failedLoginAttempts: 2,
+      });
+
+      await expect(
+        service.login({ email: "test@example.com", password: "WrongPass" }),
+      ).rejects.toThrow(UnauthorizedException);
+
+      expect(builder.set).toHaveBeenCalledWith(
+        expect.objectContaining({ failedLoginAttempts: 3 }),
+      );
+    });
+
+    it("locks account at 5 failed attempts and sends email", async () => {
+      const hashedPassword = await bcrypt.hash("CorrectPass", 10);
+      const builder = mockLoginQueryBuilder();
+      usersRepository.findOne.mockResolvedValue({
+        ...mockUser,
+        passwordHash: hashedPassword,
+        failedLoginAttempts: 4,
+      });
+
+      await expect(
+        service.login({ email: "test@example.com", password: "WrongPass" }),
+      ).rejects.toThrow(UnauthorizedException);
+
+      expect(builder.set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          failedLoginAttempts: 5,
+          lockedUntil: expect.any(Date),
+        }),
+      );
+      expect(emailService.sendMail).toHaveBeenCalledWith(
+        "test@example.com",
+        "Account Temporarily Locked",
+        expect.stringContaining("temporarily locked"),
+      );
+    });
+
+    it("does not send lockout email for users without email", async () => {
+      const hashedPassword = await bcrypt.hash("CorrectPass", 10);
+      mockLoginQueryBuilder();
+      usersRepository.findOne.mockResolvedValue({
+        ...mockUser,
+        email: null,
+        passwordHash: hashedPassword,
+        failedLoginAttempts: 4,
+      });
+
+      await expect(
+        service.login({ email: "test@example.com", password: "WrongPass" }),
+      ).rejects.toThrow(UnauthorizedException);
+
+      expect(emailService.sendMail).not.toHaveBeenCalled();
+    });
+
+    it("resets failed attempts on successful login", async () => {
+      const hashedPassword = await bcrypt.hash("ValidPass123!", 10);
+      const builder = mockLoginQueryBuilder();
+      usersRepository.findOne.mockResolvedValue({
+        ...mockUser,
+        passwordHash: hashedPassword,
+        failedLoginAttempts: 3,
+      });
+      preferencesRepository.findOne.mockResolvedValue(null);
+      usersRepository.save.mockResolvedValue(mockUser);
+
+      await service.login({
+        email: "test@example.com",
+        password: "ValidPass123!",
+      });
+
+      expect(builder.set).toHaveBeenCalledWith({
+        failedLoginAttempts: 0,
+        lockedUntil: null,
+      });
+    });
+
+    it("applies progressive lockout duration", async () => {
+      const hashedPassword = await bcrypt.hash("CorrectPass", 10);
+      const builder = mockLoginQueryBuilder();
+      usersRepository.findOne.mockResolvedValue({
+        ...mockUser,
+        passwordHash: hashedPassword,
+        failedLoginAttempts: 9, // Will become 10, 2nd lockout
+      });
+
+      await expect(
+        service.login({ email: "test@example.com", password: "WrongPass" }),
+      ).rejects.toThrow(UnauthorizedException);
+
+      const setArg = builder.set.mock.calls[0][0];
+      // 2nd lockout: 30min * 2^1 = 60min
+      const lockDuration =
+        setArg.lockedUntil.getTime() - Date.now();
+      expect(lockDuration).toBeGreaterThan(55 * 60 * 1000);
+      expect(lockDuration).toBeLessThan(65 * 60 * 1000);
     });
   });
 
@@ -289,6 +487,9 @@ describe("AuthService", () => {
       await expect(service.verify2FA("bad-token", "123456")).rejects.toThrow(
         UnauthorizedException,
       );
+      expect((service as any).logger.warn).toHaveBeenCalledWith(
+        "2FA verification failed: invalid or expired token",
+      );
     });
 
     it("throws for wrong token type", async () => {
@@ -299,6 +500,9 @@ describe("AuthService", () => {
 
       await expect(service.verify2FA("token", "123456")).rejects.toThrow(
         "Invalid token type",
+      );
+      expect((service as any).logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining("2FA verification failed: invalid token type"),
       );
     });
   });
@@ -331,6 +535,8 @@ describe("AuthService", () => {
       expect(result.user).not.toHaveProperty("resetToken");
       expect(result.user).not.toHaveProperty("resetTokenExpiry");
       expect(result.user).not.toHaveProperty("twoFactorSecret");
+      expect(result.user).not.toHaveProperty("failedLoginAttempts");
+      expect(result.user).not.toHaveProperty("lockedUntil");
       expect(result.user).toHaveProperty("hasPassword");
     });
   });
@@ -375,6 +581,14 @@ describe("AuthService", () => {
         { userId: mockUser.id, isRevoked: false },
         { isRevoked: true },
       );
+    });
+
+    it("rejects breached password during reset", async () => {
+      passwordBreachService.isBreached.mockResolvedValue(true);
+
+      await expect(
+        service.resetPassword("valid-token", "BreachedPass123!"),
+      ).rejects.toThrow("found in a data breach");
     });
   });
 
@@ -751,6 +965,9 @@ describe("AuthService", () => {
       await expect(
         service.verify2FA("valid-temp-token", "000000"),
       ).rejects.toThrow("Invalid verification code");
+      expect((service as any).logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining("2FA verification failed: invalid code"),
+      );
     });
 
     it("throws for missing user or secret", async () => {
@@ -763,6 +980,9 @@ describe("AuthService", () => {
       await expect(
         service.verify2FA("valid-temp-token", "123456"),
       ).rejects.toThrow("Invalid verification state");
+      expect((service as any).logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining("2FA verification failed: invalid state"),
+      );
     });
 
     it("throws for user with no twoFactorSecret", async () => {
@@ -778,6 +998,9 @@ describe("AuthService", () => {
       await expect(
         service.verify2FA("valid-temp-token", "123456"),
       ).rejects.toThrow("Invalid verification state");
+      expect((service as any).logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining("2FA verification failed: invalid state"),
+      );
     });
 
     it("updates lastLogin on successful verification", async () => {
@@ -797,6 +1020,9 @@ describe("AuthService", () => {
 
       const savedUser = usersRepository.save.mock.calls[0][0];
       expect(savedUser.lastLogin).toBeInstanceOf(Date);
+      expect((service as any).logger.log).toHaveBeenCalledWith(
+        expect.stringContaining("2FA verification successful"),
+      );
     });
   });
 
@@ -1741,6 +1967,9 @@ describe("AuthService", () => {
       expect(result.accessToken).toBeDefined();
       expect(result.refreshToken).toBeDefined();
       expect(result.user).toBeDefined();
+      expect((service as any).logger.log).toHaveBeenCalledWith(
+        expect.stringContaining("Login successful (trusted device)"),
+      );
     });
 
     it("falls back to 2FA when trusted device is invalid", async () => {

@@ -15,6 +15,7 @@ import { PersonalAccessToken } from "../auth/entities/personal-access-token.enti
 import { UpdateProfileDto } from "./dto/update-profile.dto";
 import { UpdatePreferencesDto } from "./dto/update-preferences.dto";
 import { ChangePasswordDto } from "./dto/change-password.dto";
+import { PasswordBreachService } from "../auth/password-breach.service";
 
 @Injectable()
 export class UsersService {
@@ -27,6 +28,7 @@ export class UsersService {
     private refreshTokensRepository: Repository<RefreshToken>,
     @InjectRepository(PersonalAccessToken)
     private patRepository: Repository<PersonalAccessToken>,
+    private passwordBreachService: PasswordBreachService,
   ) {}
 
   async findById(id: string): Promise<User | null> {
@@ -179,6 +181,16 @@ export class UsersService {
     );
     if (!isPasswordValid) {
       throw new BadRequestException("Current password is incorrect");
+    }
+
+    // Check for breached password
+    const isBreached = await this.passwordBreachService.isBreached(
+      dto.newPassword,
+    );
+    if (isBreached) {
+      throw new BadRequestException(
+        "This password has been found in a data breach. Please choose a different password.",
+      );
     }
 
     // Hash and save new password

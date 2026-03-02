@@ -6,6 +6,7 @@ import { RefreshToken } from "../auth/entities/refresh-token.entity";
 import { PersonalAccessToken } from "../auth/entities/personal-access-token.entity";
 import { UsersService } from "./users.service";
 import { UsersController } from "./users.controller";
+import { PasswordBreachService } from "../auth/password-breach.service";
 
 @Module({
   imports: [
@@ -16,7 +17,7 @@ import { UsersController } from "./users.controller";
       PersonalAccessToken,
     ]),
   ],
-  providers: [UsersService],
+  providers: [UsersService, PasswordBreachService],
   controllers: [UsersController],
   exports: [UsersService],
 })

@@ -9,6 +9,11 @@ export function SanitizeHtml(): PropertyDecorator {
   return Transform(({ obj, key }) => {
     const raw = obj[key];
     if (raw === undefined || raw === null) return raw;
+    if (Array.isArray(raw)) {
+      return raw.map((item) =>
+        typeof item === "string" ? item.replace(/[<>]/g, "") : item,
+      );
+    }
     if (typeof raw !== "string") return raw;
     return raw.replace(/[<>]/g, "");
   });

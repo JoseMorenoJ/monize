@@ -11,6 +11,7 @@ import { User } from "./entities/user.entity";
 import { UserPreference } from "./entities/user-preference.entity";
 import { RefreshToken } from "../auth/entities/refresh-token.entity";
 import { PersonalAccessToken } from "../auth/entities/personal-access-token.entity";
+import { PasswordBreachService } from "../auth/password-breach.service";
 
 describe("UsersService", () => {
   let service: UsersService;
@@ -18,6 +19,7 @@ describe("UsersService", () => {
   let preferencesRepository: Record<string, jest.Mock>;
   let refreshTokensRepository: Record<string, jest.Mock>;
   let patRepository: Record<string, jest.Mock>;
+  let passwordBreachService: { isBreached: jest.Mock };
 
   const mockUser = {
     id: "user-1",
@@ -72,6 +74,10 @@ describe("UsersService", () => {
       update: jest.fn(),
     };
 
+    passwordBreachService = {
+      isBreached: jest.fn().mockResolvedValue(false),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         UsersService,
@@ -88,6 +94,7 @@ describe("UsersService", () => {
           provide: getRepositoryToken(PersonalAccessToken),
           useValue: patRepository,
         },
+        { provide: PasswordBreachService, useValue: passwordBreachService },
       ],
     }).compile();
 
@@ -412,6 +419,22 @@ describe("UsersService", () => {
           newPassword: "NewPass456!",
         }),
       ).rejects.toThrow(NotFoundException);
+    });
+
+    it("rejects breached password during change", async () => {
+      const hashedPassword = await bcrypt.hash("OldPass123!", 10);
+      usersRepository.findOne.mockResolvedValue({
+        ...mockUser,
+        passwordHash: hashedPassword,
+      });
+      passwordBreachService.isBreached.mockResolvedValue(true);
+
+      await expect(
+        service.changePassword("user-1", {
+          currentPassword: "OldPass123!",
+          newPassword: "BreachedPass123!",
+        }),
+      ).rejects.toThrow("found in a data breach");
     });
   });
 

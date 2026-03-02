@@ -9,10 +9,10 @@ export class ChangePasswordDto {
 
   @ApiProperty({
     description:
-      "New password (8+ chars with uppercase, lowercase, number, and special character)",
+      "New password (12+ chars with uppercase, lowercase, number, and special character)",
   })
   @IsString()
-  @MinLength(8)
+  @MinLength(12)
   @MaxLength(100)
   @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d\s])/, {
     message:

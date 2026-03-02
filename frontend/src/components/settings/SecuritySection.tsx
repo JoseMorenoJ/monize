@@ -19,7 +19,7 @@ import { getErrorMessage } from '@/lib/errors';
 
 const changePasswordSchema = z.object({
   currentPassword: z.string().min(1, 'Current password is required').max(128, 'Password must be 128 characters or less'),
-  newPassword: z.string().min(8, 'Password must be at least 8 characters').max(128, 'Password must be 128 characters or less'),
+  newPassword: z.string().min(12, 'Password must be at least 12 characters').max(128, 'Password must be 128 characters or less'),
   confirmPassword: z.string().min(1, 'Please confirm your new password').max(128, 'Password must be 128 characters or less'),
 }).refine((data) => data.newPassword === data.confirmPassword, {
   message: 'New passwords do not match',
@@ -160,7 +160,7 @@ export function SecuritySection({ user, preferences, force2fa, onPreferencesUpda
             type="password"
             {...register('newPassword')}
             error={errors.newPassword?.message}
-            placeholder="Enter new password (min. 8 characters)"
+            placeholder="Enter new password (min. 12 characters)"
           />
           <Input
             label="Confirm New Password"

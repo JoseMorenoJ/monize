@@ -15,6 +15,7 @@ import { LocalStrategy } from "./strategies/local.strategy";
 import { JwtStrategy } from "./strategies/jwt.strategy";
 import { OidcService } from "./oidc/oidc.service";
 import { PatService } from "./pat.service";
+import { PasswordBreachService } from "./password-breach.service";
 import { PatController } from "./pat.controller";
 import { UsersModule } from "../users/users.module";
 import { NotificationsModule } from "../notifications/notifications.module";
@@ -46,8 +47,15 @@ import { NotificationsModule } from "../notifications/notifications.module";
       }),
     }),
   ],
-  providers: [AuthService, LocalStrategy, JwtStrategy, OidcService, PatService],
+  providers: [
+    AuthService,
+    LocalStrategy,
+    JwtStrategy,
+    OidcService,
+    PatService,
+    PasswordBreachService,
+  ],
   controllers: [AuthController, PatController],
-  exports: [AuthService, OidcService, PatService],
+  exports: [AuthService, OidcService, PatService, PasswordBreachService],
 })
 export class AuthModule {}

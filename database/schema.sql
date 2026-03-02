@@ -29,7 +29,9 @@ CREATE TABLE users (
     role VARCHAR(20) NOT NULL DEFAULT 'user', -- 'admin', 'user'
     must_change_password BOOLEAN NOT NULL DEFAULT false,
     two_factor_secret VARCHAR(255), -- encrypted TOTP secret for 2FA
-    pending_two_factor_secret VARCHAR(255) -- staged secret during 2FA setup
+    pending_two_factor_secret VARCHAR(255), -- staged secret during 2FA setup
+    failed_login_attempts INTEGER NOT NULL DEFAULT 0,
+    locked_until TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_reset_token ON users(reset_token) WHERE reset_token IS NOT NULL;

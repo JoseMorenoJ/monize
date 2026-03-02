@@ -354,6 +354,19 @@ export function budgetMonthlySummaryTemplate(
   `;
 }
 
+export function accountLockedTemplate(firstName: string): string {
+  const safeName = escapeHtml(firstName || "there");
+  return `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+      <h2 style="color: #1f2937;">Account Temporarily Locked</h2>
+      <p style="color: #374151;">Hi ${safeName},</p>
+      <p style="color: #374151;">Your Monize account has been temporarily locked due to multiple failed login attempts. This is a security measure to protect your account.</p>
+      <p style="color: #374151;">The lock will expire automatically. If you did not attempt to log in, we recommend resetting your password immediately.</p>
+      <p style="color: #6b7280; font-size: 14px; margin-top: 24px;">-- Monize</p>
+    </div>
+  `;
+}
+
 export function passwordResetTemplate(
   firstName: string,
   resetUrl: string,

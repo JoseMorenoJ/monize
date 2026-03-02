@@ -22,7 +22,7 @@ const changePasswordSchema = z
     currentPassword: z.string().min(1, 'Current password is required'),
     newPassword: z
       .string()
-      .min(8, 'Password must be at least 8 characters')
+      .min(12, 'Password must be at least 12 characters')
       .max(100, 'Password must be less than 100 characters')
       .regex(
         passwordRegex,
@@ -123,7 +123,7 @@ export default function ChangePasswordPage() {
           </div>
 
           <p className="text-xs text-gray-500 dark:text-gray-400">
-            Password must be at least 8 characters and contain an uppercase letter, a lowercase
+            Password must be at least 12 characters and contain an uppercase letter, a lowercase
             letter, a number, and a special character.
           </p>
 

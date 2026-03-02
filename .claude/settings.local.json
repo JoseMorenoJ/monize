@@ -10,7 +10,13 @@
       "Bash(head:*)",
       "Bash(wsl -d NixOS -- bash -c \"cd /home/ken/monize/backend && npx jest --testPathPattern='\\(currencies\\\\.controller|securities\\\\.controller|transactions\\\\.controller|admin\\\\.controller|admin\\\\.service\\)\\\\.spec\\\\.ts' --no-coverage 2>&1\":*)",
       "Bash(wsl -d NixOS -- bash -c \"cd /home/ken/monize/backend && npx jest --testPathPatterns='\\(currencies\\\\.controller|securities\\\\.controller|transactions\\\\.controller|admin\\\\.controller|admin\\\\.service\\)\\\\.spec\\\\.ts' --no-coverage 2>&1\":*)",
-      "Bash(wsl -d NixOS -- bash -c \"cd /home/ken/monize/frontend && npx tsc --noEmit --pretty 2>&1 | head -30\":*)"
+      "Bash(wsl -d NixOS -- bash -c \"cd /home/ken/monize/frontend && npx tsc --noEmit --pretty 2>&1 | head -30\":*)",
+      "Bash(xargs:*)",
+      "Bash(npm run test:unit:*)",
+      "Bash(npx jest:*)",
+      "Bash(npx vitest run:*)",
+      "Bash(git checkout:*)",
+      "Bash(git add:*)"
     ]
   }
 }

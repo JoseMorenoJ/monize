@@ -24,6 +24,9 @@ import { RefreshToken } from "./entities/refresh-token.entity";
 import { RegisterDto } from "./dto/register.dto";
 import { LoginDto } from "./dto/login.dto";
 import { encrypt, decrypt } from "./crypto.util";
+import { PasswordBreachService } from "./password-breach.service";
+import { EmailService } from "../notifications/email.service";
+import { accountLockedTemplate } from "../notifications/email-templates";
 import { UAParser } from "ua-parser-js";
 
 @Injectable()
@@ -32,6 +35,8 @@ export class AuthService {
   private jwtSecret: string;
   private readonly ACCESS_TOKEN_EXPIRY = "15m";
   private readonly REFRESH_TOKEN_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+  private readonly MAX_FAILED_ATTEMPTS = 5;
+  private readonly BASE_LOCKOUT_MS = 30 * 60 * 1000; // 30 minutes
 
   constructor(
     @InjectRepository(User)
@@ -45,6 +50,8 @@ export class AuthService {
     private jwtService: JwtService,
     private configService: ConfigService,
     private dataSource: DataSource,
+    private passwordBreachService: PasswordBreachService,
+    private emailService: EmailService,
   ) {
     this.jwtSecret = this.configService.get<string>("JWT_SECRET")!;
   }
@@ -62,6 +69,14 @@ export class AuthService {
 
     if (existingUser) {
       throw new ConflictException("Unable to complete registration");
+    }
+
+    // Check for breached password
+    const isBreached = await this.passwordBreachService.isBreached(password);
+    if (isBreached) {
+      throw new BadRequestException(
+        "This password has been found in a data breach. Please choose a different password.",
+      );
     }
 
     // Hash password
@@ -103,17 +118,72 @@ export class AuthService {
     });
 
     if (!user || !user.passwordHash) {
+      this.logger.warn(`Login failed: invalid credentials for email ${email}`);
       throw new UnauthorizedException("Invalid credentials");
+    }
+
+    // Check account lockout
+    if (user.lockedUntil && user.lockedUntil > new Date()) {
+      this.logger.warn(`Login failed: account locked for email ${email}`);
+      throw new ForbiddenException(
+        "Account is temporarily locked due to too many failed login attempts. Please try again later.",
+      );
     }
 
     const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
 
     if (!isPasswordValid) {
+      this.logger.warn(`Login failed: invalid password for email ${email}`);
+      // Atomically increment failed attempts
+      const newAttempts = user.failedLoginAttempts + 1;
+      const updateFields: Record<string, unknown> = {
+        failedLoginAttempts: newAttempts,
+      };
+      if (newAttempts >= this.MAX_FAILED_ATTEMPTS) {
+        const lockoutMultiplier = Math.pow(
+          2,
+          Math.floor(newAttempts / this.MAX_FAILED_ATTEMPTS) - 1,
+        );
+        const lockoutDuration = this.BASE_LOCKOUT_MS * lockoutMultiplier;
+        updateFields.lockedUntil = new Date(Date.now() + lockoutDuration);
+        this.logger.warn(
+          `Account locked for email ${email} after ${newAttempts} failed attempts`,
+        );
+        // Fire-and-forget lockout email
+        if (user.email) {
+          this.emailService
+            .sendMail(
+              user.email,
+              "Account Temporarily Locked",
+              accountLockedTemplate(user.firstName || ""),
+            )
+            .catch((err) =>
+              this.logger.warn(`Failed to send lockout email: ${err.message}`),
+            );
+        }
+      }
+      await this.usersRepository
+        .createQueryBuilder()
+        .update(User)
+        .set(updateFields)
+        .where("id = :id", { id: user.id })
+        .execute();
       throw new UnauthorizedException("Invalid credentials");
     }
 
     if (!user.isActive) {
+      this.logger.warn(`Login failed: account deactivated for email ${email}`);
       throw new UnauthorizedException("Account is deactivated");
+    }
+
+    // Reset failed attempts on successful login
+    if (user.failedLoginAttempts > 0 || user.lockedUntil) {
+      await this.usersRepository
+        .createQueryBuilder()
+        .update(User)
+        .set({ failedLoginAttempts: 0, lockedUntil: null })
+        .where("id = :id", { id: user.id })
+        .execute();
     }
 
     // Check if 2FA is enabled
@@ -133,6 +203,9 @@ export class AuthService {
           await this.usersRepository.save(user);
           const { accessToken, refreshToken } =
             await this.generateTokenPair(user);
+          this.logger.log(
+            `Login successful (trusted device) for email ${email}`,
+          );
           return { user: this.sanitizeUser(user), accessToken, refreshToken };
         }
       }
@@ -142,6 +215,7 @@ export class AuthService {
         { sub: user.id, type: "2fa_pending" },
         { expiresIn: "5m" },
       );
+      this.logger.log(`Login requires 2FA for email ${email}`);
       return { requires2FA: true, tempToken };
     }
 
@@ -151,6 +225,7 @@ export class AuthService {
 
     const { accessToken, refreshToken } = await this.generateTokenPair(user);
 
+    this.logger.log(`Login successful for email ${email}`);
     return {
       user: this.sanitizeUser(user),
       accessToken,
@@ -169,10 +244,14 @@ export class AuthService {
     try {
       payload = this.jwtService.verify(tempToken);
     } catch {
+      this.logger.warn("2FA verification failed: invalid or expired token");
       throw new UnauthorizedException("Invalid or expired verification token");
     }
 
     if (payload.type !== "2fa_pending") {
+      this.logger.warn(
+        `2FA verification failed: invalid token type for user ${payload.sub}`,
+      );
       throw new UnauthorizedException("Invalid token type");
     }
 
@@ -181,6 +260,9 @@ export class AuthService {
     });
 
     if (!user || !user.twoFactorSecret) {
+      this.logger.warn(
+        `2FA verification failed: invalid state for user ${payload.sub}`,
+      );
       throw new UnauthorizedException("Invalid verification state");
     }
 
@@ -188,12 +270,16 @@ export class AuthService {
     const isValid = otplib.verifySync({ token: code, secret }).valid;
 
     if (!isValid) {
+      this.logger.warn(
+        `2FA verification failed: invalid code for user ${user.id}`,
+      );
       throw new UnauthorizedException("Invalid verification code");
     }
 
     // Update last login
     user.lastLogin = new Date();
     await this.usersRepository.save(user);
+    this.logger.log(`2FA verification successful for user ${user.id}`);
 
     const { accessToken, refreshToken } = await this.generateTokenPair(user);
 
@@ -642,6 +728,14 @@ export class AuthService {
   }
 
   async resetPassword(token: string, newPassword: string): Promise<void> {
+    // Check for breached password
+    const isBreached = await this.passwordBreachService.isBreached(newPassword);
+    if (isBreached) {
+      throw new BadRequestException(
+        "This password has been found in a data breach. Please choose a different password.",
+      );
+    }
+
     // SECURITY: Hash the incoming token to compare against stored hash
     const hashedToken = this.hashToken(token);
 
@@ -789,6 +883,8 @@ export class AuthService {
       resetToken,
       resetTokenExpiry,
       twoFactorSecret,
+      failedLoginAttempts,
+      lockedUntil,
       ...sanitized
     } = user;
     return { ...sanitized, hasPassword: !!passwordHash };
