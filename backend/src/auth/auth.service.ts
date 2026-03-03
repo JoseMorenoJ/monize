@@ -971,7 +971,8 @@ export class AuthService {
 
     const codes: string[] = [];
     for (let i = 0; i < this.BACKUP_CODE_COUNT; i++) {
-      codes.push(crypto.randomBytes(4).toString("hex")); // 8-character hex codes
+      const raw = crypto.randomBytes(4).toString("hex");
+      codes.push(`${raw.slice(0, 4)}-${raw.slice(4)}`); // XXXX-XXXX hex codes
     }
 
     // Store hashed codes as JSON array

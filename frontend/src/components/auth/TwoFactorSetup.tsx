@@ -8,6 +8,7 @@ import { z } from 'zod';
 import toast from 'react-hot-toast';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
+import { BackupCodesDisplay } from '@/components/auth/BackupCodesDisplay';
 import { authApi } from '@/lib/auth';
 import { getErrorMessage } from '@/lib/errors';
 import { TwoFactorSetupResponse } from '@/types/auth';
@@ -28,6 +29,7 @@ export function TwoFactorSetup({ onComplete, onSkip, isForced }: TwoFactorSetupP
   const [setupData, setSetupData] = useState<TwoFactorSetupResponse | null>(null);
   const [isSettingUp, setIsSettingUp] = useState(true);
   const [showManualKey, setShowManualKey] = useState(false);
+  const [backupCodes, setBackupCodes] = useState<string[] | null>(null);
 
   const {
     register,
@@ -63,12 +65,23 @@ export function TwoFactorSetup({ onComplete, onSkip, isForced }: TwoFactorSetupP
     try {
       await authApi.confirmSetup2FA(formData.code);
       toast.success('Two-factor authentication enabled!');
-      onComplete();
+      // Generate backup codes after successful 2FA setup
+      try {
+        const response = await authApi.generateBackupCodes();
+        setBackupCodes(response.codes);
+      } catch (error) {
+        toast.error(getErrorMessage(error, 'Failed to generate backup codes'));
+        onComplete();
+      }
     } catch (error) {
       toast.error(getErrorMessage(error, 'Invalid verification code'));
       setValue('code', '');
     }
   };
+
+  if (backupCodes) {
+    return <BackupCodesDisplay codes={backupCodes} onDone={onComplete} />;
+  }
 
   if (isSettingUp) {
     return (

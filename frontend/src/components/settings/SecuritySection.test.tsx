@@ -16,6 +16,7 @@ vi.mock('@/lib/auth', () => ({
     revokeAllTrustedDevices: vi.fn().mockResolvedValue({ count: 0 }),
     revokeTrustedDevice: vi.fn().mockResolvedValue({}),
     disable2FA: vi.fn().mockResolvedValue({}),
+    generateBackupCodes: vi.fn().mockResolvedValue({ codes: [] }),
   },
 }));
 
@@ -29,6 +30,15 @@ vi.mock('@/components/auth/TwoFactorSetup', () => ({
       2FA Setup
       <button data-testid="2fa-complete" onClick={onComplete}>Complete</button>
       <button data-testid="2fa-skip" onClick={onSkip}>Skip</button>
+    </div>
+  ),
+}));
+
+vi.mock('@/components/auth/BackupCodesDisplay', () => ({
+  BackupCodesDisplay: ({ codes, onDone }: { codes: string[]; onDone: () => void }) => (
+    <div data-testid="backup-codes-display">
+      {codes.map((code: string) => <span key={code}>{code}</span>)}
+      <button data-testid="backup-codes-done" onClick={onDone}>Done</button>
     </div>
   ),
 }));
@@ -1118,5 +1128,118 @@ describe('SecuritySection', () => {
     fireEvent.change(screen.getByLabelText('Verification Code'), { target: { value: 'abc123' } });
 
     expect((screen.getByLabelText('Verification Code') as HTMLInputElement).value).toBe('123');
+  });
+
+  // --- Backup Codes ---
+  it('shows Backup Codes section when 2FA is enabled', async () => {
+    const prefsWith2fa = { ...mockPreferences, twoFactorEnabled: true };
+
+    render(
+      <SecuritySection
+        user={mockUser}
+        preferences={prefsWith2fa}
+        force2fa={false}
+        onPreferencesUpdated={mockOnPreferencesUpdated}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Backup Codes')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Regenerate codes' })).toBeInTheDocument();
+    });
+  });
+
+  it('does not show Backup Codes section when 2FA is not enabled', () => {
+    render(
+      <SecuritySection
+        user={mockUser}
+        preferences={mockPreferences}
+        force2fa={false}
+        onPreferencesUpdated={mockOnPreferencesUpdated}
+      />
+    );
+
+    expect(screen.queryByText('Backup Codes')).not.toBeInTheDocument();
+  });
+
+  it('generates and displays backup codes when Regenerate is clicked', async () => {
+    const prefsWith2fa = { ...mockPreferences, twoFactorEnabled: true };
+    const mockCodes = ['a1b2-c3d4', 'e5f6-7890'];
+    (authApi.generateBackupCodes as any).mockResolvedValueOnce({ codes: mockCodes });
+
+    render(
+      <SecuritySection
+        user={mockUser}
+        preferences={prefsWith2fa}
+        force2fa={false}
+        onPreferencesUpdated={mockOnPreferencesUpdated}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Regenerate codes' })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Regenerate codes' }));
+
+    await waitFor(() => {
+      expect(authApi.generateBackupCodes).toHaveBeenCalled();
+      expect(screen.getByTestId('backup-codes-display')).toBeInTheDocument();
+    });
+  });
+
+  it('shows error toast when generating backup codes fails', async () => {
+    const prefsWith2fa = { ...mockPreferences, twoFactorEnabled: true };
+    (authApi.generateBackupCodes as any).mockRejectedValueOnce(new Error('Failed'));
+
+    render(
+      <SecuritySection
+        user={mockUser}
+        preferences={prefsWith2fa}
+        force2fa={false}
+        onPreferencesUpdated={mockOnPreferencesUpdated}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Regenerate codes' })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Regenerate codes' }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('Failed to generate backup codes');
+    });
+  });
+
+  it('closes backup codes modal when Done is clicked', async () => {
+    const prefsWith2fa = { ...mockPreferences, twoFactorEnabled: true };
+    const mockCodes = ['a1b2-c3d4', 'e5f6-7890'];
+    (authApi.generateBackupCodes as any).mockResolvedValueOnce({ codes: mockCodes });
+
+    render(
+      <SecuritySection
+        user={mockUser}
+        preferences={prefsWith2fa}
+        force2fa={false}
+        onPreferencesUpdated={mockOnPreferencesUpdated}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Regenerate codes' })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Regenerate codes' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('backup-codes-display')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTestId('backup-codes-done'));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('backup-codes-display')).not.toBeInTheDocument();
+    });
   });
 });

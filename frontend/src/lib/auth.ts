@@ -1,5 +1,5 @@
 import apiClient from './api';
-import { LoginCredentials, RegisterData, AuthResponse, TwoFactorSetupResponse, TrustedDevice, PersonalAccessToken, CreatePatData, CreatePatResponse } from '@/types/auth';
+import { LoginCredentials, RegisterData, AuthResponse, TwoFactorSetupResponse, BackupCodesResponse, TrustedDevice, PersonalAccessToken, CreatePatData, CreatePatResponse } from '@/types/auth';
 
 export interface AuthMethods {
   local: boolean;
@@ -62,6 +62,11 @@ export const authApi = {
 
   confirmSetup2FA: async (code: string): Promise<{ message: string }> => {
     const response = await apiClient.post<{ message: string }>('/auth/2fa/confirm-setup', { code });
+    return response.data;
+  },
+
+  generateBackupCodes: async (): Promise<BackupCodesResponse> => {
+    const response = await apiClient.post<BackupCodesResponse>('/auth/2fa/backup-codes');
     return response.data;
   },
 

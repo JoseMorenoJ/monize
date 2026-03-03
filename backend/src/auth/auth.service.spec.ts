@@ -2373,7 +2373,7 @@ describe("AuthService", () => {
 
       expect(codes).toHaveLength(12);
       codes.forEach((code) => {
-        expect(code).toMatch(/^[0-9a-f]{8}$/);
+        expect(code).toMatch(/^[0-9a-f]{4}-[0-9a-f]{4}$/);
       });
     });
 

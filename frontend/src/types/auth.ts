@@ -52,6 +52,10 @@ export interface TwoFactorSetupResponse {
   otpauthUrl: string;
 }
 
+export interface BackupCodesResponse {
+  codes: string[];
+}
+
 export interface TrustedDevice {
   id: string;
   deviceName: string;

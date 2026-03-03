@@ -128,4 +128,87 @@ describe('TwoFactorVerify', () => {
     fireEvent.click(screen.getByText('Back to login'));
     expect(onCancel).toHaveBeenCalled();
   });
+
+  it('shows backup code toggle link', () => {
+    render(
+      <TwoFactorVerify tempToken={tempToken} onVerified={onVerified} onCancel={onCancel} />,
+    );
+
+    expect(screen.getByText('Use a backup code instead')).toBeInTheDocument();
+  });
+
+  it('switches to backup code mode when toggled', () => {
+    render(
+      <TwoFactorVerify tempToken={tempToken} onVerified={onVerified} onCancel={onCancel} />,
+    );
+
+    fireEvent.click(screen.getByText('Use a backup code instead'));
+
+    expect(screen.getByLabelText('Backup Code')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('xxxx-xxxx')).toBeInTheDocument();
+    expect(screen.getByText('Enter one of your backup codes.')).toBeInTheDocument();
+    expect(screen.getByText('Use authenticator code instead')).toBeInTheDocument();
+  });
+
+  it('switches back to TOTP mode from backup code mode', () => {
+    render(
+      <TwoFactorVerify tempToken={tempToken} onVerified={onVerified} onCancel={onCancel} />,
+    );
+
+    fireEvent.click(screen.getByText('Use a backup code instead'));
+    expect(screen.getByLabelText('Backup Code')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Use authenticator code instead'));
+    expect(screen.getByLabelText('Verification Code')).toBeInTheDocument();
+  });
+
+  it('submits backup code with correct format', async () => {
+    const { authApi } = await import('@/lib/auth');
+    const mockUser = {
+      id: '1',
+      email: 'test@example.com',
+      authProvider: 'local' as const,
+      hasPassword: true,
+      role: 'user' as const,
+      isActive: true,
+      mustChangePassword: false,
+      createdAt: '2026-01-01',
+      updatedAt: '2026-01-01',
+    };
+    vi.mocked(authApi.verify2FA).mockResolvedValue({ user: mockUser });
+
+    render(
+      <TwoFactorVerify tempToken={tempToken} onVerified={onVerified} onCancel={onCancel} />,
+    );
+
+    // Switch to backup code mode
+    fireEvent.click(screen.getByText('Use a backup code instead'));
+
+    const input = screen.getByPlaceholderText('xxxx-xxxx');
+    fireEvent.change(input, { target: { value: 'a1b2-c3d4' } });
+    fireEvent.click(screen.getByText('Verify'));
+
+    await waitFor(() => {
+      expect(authApi.verify2FA).toHaveBeenCalledWith(tempToken, 'a1b2-c3d4', false);
+      expect(onVerified).toHaveBeenCalledWith(mockUser);
+    });
+  });
+
+  it('disables Verify button when backup code format is invalid', () => {
+    render(
+      <TwoFactorVerify tempToken={tempToken} onVerified={onVerified} onCancel={onCancel} />,
+    );
+
+    fireEvent.click(screen.getByText('Use a backup code instead'));
+
+    const verifyButton = screen.getByText('Verify');
+    expect(verifyButton).toBeDisabled();
+
+    const input = screen.getByPlaceholderText('xxxx-xxxx');
+    fireEvent.change(input, { target: { value: 'a1b2' } });
+    expect(verifyButton).toBeDisabled();
+
+    fireEvent.change(input, { target: { value: 'a1b2-c3d4' } });
+    expect(verifyButton).not.toBeDisabled();
+  });
 });

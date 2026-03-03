@@ -12,12 +12,17 @@ import { authApi } from '@/lib/auth';
 import { getErrorMessage } from '@/lib/errors';
 import { User } from '@/types/auth';
 
-const verifySchema = z.object({
+const totpSchema = z.object({
   code: z.string().length(6, 'Code must be exactly 6 digits').regex(/^\d{6}$/, 'Code must be 6 digits'),
   rememberDevice: z.boolean(),
 });
 
-type VerifyFormData = z.infer<typeof verifySchema>;
+const backupCodeSchema = z.object({
+  code: z.string().regex(/^[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}$/, 'Backup code must be in XXXX-XXXX format'),
+  rememberDevice: z.boolean(),
+});
+
+type VerifyFormData = z.infer<typeof totpSchema>;
 
 interface TwoFactorVerifyProps {
   tempToken: string;
@@ -27,14 +32,16 @@ interface TwoFactorVerifyProps {
 
 export function TwoFactorVerify({ tempToken, onVerified, onCancel }: TwoFactorVerifyProps) {
   const [isLoading, setIsLoading] = useState(false);
+  const [useBackupCode, setUseBackupCode] = useState(false);
 
   const {
     register,
     handleSubmit,
     setValue,
     watch,
+    reset,
   } = useForm<VerifyFormData>({
-    resolver: zodResolver(verifySchema),
+    resolver: zodResolver(useBackupCode ? backupCodeSchema : totpSchema),
     defaultValues: {
       code: '',
       rememberDevice: false,
@@ -44,8 +51,18 @@ export function TwoFactorVerify({ tempToken, onVerified, onCancel }: TwoFactorVe
   const codeValue = watch('code');
   const codeRef = register('code');
 
+  const handleToggleMode = () => {
+    const next = !useBackupCode;
+    setUseBackupCode(next);
+    reset({ code: '', rememberDevice: false });
+  };
+
+  const isTotpValid = !useBackupCode && codeValue.length === 6;
+  const isBackupValid = useBackupCode && /^[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}$/.test(codeValue);
+  const isCodeValid = isTotpValid || isBackupValid;
+
   const onSubmit = async (formData: VerifyFormData) => {
-    if (formData.code.length !== 6) return;
+    if (!isCodeValid) return;
 
     setIsLoading(true);
     try {
@@ -73,26 +90,45 @@ export function TwoFactorVerify({ tempToken, onVerified, onCancel }: TwoFactorVe
           Two-Factor Authentication
         </h3>
         <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-          Enter the 6-digit code from your authenticator app.
+          {useBackupCode
+            ? 'Enter one of your backup codes.'
+            : 'Enter the 6-digit code from your authenticator app.'}
         </p>
       </div>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-        <Input
-          label="Verification Code"
-          type="text"
-          inputMode="numeric"
-          autoComplete="one-time-code"
-          maxLength={6}
-          placeholder="000000"
-          autoFocus
-          {...codeRef}
-          onChange={(e) => {
-            const filtered = e.target.value.replace(/\D/g, '');
-            e.target.value = filtered;
-            codeRef.onChange(e);
-          }}
-        />
+        {useBackupCode ? (
+          <Input
+            label="Backup Code"
+            type="text"
+            autoComplete="off"
+            maxLength={9}
+            placeholder="xxxx-xxxx"
+            autoFocus
+            {...codeRef}
+            onChange={(e) => {
+              const filtered = e.target.value.replace(/[^A-Fa-f0-9-]/g, '').toLowerCase();
+              e.target.value = filtered;
+              codeRef.onChange(e);
+            }}
+          />
+        ) : (
+          <Input
+            label="Verification Code"
+            type="text"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            maxLength={6}
+            placeholder="000000"
+            autoFocus
+            {...codeRef}
+            onChange={(e) => {
+              const filtered = e.target.value.replace(/\D/g, '');
+              e.target.value = filtered;
+              codeRef.onChange(e);
+            }}
+          />
+        )}
 
         <label className="flex items-center gap-2 cursor-pointer">
           <input
@@ -110,11 +146,19 @@ export function TwoFactorVerify({ tempToken, onVerified, onCancel }: TwoFactorVe
           variant="primary"
           size="lg"
           isLoading={isLoading}
-          disabled={codeValue.length !== 6}
+          disabled={!isCodeValid}
           className="w-full"
         >
           Verify
         </Button>
+
+        <button
+          type="button"
+          onClick={handleToggleMode}
+          className="w-full text-center text-sm font-medium text-blue-600 hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300"
+        >
+          {useBackupCode ? 'Use authenticator code instead' : 'Use a backup code instead'}
+        </button>
 
         <button
           type="button"

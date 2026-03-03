@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { TwoFactorSetup } from '@/components/auth/TwoFactorSetup';
+import { BackupCodesDisplay } from '@/components/auth/BackupCodesDisplay';
 import { userSettingsApi } from '@/lib/user-settings';
 import { authApi } from '@/lib/auth';
 import { usePreferencesStore } from '@/store/preferencesStore';
@@ -58,6 +59,10 @@ export function SecuritySection({ user, preferences, force2fa, onPreferencesUpda
   const [disableCode, setDisableCode] = useState('');
   const [isDisabling2FA, setIsDisabling2FA] = useState(false);
 
+  const [showBackupCodes, setShowBackupCodes] = useState(false);
+  const [backupCodes, setBackupCodes] = useState<string[] | null>(null);
+  const [isGeneratingCodes, setIsGeneratingCodes] = useState(false);
+
   const [trustedDevices, setTrustedDevices] = useState<TrustedDevice[]>([]);
   const [isLoadingDevices, setIsLoadingDevices] = useState(false);
   const [showRevokeAllConfirm, setShowRevokeAllConfirm] = useState(false);
@@ -92,6 +97,19 @@ export function SecuritySection({ user, preferences, force2fa, onPreferencesUpda
       toast.error(getErrorMessage(error, 'Failed to disable 2FA'));
     } finally {
       setIsDisabling2FA(false);
+    }
+  };
+
+  const handleGenerateBackupCodes = async () => {
+    setIsGeneratingCodes(true);
+    try {
+      const response = await authApi.generateBackupCodes();
+      setBackupCodes(response.codes);
+      setShowBackupCodes(true);
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Failed to generate backup codes'));
+    } finally {
+      setIsGeneratingCodes(false);
     }
   };
 
@@ -279,6 +297,42 @@ export function SecuritySection({ user, preferences, force2fa, onPreferencesUpda
               {isDisabling2FA ? 'Disabling...' : 'Disable 2FA'}
             </Button>
           </div>
+        </div>
+      </Modal>
+
+      {/* Backup Codes */}
+      {twoFactorEnabled && (
+        <div className="border-t border-gray-200 dark:border-gray-700 mt-6 pt-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-md font-medium text-gray-900 dark:text-gray-100">
+                Backup Codes
+              </h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                Use backup codes to sign in if you lose access to your authenticator app.
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleGenerateBackupCodes}
+              disabled={isGeneratingCodes}
+            >
+              {isGeneratingCodes ? 'Generating...' : 'Regenerate codes'}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Backup Codes Modal */}
+      <Modal isOpen={showBackupCodes} onClose={() => { setShowBackupCodes(false); setBackupCodes(null); }}>
+        <div className="p-6">
+          {backupCodes && (
+            <BackupCodesDisplay
+              codes={backupCodes}
+              onDone={() => { setShowBackupCodes(false); setBackupCodes(null); }}
+            />
+          )}
         </div>
       </Modal>
 

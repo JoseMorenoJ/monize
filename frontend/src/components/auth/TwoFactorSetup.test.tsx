@@ -13,6 +13,7 @@ vi.mock('@/lib/auth', () => ({
   authApi: {
     setup2FA: vi.fn(),
     confirmSetup2FA: vi.fn(),
+    generateBackupCodes: vi.fn(),
   },
 }));
 
@@ -94,10 +95,13 @@ describe('TwoFactorSetup', () => {
     expect(input).toHaveValue('1234');
   });
 
-  it('calls confirmSetup2FA and onComplete on successful verification', async () => {
+  it('calls confirmSetup2FA and shows backup codes on successful verification', async () => {
     const { authApi } = await import('@/lib/auth');
     vi.mocked(authApi.setup2FA).mockResolvedValue(mockSetupData);
     vi.mocked(authApi.confirmSetup2FA).mockResolvedValue({ message: 'ok' });
+    vi.mocked(authApi.generateBackupCodes).mockResolvedValue({
+      codes: ['a1b2-c3d4', 'e5f6-7890'],
+    });
 
     render(<TwoFactorSetup onComplete={onComplete} />);
 
@@ -112,6 +116,44 @@ describe('TwoFactorSetup', () => {
     await waitFor(() => {
       expect(authApi.confirmSetup2FA).toHaveBeenCalledWith('123456');
       expect(toast.success).toHaveBeenCalledWith('Two-factor authentication enabled!');
+    });
+
+    // Should show backup codes
+    await waitFor(() => {
+      expect(screen.getByText('Save Your Backup Codes')).toBeInTheDocument();
+      expect(screen.getByText('a1b2-c3d4')).toBeInTheDocument();
+      expect(screen.getByText('e5f6-7890')).toBeInTheDocument();
+    });
+
+    // onComplete not called yet until user clicks Done
+    expect(onComplete).not.toHaveBeenCalled();
+
+    // Confirm and click Done
+    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    expect(onComplete).toHaveBeenCalled();
+  });
+
+  it('calls onComplete directly if backup code generation fails', async () => {
+    const { authApi } = await import('@/lib/auth');
+    vi.mocked(authApi.setup2FA).mockResolvedValue(mockSetupData);
+    vi.mocked(authApi.confirmSetup2FA).mockResolvedValue({ message: 'ok' });
+    vi.mocked(authApi.generateBackupCodes).mockRejectedValue({
+      response: { data: { message: 'Service unavailable' } },
+    });
+
+    render(<TwoFactorSetup onComplete={onComplete} />);
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('000000')).toBeInTheDocument();
+    });
+
+    const input = screen.getByPlaceholderText('000000');
+    fireEvent.change(input, { target: { value: '123456' } });
+    fireEvent.click(screen.getByText('Verify and Enable'));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('Service unavailable');
       expect(onComplete).toHaveBeenCalled();
     });
   });
