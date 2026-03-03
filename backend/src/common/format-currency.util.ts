@@ -4,10 +4,7 @@
  *
  * @returns Formatted string with currency symbol (e.g., "$1,234.56", "¥1,235")
  */
-export function formatCurrency(
-  amount: number,
-  currencyCode: string,
-): string {
+export function formatCurrency(amount: number, currencyCode: string): string {
   try {
     return new Intl.NumberFormat("en-US", {
       style: "currency",

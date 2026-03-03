@@ -11,6 +11,7 @@ import {
   TransactionStatus,
 } from "../transactions/entities/transaction.entity";
 import { ImportContext, updateAccountBalance } from "./import-context";
+import { isGbxExchange, convertGbxToGbp } from "../common/gbx-currency.util";
 
 @Injectable()
 export class ImportInvestmentProcessorService {
@@ -47,12 +48,22 @@ export class ImportInvestmentProcessorService {
       securityId = await this.autoCreateSecurity(ctx, qifTx.security);
     }
 
+    // Detect GBX (pence sterling) pricing for LSE securities.
+    // QIF files from UK brokers quote prices in pence; convert to GBP.
+    const needsGbxConversion = await this.shouldConvertGbx(ctx, securityId);
+
     // Calculate amounts
     const quantity = qifTx.quantity || 0;
-    const price = qifTx.price || 0;
-    const commission = qifTx.commission || 0;
+    const rawPrice = qifTx.price || 0;
+    const rawCommission = qifTx.commission || 0;
+    const price = needsGbxConversion ? convertGbxToGbp(rawPrice) : rawPrice;
+    const commission = needsGbxConversion
+      ? convertGbxToGbp(rawCommission)
+      : rawCommission;
     let totalAmount = qifTx.amount
-      ? Math.round(qifTx.amount * 100) / 100
+      ? needsGbxConversion
+        ? convertGbxToGbp(Math.round(qifTx.amount * 100) / 100)
+        : Math.round(qifTx.amount * 100) / 100
       : Math.round((quantity * price + commission) * 100) / 100;
 
     if (action === InvestmentAction.BUY) {
@@ -301,5 +312,21 @@ export class ImportInvestmentProcessorService {
     }
 
     await ctx.queryRunner.manager.save(holding);
+  }
+
+  /**
+   * Check whether the security is on an LSE-family exchange with GBP currency,
+   * meaning QIF prices are in pence and need conversion to pounds.
+   */
+  private async shouldConvertGbx(
+    ctx: ImportContext,
+    securityId: string | null,
+  ): Promise<boolean> {
+    if (!securityId) return false;
+    const security = await ctx.queryRunner.manager.findOne(Security, {
+      where: { id: securityId },
+    });
+    if (!security) return false;
+    return isGbxExchange(security.exchange) && security.currencyCode === "GBP";
   }
 }

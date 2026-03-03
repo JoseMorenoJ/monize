@@ -2700,15 +2700,15 @@ describe("AuthService", () => {
 
       // 10 failed attempts on unique temp tokens (3 per token, 4 tokens needed)
       for (let i = 0; i < 10; i++) {
-        await expect(
-          service.verify2FA(`token-${i}`, "000000"),
-        ).rejects.toThrow("Invalid verification code");
+        await expect(service.verify2FA(`token-${i}`, "000000")).rejects.toThrow(
+          "Invalid verification code",
+        );
       }
 
       // 11th attempt should be blocked by per-user limit
-      await expect(
-        service.verify2FA("token-new", "000000"),
-      ).rejects.toThrow("Too many verification attempts");
+      await expect(service.verify2FA("token-new", "000000")).rejects.toThrow(
+        "Too many verification attempts",
+      );
     });
 
     it("locks user account after reaching per-user threshold", async () => {

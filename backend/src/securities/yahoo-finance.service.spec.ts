@@ -129,6 +129,96 @@ describe("YahooFinanceService", () => {
 
       expect(result).toBeNull();
     });
+
+    it("should convert GBX (pence) prices to GBP for LSE stocks", async () => {
+      mockFetchResponse({
+        chart: {
+          result: [
+            {
+              meta: {
+                symbol: "VOD.L",
+                currency: "GBp",
+                regularMarketPrice: 7250,
+                regularMarketOpen: 7200,
+                regularMarketDayHigh: 7300,
+                regularMarketDayLow: 7100,
+                regularMarketVolume: 10000000,
+                regularMarketTime: 1700000000,
+              },
+            },
+          ],
+        },
+      });
+
+      const result = await service.fetchQuote("VOD.L");
+
+      expect(result).not.toBeNull();
+      expect(result!.regularMarketPrice).toBe(72.5);
+      expect(result!.regularMarketOpen).toBe(72);
+      expect(result!.regularMarketDayHigh).toBe(73);
+      expect(result!.regularMarketDayLow).toBe(71);
+      expect(result!.regularMarketVolume).toBe(10000000);
+    });
+
+    it("should not convert prices when currency is GBP (pounds)", async () => {
+      mockFetchResponse({
+        chart: {
+          result: [
+            {
+              meta: {
+                symbol: "IUKD.L",
+                currency: "GBP",
+                regularMarketPrice: 15.5,
+                regularMarketVolume: 500000,
+              },
+            },
+          ],
+        },
+      });
+
+      const result = await service.fetchQuote("IUKD.L");
+
+      expect(result!.regularMarketPrice).toBe(15.5);
+    });
+
+    it("should not convert prices when currency is USD", async () => {
+      mockFetchResponse({
+        chart: {
+          result: [
+            {
+              meta: {
+                symbol: "AAPL",
+                currency: "USD",
+                regularMarketPrice: 185.5,
+              },
+            },
+          ],
+        },
+      });
+
+      const result = await service.fetchQuote("AAPL");
+
+      expect(result!.regularMarketPrice).toBe(185.5);
+    });
+
+    it("should not convert prices when currency field is absent", async () => {
+      mockFetchResponse({
+        chart: {
+          result: [
+            {
+              meta: {
+                symbol: "AAPL",
+                regularMarketPrice: 185.5,
+              },
+            },
+          ],
+        },
+      });
+
+      const result = await service.fetchQuote("AAPL");
+
+      expect(result!.regularMarketPrice).toBe(185.5);
+    });
   });
 
   describe("fetchQuotes", () => {
@@ -347,6 +437,70 @@ describe("YahooFinanceService", () => {
       expect(result).toBeNull();
     });
 
+    it("should convert GBX historical prices to GBP", async () => {
+      mockFetchResponse({
+        chart: {
+          result: [
+            {
+              meta: { currency: "GBp" },
+              timestamp: [1700000000, 1700100000],
+              indicators: {
+                quote: [
+                  {
+                    open: [5000, 5100],
+                    high: [5200, 5300],
+                    low: [4900, 5000],
+                    close: [5150, 5250],
+                    volume: [1000000, 900000],
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      });
+
+      const result = await service.fetchHistorical("VOD.L");
+
+      expect(result).not.toBeNull();
+      expect(result!.length).toBe(2);
+      expect(result![0].open).toBe(50);
+      expect(result![0].high).toBe(52);
+      expect(result![0].low).toBe(49);
+      expect(result![0].close).toBe(51.5);
+      expect(result![0].volume).toBe(1000000);
+      expect(result![1].close).toBe(52.5);
+    });
+
+    it("should not convert historical prices when currency is USD", async () => {
+      mockFetchResponse({
+        chart: {
+          result: [
+            {
+              meta: { currency: "USD" },
+              timestamp: [1700000000],
+              indicators: {
+                quote: [
+                  {
+                    open: [180],
+                    high: [185],
+                    low: [178],
+                    close: [183],
+                    volume: [50000000],
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      });
+
+      const result = await service.fetchHistorical("AAPL");
+
+      expect(result![0].close).toBe(183);
+      expect(result![0].open).toBe(180);
+    });
+
     it("should set hours to midnight on returned dates", async () => {
       mockFetchResponse({
         chart: {
@@ -526,6 +680,26 @@ describe("YahooFinanceService", () => {
       const result = await service.lookupSecurity("TEST");
 
       expect(result!.name).toBe("TEST");
+    });
+
+    it("should detect LSE exchange and return GBP currency", async () => {
+      mockFetchResponse({
+        quotes: [
+          {
+            symbol: "VOD.L",
+            longname: "Vodafone Group Plc",
+            exchDisp: "LSE",
+            typeDisp: "Equity",
+          },
+        ],
+      });
+
+      const result = await service.lookupSecurity("VOD");
+
+      expect(result).not.toBeNull();
+      expect(result!.symbol).toBe("VOD");
+      expect(result!.exchange).toBe("LSE");
+      expect(result!.currencyCode).toBe("GBP");
     });
 
     it("should extract exchange from symbol suffix for TSX", async () => {

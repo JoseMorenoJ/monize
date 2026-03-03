@@ -1,5 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import * as https from "https";
+import { isGbxCurrency, convertGbxToGbp } from "../common/gbx-currency.util";
 
 export interface YahooQuoteResult {
   symbol: string;
@@ -242,12 +243,16 @@ export class YahooFinanceService {
 
       if (data.chart?.result?.[0]?.meta) {
         const meta = data.chart.result[0].meta;
+        const gbx = isGbxCurrency(meta.currency);
+        const convert = (v: number | undefined) =>
+          v !== undefined && gbx ? convertGbxToGbp(v) : v;
+
         return {
           symbol: meta.symbol,
-          regularMarketPrice: meta.regularMarketPrice,
-          regularMarketOpen: meta.regularMarketOpen,
-          regularMarketDayHigh: meta.regularMarketDayHigh,
-          regularMarketDayLow: meta.regularMarketDayLow,
+          regularMarketPrice: convert(meta.regularMarketPrice),
+          regularMarketOpen: convert(meta.regularMarketOpen),
+          regularMarketDayHigh: convert(meta.regularMarketDayHigh),
+          regularMarketDayLow: convert(meta.regularMarketDayLow),
           regularMarketVolume: meta.regularMarketVolume,
           regularMarketTime: meta.regularMarketTime,
         };
@@ -313,6 +318,12 @@ export class YahooFinanceService {
         return null;
       }
 
+      const gbx = isGbxCurrency(result.meta?.currency);
+      const convertPrice = (v: number | null | undefined): number | null => {
+        if (v == null) return null;
+        return gbx ? convertGbxToGbp(v) : v;
+      };
+
       const timestamps: number[] = result.timestamp;
       const quote = result.indicators.quote[0];
       const prices: HistoricalPrice[] = [];
@@ -326,10 +337,10 @@ export class YahooFinanceService {
 
         prices.push({
           date,
-          open: quote.open?.[i] ?? null,
-          high: quote.high?.[i] ?? null,
-          low: quote.low?.[i] ?? null,
-          close,
+          open: convertPrice(quote.open?.[i]) ?? null,
+          high: convertPrice(quote.high?.[i]) ?? null,
+          low: convertPrice(quote.low?.[i]) ?? null,
+          close: gbx ? convertGbxToGbp(close) : close,
           volume: quote.volume?.[i] ?? null,
         });
       }
