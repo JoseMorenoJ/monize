@@ -232,7 +232,8 @@ export function buildForecast(
   transactions: ScheduledTransaction[],
   period: ForecastPeriod,
   accountId: string | 'all',
-  futureTransactions: FutureTransaction[] = []
+  futureTransactions: FutureTransaction[] = [],
+  convertAmount?: (amount: number, currencyCode: string) => number,
 ): ForecastDataPoint[] {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -261,8 +262,18 @@ export function buildForecast(
     targetAccountIds.has(ft.accountId) && ft.date > todayKey
   );
 
+  // Build account currency lookup for converting transaction amounts
+  const accountCurrencyMap = new Map(targetAccounts.map(a => [a.id, a.currencyCode]));
+  const conv = (amount: number, acctId: string): number => {
+    if (!convertAmount) return amount;
+    const currency = accountCurrencyMap.get(acctId);
+    return currency ? convertAmount(amount, currency) : amount;
+  };
+
   const startingBalance = targetAccounts.reduce(
-    (sum, acc) => sum + Number(acc.currentBalance),
+    (sum, acc) => sum + (convertAmount
+      ? convertAmount(Number(acc.currentBalance), acc.currencyCode)
+      : Number(acc.currentBalance)),
     0
   );
 
@@ -287,7 +298,7 @@ export function buildForecast(
     const existing = transactionsByDate.get(ft.date) || [];
     existing.push({
       name: ft.name,
-      amount: ft.amount,
+      amount: conv(ft.amount, ft.accountId),
       scheduledTransactionId: ft.id,
     });
     transactionsByDate.set(ft.date, existing);
@@ -296,11 +307,12 @@ export function buildForecast(
   for (const tx of relevantTransactions) {
     const occurrences = generateOccurrences(tx, today, endDate);
     const isInbound = inboundTransferIds.has(tx.id);
+    const txAccountId = isInbound ? (tx.transferAccountId ?? tx.accountId) : tx.accountId;
     for (const occ of occurrences) {
       const existing = transactionsByDate.get(occ.date) || [];
       existing.push({
         name: tx.name,
-        amount: isInbound ? -occ.amount : occ.amount,
+        amount: conv(isInbound ? -occ.amount : occ.amount, txAccountId),
         scheduledTransactionId: tx.id,
       });
       transactionsByDate.set(occ.date, existing);

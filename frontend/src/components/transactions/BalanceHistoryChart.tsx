@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import {
   LineChart,
   Line,
@@ -18,6 +18,7 @@ import { useNumberFormat } from '@/hooks/useNumberFormat';
 interface BalanceHistoryChartProps {
   data: Array<{ date: string; balance: number }>;
   isLoading: boolean;
+  currencyCode?: string;
 }
 
 interface ChartPoint {
@@ -60,8 +61,19 @@ function BalanceTooltip({
 export function BalanceHistoryChart({
   data,
   isLoading,
+  currencyCode,
 }: BalanceHistoryChartProps) {
-  const { formatCurrencyCompact: formatCurrency, formatCurrencyAxis } = useNumberFormat();
+  const { formatCurrencyCompact, formatCurrencyAxis } = useNumberFormat();
+
+  const formatCurrency = useCallback(
+    (value: number) => formatCurrencyCompact(value, currencyCode),
+    [formatCurrencyCompact, currencyCode],
+  );
+
+  const formatAxis = useCallback(
+    (value: number) => formatCurrencyAxis(value, currencyCode),
+    [formatCurrencyAxis, currencyCode],
+  );
 
   const { chartData, monthTicks } = useMemo(() => {
     if (data.length === 0) return { chartData: [], monthTicks: [] };
@@ -147,7 +159,7 @@ export function BalanceHistoryChart({
               tick={{ fill: '#6b7280', fontSize: 11 }}
               tickLine={false}
               axisLine={false}
-              tickFormatter={formatCurrencyAxis}
+              tickFormatter={formatAxis}
               width={45}
               domain={['auto', 'auto']}
             />

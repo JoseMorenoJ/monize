@@ -13,10 +13,22 @@ vi.mock('recharts', () => ({
   ReferenceLine: () => <div data-testid="reference-line" />,
 }));
 
+const mockFormatCurrencyCompact = vi.fn((n: number, _code?: string) => `$${n.toFixed(0)}`);
+const mockFormatCurrencyAxis = vi.fn((n: number, _code?: string) => `$${n}`);
+
 vi.mock('@/hooks/useNumberFormat', () => ({
   useNumberFormat: () => ({
-    formatCurrencyCompact: (n: number) => `$${n.toFixed(0)}`,
-    formatCurrencyAxis: (n: number) => `$${n}`,
+    formatCurrencyCompact: mockFormatCurrencyCompact,
+    formatCurrencyAxis: mockFormatCurrencyAxis,
+  }),
+}));
+
+const mockConvertToDefault = vi.fn((amount: number, _currency: string) => amount * 1.35);
+
+vi.mock('@/hooks/useExchangeRates', () => ({
+  useExchangeRates: () => ({
+    convertToDefault: mockConvertToDefault,
+    defaultCurrency: 'CAD',
   }),
 }));
 
@@ -39,6 +51,16 @@ vi.mock('@/lib/forecast', () => ({
     year: '1Y',
   },
 }));
+
+const makeAccount = (overrides: Record<string, any> = {}) => ({
+  id: 'a1',
+  name: 'Checking',
+  isClosed: false,
+  accountType: 'CHEQUING',
+  accountSubType: null,
+  currencyCode: 'CAD',
+  ...overrides,
+}) as any;
 
 describe('CashFlowForecastChart', () => {
   beforeEach(() => {
@@ -76,12 +98,8 @@ describe('CashFlowForecastChart', () => {
   });
 
   it('shows "No scheduled transactions" when accounts exist but no scheduled transactions', () => {
-    const accounts = [
-      { id: 'a1', name: 'Checking', isClosed: false, accountType: 'CHEQUING', accountSubType: null },
-    ] as any[];
-
     render(
-      <CashFlowForecastChart scheduledTransactions={[]} accounts={accounts} isLoading={false} />
+      <CashFlowForecastChart scheduledTransactions={[]} accounts={[makeAccount()]} isLoading={false} />
     );
     expect(screen.getByText('No scheduled transactions')).toBeInTheDocument();
   });
@@ -118,7 +136,7 @@ describe('CashFlowForecastChart', () => {
     });
 
     render(
-      <CashFlowForecastChart scheduledTransactions={[{} as any]} accounts={[{ id: 'a1', name: 'Checking', isClosed: false, accountType: 'CHEQUING', accountSubType: null } as any]} isLoading={false} />
+      <CashFlowForecastChart scheduledTransactions={[{} as any]} accounts={[makeAccount()]} isLoading={false} />
     );
     expect(screen.getByText('Starting')).toBeInTheDocument();
     expect(screen.getByText('Ending')).toBeInTheDocument();
@@ -136,7 +154,7 @@ describe('CashFlowForecastChart', () => {
     mockBuildForecast.mockReturnValue(forecastData);
 
     render(
-      <CashFlowForecastChart scheduledTransactions={[{} as any]} accounts={[{ id: 'a1', name: 'Checking', isClosed: false, accountType: 'CHEQUING', accountSubType: null } as any]} isLoading={false} />
+      <CashFlowForecastChart scheduledTransactions={[{} as any]} accounts={[makeAccount()]} isLoading={false} />
     );
     expect(screen.getByText('2 scheduled transactions in forecast')).toBeInTheDocument();
   });
@@ -155,7 +173,7 @@ describe('CashFlowForecastChart', () => {
     });
 
     render(
-      <CashFlowForecastChart scheduledTransactions={[{} as any]} accounts={[{ id: 'a1', name: 'Checking', isClosed: false, accountType: 'CHEQUING', accountSubType: null } as any]} isLoading={false} />
+      <CashFlowForecastChart scheduledTransactions={[{} as any]} accounts={[makeAccount()]} isLoading={false} />
     );
     expect(screen.getByText('Lowest')).toBeInTheDocument();
     expect(screen.getByText('!')).toBeInTheDocument();
@@ -175,7 +193,7 @@ describe('CashFlowForecastChart', () => {
     });
 
     render(
-      <CashFlowForecastChart scheduledTransactions={[{} as any]} accounts={[{ id: 'a1', name: 'Checking', isClosed: false, accountType: 'CHEQUING', accountSubType: null } as any]} isLoading={false} />
+      <CashFlowForecastChart scheduledTransactions={[{} as any]} accounts={[makeAccount()]} isLoading={false} />
     );
     expect(screen.getByText('No upcoming transactions in this period - showing current balance')).toBeInTheDocument();
   });
@@ -191,9 +209,9 @@ describe('CashFlowForecastChart', () => {
 
   it('shows accounts in the account selector dropdown', () => {
     const accounts = [
-      { id: 'a1', name: 'Checking', isClosed: false, accountType: 'CHEQUING', accountSubType: null },
-      { id: 'a2', name: 'Savings', isClosed: false, accountType: 'SAVINGS', accountSubType: null },
-    ] as any[];
+      makeAccount({ id: 'a1', name: 'Checking' }),
+      makeAccount({ id: 'a2', name: 'Savings', accountType: 'SAVINGS' }),
+    ];
 
     render(
       <CashFlowForecastChart scheduledTransactions={[]} accounts={accounts} isLoading={false} />
@@ -204,11 +222,11 @@ describe('CashFlowForecastChart', () => {
 
   it('filters out closed and asset/investment accounts from selector', () => {
     const accounts = [
-      { id: 'a1', name: 'Checking', isClosed: false, accountType: 'CHEQUING', accountSubType: null },
-      { id: 'a2', name: 'Closed Account', isClosed: true, accountType: 'CHEQUING', accountSubType: null },
-      { id: 'a3', name: 'House', isClosed: false, accountType: 'ASSET', accountSubType: null },
-      { id: 'a4', name: 'Brokerage', isClosed: false, accountType: 'INVESTMENT', accountSubType: 'INVESTMENT_BROKERAGE' },
-    ] as any[];
+      makeAccount({ id: 'a1', name: 'Checking' }),
+      makeAccount({ id: 'a2', name: 'Closed Account', isClosed: true }),
+      makeAccount({ id: 'a3', name: 'House', accountType: 'ASSET' }),
+      makeAccount({ id: 'a4', name: 'Brokerage', accountType: 'INVESTMENT', accountSubType: 'INVESTMENT_BROKERAGE' }),
+    ];
 
     render(
       <CashFlowForecastChart scheduledTransactions={[]} accounts={accounts} isLoading={false} />
@@ -219,9 +237,7 @@ describe('CashFlowForecastChart', () => {
   });
 
   it('passes futureTransactions to buildForecast', () => {
-    const accounts = [
-      { id: 'a1', name: 'Checking', isClosed: false, accountType: 'CHEQUING', accountSubType: null },
-    ] as any[];
+    const accounts = [makeAccount()];
     const futureTransactions = [
       { id: 'ft-1', accountId: 'a1', name: 'Future Bill', amount: -500, date: '2026-03-01' },
     ];
@@ -241,13 +257,12 @@ describe('CashFlowForecastChart', () => {
       expect.anything(),
       expect.anything(),
       futureTransactions,
+      undefined, // no conversion needed for single-currency
     );
   });
 
   it('defaults futureTransactions to empty array when not provided', () => {
-    const accounts = [
-      { id: 'a1', name: 'Checking', isClosed: false, accountType: 'CHEQUING', accountSubType: null },
-    ] as any[];
+    const accounts = [makeAccount()];
 
     render(
       <CashFlowForecastChart scheduledTransactions={[]} accounts={accounts} isLoading={false} />
@@ -259,6 +274,108 @@ describe('CashFlowForecastChart', () => {
       expect.anything(),
       expect.anything(),
       [],
+      undefined, // no conversion needed for single-currency
     );
+  });
+
+  describe('currency-aware formatting', () => {
+    it('uses account currency for single-currency accounts', () => {
+      mockFormatCurrencyCompact.mockClear();
+      const accounts = [makeAccount({ currencyCode: 'USD' })];
+
+      const forecastData = [
+        { label: 'Today', balance: 1000, transactions: [] },
+        { label: 'Tomorrow', balance: 800, transactions: [{ amount: -200, name: 'Bill' }] },
+      ];
+      mockBuildForecast.mockReturnValue(forecastData);
+      mockGetForecastSummary.mockReturnValue({
+        startingBalance: 1000,
+        endingBalance: 800,
+        minBalance: 800,
+        goesNegative: false,
+      });
+
+      render(
+        <CashFlowForecastChart scheduledTransactions={[{} as any]} accounts={accounts} isLoading={false} />
+      );
+
+      // Summary footer calls formatCurrencyCompact with the account's currency
+      const usdCalls = mockFormatCurrencyCompact.mock.calls.filter(
+        ([, code]) => code === 'USD',
+      );
+      expect(usdCalls.length).toBeGreaterThan(0);
+    });
+
+    it('uses default currency when accounts have mixed currencies', () => {
+      mockFormatCurrencyCompact.mockClear();
+      const accounts = [
+        makeAccount({ id: 'a1', currencyCode: 'USD' }),
+        makeAccount({ id: 'a2', name: 'Euro Account', currencyCode: 'EUR' }),
+      ];
+
+      const forecastData = [
+        { label: 'Today', balance: 2700, transactions: [] },
+        { label: 'Tomorrow', balance: 2500, transactions: [{ amount: -200, name: 'Bill' }] },
+      ];
+      mockBuildForecast.mockReturnValue(forecastData);
+      mockGetForecastSummary.mockReturnValue({
+        startingBalance: 2700,
+        endingBalance: 2500,
+        minBalance: 2500,
+        goesNegative: false,
+      });
+
+      render(
+        <CashFlowForecastChart scheduledTransactions={[{} as any]} accounts={accounts} isLoading={false} />
+      );
+
+      // With mixed currencies, should format in default currency (CAD)
+      const cadCalls = mockFormatCurrencyCompact.mock.calls.filter(
+        ([, code]) => code === 'CAD',
+      );
+      expect(cadCalls.length).toBeGreaterThan(0);
+    });
+
+    it('passes convertToDefault to buildForecast when currencies are mixed', () => {
+      const accounts = [
+        makeAccount({ id: 'a1', currencyCode: 'USD' }),
+        makeAccount({ id: 'a2', name: 'Euro Account', currencyCode: 'EUR' }),
+      ];
+
+      render(
+        <CashFlowForecastChart scheduledTransactions={[]} accounts={accounts} isLoading={false} />
+      );
+
+      // Should pass the conversion function as 6th argument
+      expect(mockBuildForecast).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+        mockConvertToDefault,
+      );
+    });
+
+    it('does not pass convertToDefault when all accounts share one currency', () => {
+      const accounts = [
+        makeAccount({ id: 'a1', currencyCode: 'USD' }),
+        makeAccount({ id: 'a2', name: 'Savings', currencyCode: 'USD' }),
+      ];
+
+      render(
+        <CashFlowForecastChart scheduledTransactions={[]} accounts={accounts} isLoading={false} />
+      );
+
+      // Should pass undefined as 6th argument (no conversion needed)
+      expect(mockBuildForecast).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+        undefined,
+      );
+    });
   });
 });

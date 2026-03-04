@@ -13,10 +13,13 @@ vi.mock('recharts', () => ({
   ReferenceLine: () => <div data-testid="reference-line" />,
 }));
 
+const mockFormatCurrencyCompact = vi.fn((n: number, _code?: string) => `$${n.toFixed(0)}`);
+const mockFormatCurrencyAxis = vi.fn((n: number, _code?: string) => `$${n}`);
+
 vi.mock('@/hooks/useNumberFormat', () => ({
   useNumberFormat: () => ({
-    formatCurrencyCompact: (n: number) => `$${n.toFixed(0)}`,
-    formatCurrencyAxis: (n: number) => `$${n}`,
+    formatCurrencyCompact: mockFormatCurrencyCompact,
+    formatCurrencyAxis: mockFormatCurrencyAxis,
   }),
 }));
 
@@ -70,5 +73,26 @@ describe('BalanceHistoryChart', () => {
 
     expect(screen.getByText('Lowest')).toBeInTheDocument();
     expect(screen.getByText('!')).toBeInTheDocument();
+  });
+
+  it('passes currencyCode to formatting functions', () => {
+    mockFormatCurrencyCompact.mockClear();
+
+    render(
+      <BalanceHistoryChart
+        data={[
+          { date: '2025-01-01', balance: 500 },
+          { date: '2025-01-02', balance: 600 },
+        ]}
+        isLoading={false}
+        currencyCode="EUR"
+      />
+    );
+
+    // Summary footer calls formatCurrency (which wraps formatCurrencyCompact with currencyCode)
+    const eurCalls = mockFormatCurrencyCompact.mock.calls.filter(
+      ([, code]) => code === 'EUR',
+    );
+    expect(eurCalls.length).toBeGreaterThan(0);
   });
 });

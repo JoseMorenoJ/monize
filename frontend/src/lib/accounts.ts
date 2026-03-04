@@ -105,13 +105,13 @@ export const accountsApi = {
     invalidateCache('accounts:');
   },
 
-  // Get daily running balances for accounts
+  // Get daily running balances for accounts (per-account rows with currency)
   getDailyBalances: async (params?: {
     startDate?: string;
     endDate?: string;
     accountIds?: string;
-  }): Promise<Array<{ date: string; balance: number }>> => {
-    const response = await apiClient.get<Array<{ date: string; balance: number }>>(
+  }): Promise<Array<{ date: string; balance: number; accountId: string; currencyCode: string }>> => {
+    const response = await apiClient.get<Array<{ date: string; balance: number; accountId: string; currencyCode: string }>>(
       '/accounts/daily-balances',
       { params },
     );

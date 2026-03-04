@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   LineChart,
   Line,
@@ -23,6 +23,7 @@ import {
   FORECAST_PERIOD_LABELS,
 } from '@/lib/forecast';
 import { useNumberFormat } from '@/hooks/useNumberFormat';
+import { useExchangeRates } from '@/hooks/useExchangeRates';
 
 interface CashFlowForecastChartProps {
   scheduledTransactions: ScheduledTransaction[];
@@ -112,7 +113,8 @@ export function CashFlowForecastChart({
   futureTransactions = [],
   isLoading,
 }: CashFlowForecastChartProps) {
-  const { formatCurrencyCompact: formatCurrency, formatCurrencyAxis } = useNumberFormat();
+  const { formatCurrencyCompact, formatCurrencyAxis } = useNumberFormat();
+  const { convertToDefault, defaultCurrency } = useExchangeRates();
   const [selectedPeriod, setSelectedPeriod] = useState<ForecastPeriod>(() => getStoredPeriod());
   const [selectedAccountId, setSelectedAccountId] = useState<string>(() => getStoredAccountId());
 
@@ -136,9 +138,34 @@ export function CashFlowForecastChart({
     ];
   }, [accounts]);
 
+  // Determine display currency from selected accounts
+  const { chartCurrency, needsConversion } = useMemo(() => {
+    const targetAccounts = selectedAccountId === 'all'
+      ? accounts.filter(a => !a.isClosed)
+      : accounts.filter(a => a.id === selectedAccountId);
+    const currencies = new Set(targetAccounts.map(a => a.currencyCode));
+    return {
+      chartCurrency: currencies.size === 1 ? [...currencies][0] : defaultCurrency,
+      needsConversion: currencies.size > 1,
+    };
+  }, [accounts, selectedAccountId, defaultCurrency]);
+
+  const formatCurrency = useCallback(
+    (value: number) => formatCurrencyCompact(value, chartCurrency),
+    [formatCurrencyCompact, chartCurrency],
+  );
+
+  const formatAxis = useCallback(
+    (value: number) => formatCurrencyAxis(value, chartCurrency),
+    [formatCurrencyAxis, chartCurrency],
+  );
+
   const forecastData = useMemo(() => {
-    return buildForecast(accounts, scheduledTransactions, selectedPeriod, selectedAccountId, futureTransactions);
-  }, [accounts, scheduledTransactions, selectedPeriod, selectedAccountId, futureTransactions]);
+    return buildForecast(
+      accounts, scheduledTransactions, selectedPeriod, selectedAccountId, futureTransactions,
+      needsConversion ? convertToDefault : undefined,
+    );
+  }, [accounts, scheduledTransactions, selectedPeriod, selectedAccountId, futureTransactions, needsConversion, convertToDefault]);
 
   const summary = useMemo(() => {
     return getForecastSummary(forecastData);
@@ -232,7 +259,7 @@ export function CashFlowForecastChart({
             <LineChart data={forecastData} margin={{ left: 0, right: 8, top: 5, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" className="dark:stroke-gray-700" />
               <XAxis dataKey="label" tick={{ fill: '#6b7280', fontSize: 12 }} tickLine={false} axisLine={{ stroke: '#e5e7eb' }} interval="preserveStartEnd" />
-              <YAxis tick={{ fill: '#6b7280', fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={formatCurrencyAxis} width={45} domain={['auto', 'auto']} />
+              <YAxis tick={{ fill: '#6b7280', fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={formatAxis} width={45} domain={['auto', 'auto']} />
               <Tooltip content={<CashFlowTooltip formatCurrency={formatCurrency} />} />
               <ReferenceLine y={0} stroke="#ef4444" strokeDasharray="5 5" strokeOpacity={0.5} />
               <Line type="monotone" dataKey="balance" stroke="#9ca3af" strokeWidth={2} dot={false} strokeDasharray="5 5" />
@@ -264,7 +291,7 @@ export function CashFlowForecastChart({
                 tick={{ fill: '#6b7280', fontSize: 11 }}
                 tickLine={false}
                 axisLine={false}
-                tickFormatter={formatCurrencyAxis}
+                tickFormatter={formatAxis}
                 width={45}
                 domain={['auto', 'auto']}
               />
@@ -294,7 +321,7 @@ export function CashFlowForecastChart({
                   const { cx, cy } = props;
                   if (props.index === minBalanceIndex) {
                     const color = summary.minBalance < 0 ? '#ef4444' : '#f59e0b';
-                    const label = formatCurrencyAxis(summary.minBalance);
+                    const label = formatAxis(summary.minBalance);
                     const labelWidth = label.length * 7 + 14;
                     const labelHeight = 22;
                     const arrowSize = 5;

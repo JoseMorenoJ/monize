@@ -832,7 +832,14 @@ export class AccountsService {
     startDate?: string,
     endDate?: string,
     accountIds?: string[],
-  ): Promise<Array<{ date: string; balance: number }>> {
+  ): Promise<
+    Array<{
+      date: string;
+      balance: number;
+      accountId: string;
+      currencyCode: string;
+    }>
+  > {
     const end = endDate || todayYMD();
     const start =
       startDate ||
@@ -845,10 +852,14 @@ export class AccountsService {
     const accountIdsParam =
       accountIds && accountIds.length > 0 ? accountIds : null;
 
-    const rows: Array<{ date: string; balance: string }> =
-      await this.dataSource.query(
-        `WITH target_accounts AS (
-          SELECT id, opening_balance
+    const rows: Array<{
+      date: string;
+      balance: string;
+      account_id: string;
+      currency_code: string;
+    }> = await this.dataSource.query(
+      `WITH target_accounts AS (
+          SELECT id, opening_balance, currency_code
           FROM accounts
           WHERE user_id = $1
             AND ($2::UUID[] IS NULL OR id = ANY($2::UUID[]))
@@ -878,6 +889,7 @@ export class AccountsService {
         account_daily AS (
           SELECT d.dt::DATE as date,
                  ta.id as account_id,
+                 ta.currency_code,
                  (ta.opening_balance + COALESCE(pp.total, 0) +
                    COALESCE(SUM(dtx.total) OVER (
                      PARTITION BY ta.id ORDER BY d.dt
@@ -889,16 +901,17 @@ export class AccountsService {
           LEFT JOIN pre_period pp ON pp.account_id = ta.id
           LEFT JOIN daily_tx dtx ON dtx.account_id = ta.id AND dtx.tx_date = d.dt::DATE
         )
-        SELECT date::TEXT, SUM(balance)::NUMERIC as balance
+        SELECT date::TEXT, balance::NUMERIC, account_id, currency_code
         FROM account_daily
-        GROUP BY date
-        ORDER BY date`,
-        [userId, accountIdsParam, start, end],
-      );
+        ORDER BY date, account_id`,
+      [userId, accountIdsParam, start, end],
+    );
 
     return rows.map((r) => ({
       date: r.date,
       balance: Number(r.balance),
+      accountId: r.account_id,
+      currencyCode: r.currency_code,
     }));
   }
 

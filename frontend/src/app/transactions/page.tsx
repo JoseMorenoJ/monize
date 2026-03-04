@@ -29,6 +29,7 @@ import { Payee } from '@/types/payee';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { useDateFormat } from '@/hooks/useDateFormat';
 import { usePreferencesStore } from '@/store/preferencesStore';
+import { useExchangeRates } from '@/hooks/useExchangeRates';
 import { useFormModal } from '@/hooks/useFormModal';
 import { Modal } from '@/components/ui/Modal';
 import { UnsavedChangesDialog } from '@/components/ui/UnsavedChangesDialog';
@@ -56,11 +57,13 @@ function TransactionsContent() {
   const router = useRouter();
   const { formatDate } = useDateFormat();
   const weekStartsOn = (usePreferencesStore((s) => s.preferences?.weekStartsOn) ?? 1) as 0 | 1 | 2 | 3 | 4 | 5 | 6;
+  const defaultCurrency = usePreferencesStore((s) => s.preferences?.defaultCurrency) || 'CAD';
+  const { convertToDefault } = useExchangeRates();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [payees, setPayees] = useState<Payee[]>([]);
-  const [dailyBalances, setDailyBalances] = useState<Array<{ date: string; balance: number }>>([]);
+  const [dailyBalances, setDailyBalances] = useState<Array<{ date: string; balance: number; accountId: string; currencyCode: string }>>([]);
   const [monthlyTotals, setMonthlyTotals] = useState<MonthlyTotal[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const { showForm, editingItem: editingTransaction, openCreate, openEdit, close, modalProps, setFormDirty, unsavedChangesDialog, formSubmitRef } = useFormModal<Transaction>();
@@ -135,7 +138,7 @@ function TransactionsContent() {
           }).catch(() => [] as MonthlyTotal[])
         : accountsApi.getDailyBalances(
             Object.keys(chartParams).length > 0 ? chartParams : undefined,
-          ).catch(() => [] as Array<{ date: string; balance: number }>);
+          ).catch(() => [] as Array<{ date: string; balance: number; accountId: string; currencyCode: string }>);
 
       const [transactionsResponse, chartResult] = await Promise.all([
         transactionsApi.getAll({
@@ -160,7 +163,7 @@ function TransactionsContent() {
         setMonthlyTotals(chartResult as MonthlyTotal[]);
         setDailyBalances([]);
       } else {
-        setDailyBalances(chartResult as Array<{ date: string; balance: number }>);
+        setDailyBalances(chartResult as Array<{ date: string; balance: number; accountId: string; currencyCode: string }>);
         setMonthlyTotals([]);
       }
 
@@ -334,6 +337,27 @@ function TransactionsContent() {
     return f;
   }, [filters.filterAccountIds, filters.filterAccountStatus, filters.filteredAccounts, filters.filterCategoryIds, filters.filterPayeeIds, filters.filterStartDate, filters.filterEndDate, filters.filterSearch]);
 
+  // Derive chart currency and aggregate per-account daily balances
+  const { chartBalances, chartCurrency } = useMemo(() => {
+    if (dailyBalances.length === 0) return { chartBalances: [] as Array<{ date: string; balance: number }>, chartCurrency: defaultCurrency };
+
+    const currencies = new Set(dailyBalances.map((r) => r.currencyCode));
+    const isSingleCurrency = currencies.size === 1;
+    const displayCurrency = isSingleCurrency ? [...currencies][0] : defaultCurrency;
+
+    const byDate = new Map<string, number>();
+    for (const row of dailyBalances) {
+      const amount = isSingleCurrency ? row.balance : convertToDefault(row.balance, row.currencyCode);
+      byDate.set(row.date, (byDate.get(row.date) ?? 0) + amount);
+    }
+
+    const aggregated = [...byDate.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, balance]) => ({ date, balance }));
+
+    return { chartBalances: aggregated, chartCurrency: displayCurrency };
+  }, [dailyBalances, defaultCurrency, convertToDefault]);
+
   const selection = useTransactionSelection(
     transactions,
     pagination?.total ?? 0,
@@ -374,7 +398,7 @@ function TransactionsContent() {
             filters.setFilterTimePeriod('custom');
           }} />
         ) : (
-          <BalanceHistoryChart data={dailyBalances} isLoading={isLoading} />
+          <BalanceHistoryChart data={chartBalances} isLoading={isLoading} currencyCode={chartCurrency} />
         )}
 
         {/* Form Modal */}

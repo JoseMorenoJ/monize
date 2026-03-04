@@ -985,6 +985,93 @@ describe('buildForecast', () => {
       expect(result[0].balance).toBe(1000);
     });
   });
+
+  // --- Currency conversion via convertAmount ---
+  describe('convertAmount parameter', () => {
+    it('converts starting balances when convertAmount is provided', () => {
+      const accounts = [
+        makeAccount({ id: 'acc-1', currentBalance: 1000, currencyCode: 'USD' }),
+        makeAccount({ id: 'acc-2', currentBalance: 500, currencyCode: 'EUR' }),
+      ];
+      // USD*1.35, EUR*1.50 -> 1350 + 750 = 2100
+      const convertAmount = (amount: number, currency: string) => {
+        if (currency === 'USD') return amount * 1.35;
+        if (currency === 'EUR') return amount * 1.50;
+        return amount;
+      };
+      const result = buildForecast(accounts, [], 'week', 'all', [], convertAmount);
+      expect(result[0].balance).toBe(2100);
+    });
+
+    it('converts transaction amounts through convertAmount', () => {
+      const accounts = [
+        makeAccount({ id: 'acc-1', currentBalance: 1000, currencyCode: 'USD' }),
+      ];
+      const transactions = [makeScheduled({
+        nextDueDate: '2025-01-20',
+        amount: -500,
+        frequency: 'ONCE',
+        accountId: 'acc-1',
+      })];
+      // USD*2 -> starting 2000, tx -1000 -> 1000
+      const convertAmount = (amount: number, currency: string) => {
+        if (currency === 'USD') return amount * 2;
+        return amount;
+      };
+      const result = buildForecast(accounts, transactions, 'month', 'all', [], convertAmount);
+      const jan20 = result.find(dp => dp.date === '2025-01-20');
+      expect(jan20?.balance).toBe(1000);
+    });
+
+    it('does not convert when convertAmount is undefined', () => {
+      const accounts = [
+        makeAccount({ id: 'acc-1', currentBalance: 1000, currencyCode: 'USD' }),
+        makeAccount({ id: 'acc-2', currentBalance: 500, currencyCode: 'EUR' }),
+      ];
+      const result = buildForecast(accounts, [], 'week', 'all', [], undefined);
+      // Raw sum without conversion
+      expect(result[0].balance).toBe(1500);
+    });
+
+    it('converts future transaction amounts through convertAmount', () => {
+      const accounts = [
+        makeAccount({ id: 'acc-1', currentBalance: 1000, currencyCode: 'USD' }),
+      ];
+      const futureTransactions: FutureTransaction[] = [
+        { id: 'ft-1', accountId: 'acc-1', name: 'Future Bill', amount: -200, date: '2025-01-20' },
+      ];
+      // USD*1.5 -> starting 1500, tx -300 -> 1200
+      const convertAmount = (amount: number, currency: string) => {
+        if (currency === 'USD') return amount * 1.5;
+        return amount;
+      };
+      const result = buildForecast(accounts, [], 'month', 'all', futureTransactions, convertAmount);
+      const jan20 = result.find(dp => dp.date === '2025-01-20');
+      expect(jan20?.balance).toBe(1200);
+    });
+
+    it('converts inbound transfer amounts using destination account currency', () => {
+      const accounts = [
+        makeAccount({ id: 'acc-2', currentBalance: 500, currencyCode: 'EUR' }),
+      ];
+      const transactions = [makeScheduled({
+        nextDueDate: '2025-01-20',
+        amount: -100,
+        frequency: 'ONCE',
+        isTransfer: true,
+        transferAccountId: 'acc-2',
+        accountId: 'acc-1',
+      })];
+      // EUR*2 -> starting 1000, inbound transfer +100 converted -> +200 -> 1200
+      const convertAmount = (amount: number, currency: string) => {
+        if (currency === 'EUR') return amount * 2;
+        return amount;
+      };
+      const result = buildForecast(accounts, transactions, 'month', 'acc-2', [], convertAmount);
+      const jan20 = result.find(dp => dp.date === '2025-01-20');
+      expect(jan20?.balance).toBe(1200);
+    });
+  });
 });
 
 describe('getForecastSummary', () => {
