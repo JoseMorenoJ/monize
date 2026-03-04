@@ -149,7 +149,7 @@ export function InvestmentValueChart({ accountIds, displayCurrency }: Investment
           Portfolio Value Over Time
         </h3>
         <DateRangeSelector
-          ranges={['1y', '2y', '5y', 'all']}
+          ranges={['1w', '1m', '3m', 'ytd', '1y', '2y', '5y', 'all']}
           value={dateRange}
           onChange={setDateRange}
           activeColour="bg-emerald-600"

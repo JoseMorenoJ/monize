@@ -55,6 +55,14 @@ vi.mock('@/lib/logger', () => ({
   createLogger: () => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn(), debug: vi.fn() }),
 }));
 
+const mockDateRangeSelectorProps = vi.fn();
+vi.mock('@/components/ui/DateRangeSelector', () => ({
+  DateRangeSelector: (props: any) => {
+    mockDateRangeSelectorProps(props);
+    return <div data-testid="date-range-selector" />;
+  },
+}));
+
 describe('InvestmentValueChart', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -144,6 +152,13 @@ describe('InvestmentValueChart', () => {
         accountIds: undefined,
       })
     );
+  });
+
+  it('passes date filter ranges including 1w, 1m, 3m, ytd to DateRangeSelector', async () => {
+    render(<InvestmentValueChart />);
+    await screen.findByText('Portfolio Value Over Time');
+    const lastCall = mockDateRangeSelectorProps.mock.calls[mockDateRangeSelectorProps.mock.calls.length - 1][0];
+    expect(lastCall.ranges).toEqual(['1w', '1m', '3m', 'ytd', '1y', '2y', '5y', 'all']);
   });
 
   it('shows negative change values correctly', async () => {
