@@ -384,7 +384,7 @@ export class NetWorthService {
     const start = startDate || "1990-01-01";
 
     let accountFilter = "";
-    const params: any[] = [userId, start, end];
+    const acctParams: any[] = [userId];
 
     if (accountIds && accountIds.length > 0) {
       const resolvedIds = new Set<string>();
@@ -399,9 +399,9 @@ export class NetWorthService {
       }
       const idArray = [...resolvedIds];
       if (idArray.length === 0) return [];
-      const placeholders = idArray.map((_, i) => `$${i + 4}`).join(", ");
+      const placeholders = idArray.map((_, i) => `$${i + 2}`).join(", ");
       accountFilter = `AND a.id IN (${placeholders})`;
-      params.push(...idArray);
+      acctParams.push(...idArray);
     } else {
       accountFilter = `AND (a.account_sub_type IN ('INVESTMENT_CASH', 'INVESTMENT_BROKERAGE') OR (a.account_type = 'INVESTMENT' AND a.account_sub_type IS NULL))`;
     }
@@ -411,7 +411,7 @@ export class NetWorthService {
       `SELECT a.id, a.account_type, a.account_sub_type, a.currency_code, a.opening_balance
        FROM accounts a
        WHERE a.user_id = $1 ${accountFilter}`,
-      params,
+      acctParams,
     );
 
     if (investAccounts.length === 0) return [];
