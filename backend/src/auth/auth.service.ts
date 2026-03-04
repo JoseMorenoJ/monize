@@ -1008,13 +1008,24 @@ export class AuthService {
 
   // L5: Backup code methods
 
-  async generateBackupCodes(userId: string): Promise<string[]> {
+  async generateBackupCodes(userId: string, code: string): Promise<string[]> {
     const user = await this.usersRepository.findOne({
       where: { id: userId },
     });
 
     if (!user) {
       throw new NotFoundException("User not found");
+    }
+
+    if (!user.twoFactorSecret) {
+      throw new BadRequestException("2FA is not enabled");
+    }
+
+    const secret = decrypt(user.twoFactorSecret, this.jwtSecret);
+    const isValid = otplib.verifySync({ token: code, secret }).valid;
+
+    if (!isValid) {
+      throw new BadRequestException("Invalid verification code");
     }
 
     const codes: string[] = [];

@@ -1162,7 +1162,31 @@ describe('SecuritySection', () => {
     expect(screen.queryByText('Backup Codes')).not.toBeInTheDocument();
   });
 
-  it('generates and displays backup codes when Regenerate is clicked', async () => {
+  it('opens verification modal when Regenerate codes is clicked', async () => {
+    const prefsWith2fa = { ...mockPreferences, twoFactorEnabled: true };
+
+    render(
+      <SecuritySection
+        user={mockUser}
+        preferences={prefsWith2fa}
+        force2fa={false}
+        onPreferencesUpdated={mockOnPreferencesUpdated}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Regenerate codes' })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Regenerate codes' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Regenerate Backup Codes')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Regenerate' })).toBeDisabled();
+    });
+  });
+
+  it('generates and displays backup codes after verification', async () => {
     const prefsWith2fa = { ...mockPreferences, twoFactorEnabled: true };
     const mockCodes = ['a1b2-c3d4', 'e5f6-7890'];
     (authApi.generateBackupCodes as any).mockResolvedValueOnce({ codes: mockCodes });
@@ -1183,7 +1207,14 @@ describe('SecuritySection', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Regenerate codes' }));
 
     await waitFor(() => {
-      expect(authApi.generateBackupCodes).toHaveBeenCalled();
+      expect(screen.getByText('Regenerate Backup Codes')).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText('Verification Code'), { target: { value: '123456' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Regenerate' }));
+
+    await waitFor(() => {
+      expect(authApi.generateBackupCodes).toHaveBeenCalledWith('123456');
       expect(screen.getByTestId('backup-codes-display')).toBeInTheDocument();
     });
   });
@@ -1206,6 +1237,13 @@ describe('SecuritySection', () => {
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Regenerate codes' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Regenerate Backup Codes')).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText('Verification Code'), { target: { value: '123456' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Regenerate' }));
 
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith('Failed to generate backup codes');
@@ -1231,6 +1269,13 @@ describe('SecuritySection', () => {
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Regenerate codes' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Regenerate Backup Codes')).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText('Verification Code'), { target: { value: '123456' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Regenerate' }));
 
     await waitFor(() => {
       expect(screen.getByTestId('backup-codes-display')).toBeInTheDocument();

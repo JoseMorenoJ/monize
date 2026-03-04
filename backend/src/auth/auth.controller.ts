@@ -554,10 +554,14 @@ export class AuthController {
   @Post("2fa/backup-codes")
   @UseGuards(AuthGuard("jwt"))
   @DemoRestricted()
+  @Throttle({ default: { ttl: 900000, limit: 5 } })
   @ApiBearerAuth()
   @ApiOperation({ summary: "Generate new 2FA backup codes" })
-  async generateBackupCodes(@Request() req) {
-    const codes = await this.authService.generateBackupCodes(req.user.id);
+  async generateBackupCodes(@Request() req, @Body() dto: Setup2faDto) {
+    const codes = await this.authService.generateBackupCodes(
+      req.user.id,
+      dto.code,
+    );
     return { codes };
   }
 

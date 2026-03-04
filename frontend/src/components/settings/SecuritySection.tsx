@@ -62,6 +62,8 @@ export function SecuritySection({ user, preferences, force2fa, onPreferencesUpda
   const [showBackupCodes, setShowBackupCodes] = useState(false);
   const [backupCodes, setBackupCodes] = useState<string[] | null>(null);
   const [isGeneratingCodes, setIsGeneratingCodes] = useState(false);
+  const [showBackupCodeVerify, setShowBackupCodeVerify] = useState(false);
+  const [backupCodeVerifyCode, setBackupCodeVerifyCode] = useState('');
 
   const [trustedDevices, setTrustedDevices] = useState<TrustedDevice[]>([]);
   const [isLoadingDevices, setIsLoadingDevices] = useState(false);
@@ -101,10 +103,13 @@ export function SecuritySection({ user, preferences, force2fa, onPreferencesUpda
   };
 
   const handleGenerateBackupCodes = async () => {
+    if (backupCodeVerifyCode.length !== 6) return;
     setIsGeneratingCodes(true);
     try {
-      const response = await authApi.generateBackupCodes();
+      const response = await authApi.generateBackupCodes(backupCodeVerifyCode);
       setBackupCodes(response.codes);
+      setShowBackupCodeVerify(false);
+      setBackupCodeVerifyCode('');
       setShowBackupCodes(true);
     } catch (error) {
       toast.error(getErrorMessage(error, 'Failed to generate backup codes'));
@@ -300,6 +305,42 @@ export function SecuritySection({ user, preferences, force2fa, onPreferencesUpda
         </div>
       </Modal>
 
+      {/* Backup Code Verification Modal */}
+      <Modal isOpen={showBackupCodeVerify} onClose={() => { setShowBackupCodeVerify(false); setBackupCodeVerifyCode(''); }}>
+        <div className="p-6 space-y-4">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+            Regenerate Backup Codes
+          </h3>
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Enter your current 6-digit code to confirm regenerating backup codes. This will invalidate any existing codes.
+          </p>
+          <Input
+            label="Verification Code"
+            type="text"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            maxLength={6}
+            value={backupCodeVerifyCode}
+            onChange={(e) => setBackupCodeVerifyCode(e.target.value.replace(/\D/g, ''))}
+            placeholder="000000"
+          />
+          <div className="flex gap-2 justify-end">
+            <Button
+              variant="outline"
+              onClick={() => { setShowBackupCodeVerify(false); setBackupCodeVerifyCode(''); }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleGenerateBackupCodes}
+              disabled={backupCodeVerifyCode.length !== 6 || isGeneratingCodes}
+            >
+              {isGeneratingCodes ? 'Regenerating...' : 'Regenerate'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
       {/* Backup Codes */}
       {twoFactorEnabled && (
         <div className="border-t border-gray-200 dark:border-gray-700 mt-6 pt-6">
@@ -315,10 +356,9 @@ export function SecuritySection({ user, preferences, force2fa, onPreferencesUpda
             <Button
               variant="outline"
               size="sm"
-              onClick={handleGenerateBackupCodes}
-              disabled={isGeneratingCodes}
+              onClick={() => setShowBackupCodeVerify(true)}
             >
-              {isGeneratingCodes ? 'Generating...' : 'Regenerate codes'}
+              Regenerate codes
             </Button>
           </div>
         </div>

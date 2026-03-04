@@ -65,8 +65,8 @@ export const authApi = {
     return response.data;
   },
 
-  generateBackupCodes: async (): Promise<BackupCodesResponse> => {
-    const response = await apiClient.post<BackupCodesResponse>('/auth/2fa/backup-codes');
+  generateBackupCodes: async (code: string): Promise<BackupCodesResponse> => {
+    const response = await apiClient.post<BackupCodesResponse>('/auth/2fa/backup-codes', { code });
     return response.data;
   },
 

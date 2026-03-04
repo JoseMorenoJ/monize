@@ -2366,11 +2366,18 @@ describe("AuthService", () => {
   // ---------------------------------------------------------------
 
   describe("generateBackupCodes (L5)", () => {
-    it("generates 12 backup codes", async () => {
-      usersRepository.findOne.mockResolvedValue({ ...mockUser });
-      usersRepository.save.mockImplementation((u) => u);
+    const jwtSecret = "test-jwt-secret-minimum-32-chars-long";
 
-      const codes = await service.generateBackupCodes("user-1");
+    it("generates 12 backup codes", async () => {
+      const encryptedSecret = encrypt("TESTSECRET", jwtSecret);
+      usersRepository.findOne.mockResolvedValue({
+        ...mockUser,
+        twoFactorSecret: encryptedSecret,
+      });
+      usersRepository.save.mockImplementation((u) => u);
+      (otplib.verifySync as jest.Mock).mockReturnValue({ valid: true });
+
+      const codes = await service.generateBackupCodes("user-1", "123456");
 
       expect(codes).toHaveLength(12);
       codes.forEach((code) => {
@@ -2379,10 +2386,15 @@ describe("AuthService", () => {
     });
 
     it("stores hashed codes in user entity", async () => {
-      usersRepository.findOne.mockResolvedValue({ ...mockUser });
+      const encryptedSecret = encrypt("TESTSECRET", jwtSecret);
+      usersRepository.findOne.mockResolvedValue({
+        ...mockUser,
+        twoFactorSecret: encryptedSecret,
+      });
       usersRepository.save.mockImplementation((u) => u);
+      (otplib.verifySync as jest.Mock).mockReturnValue({ valid: true });
 
-      await service.generateBackupCodes("user-1");
+      await service.generateBackupCodes("user-1", "123456");
 
       const savedUser = usersRepository.save.mock.calls[0][0];
       expect(savedUser.backupCodes).toBeTruthy();
@@ -2397,9 +2409,39 @@ describe("AuthService", () => {
     it("throws if user not found", async () => {
       usersRepository.findOne.mockResolvedValue(null);
 
-      await expect(service.generateBackupCodes("nonexistent")).rejects.toThrow(
-        "User not found",
-      );
+      await expect(
+        service.generateBackupCodes("nonexistent", "123456"),
+      ).rejects.toThrow("User not found");
+    });
+
+    it("throws if 2FA is not enabled", async () => {
+      usersRepository.findOne.mockResolvedValue({
+        ...mockUser,
+        twoFactorSecret: null,
+      });
+
+      await expect(
+        service.generateBackupCodes("user-1", "123456"),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        service.generateBackupCodes("user-1", "123456"),
+      ).rejects.toThrow("2FA is not enabled");
+    });
+
+    it("throws on invalid verification code", async () => {
+      const encryptedSecret = encrypt("TESTSECRET", jwtSecret);
+      usersRepository.findOne.mockResolvedValue({
+        ...mockUser,
+        twoFactorSecret: encryptedSecret,
+      });
+      (otplib.verifySync as jest.Mock).mockReturnValue({ valid: false });
+
+      await expect(
+        service.generateBackupCodes("user-1", "000000"),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        service.generateBackupCodes("user-1", "000000"),
+      ).rejects.toThrow("Invalid verification code");
     });
   });
 
@@ -2437,10 +2479,12 @@ describe("AuthService", () => {
       // Generate real backup codes
       usersRepository.findOne.mockResolvedValue({
         ...mockUser,
+        twoFactorSecret: encryptedSecret,
         backupCodes: null,
       });
       usersRepository.save.mockImplementation((u) => u);
-      const codes = await service.generateBackupCodes("user-1");
+      (otplib.verifySync as jest.Mock).mockReturnValue({ valid: true });
+      const codes = await service.generateBackupCodes("user-1", "123456");
 
       // Now set up user with backup codes for verify2FA
       const savedUser = usersRepository.save.mock.calls[0][0];
@@ -2469,10 +2513,12 @@ describe("AuthService", () => {
       const encryptedSecret = encrypt("TESTSECRET", jwtSecret);
       usersRepository.findOne.mockResolvedValue({
         ...mockUser,
+        twoFactorSecret: encryptedSecret,
         backupCodes: null,
       });
       usersRepository.save.mockImplementation((u) => u);
-      const codes = await service.generateBackupCodes("user-1");
+      (otplib.verifySync as jest.Mock).mockReturnValue({ valid: true });
+      const codes = await service.generateBackupCodes("user-1", "123456");
 
       const savedUser = usersRepository.save.mock.calls[0][0];
       const userWithCodes = {
@@ -2522,10 +2568,12 @@ describe("AuthService", () => {
       const encryptedSecret = encrypt("TESTSECRET", jwtSecret);
       usersRepository.findOne.mockResolvedValue({
         ...mockUser,
+        twoFactorSecret: encryptedSecret,
         backupCodes: null,
       });
       usersRepository.save.mockImplementation((u) => u);
-      const codes = await service.generateBackupCodes("user-1");
+      (otplib.verifySync as jest.Mock).mockReturnValue({ valid: true });
+      const codes = await service.generateBackupCodes("user-1", "123456");
 
       const savedUser = usersRepository.save.mock.calls[0][0];
       const userWithCodes = {
@@ -2799,10 +2847,12 @@ describe("AuthService", () => {
       // Generate backup codes
       usersRepository.findOne.mockResolvedValue({
         ...mockUser,
+        twoFactorSecret: encryptedSecret,
         backupCodes: null,
       });
       usersRepository.save.mockImplementation((u) => u);
-      const codes = await service.generateBackupCodes("user-1");
+      (otplib.verifySync as jest.Mock).mockReturnValue({ valid: true });
+      const codes = await service.generateBackupCodes("user-1", "123456");
       const savedUser = usersRepository.save.mock.calls[0][0];
 
       // Set up QueryRunner mock
