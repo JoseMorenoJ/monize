@@ -19,7 +19,14 @@ describe('payeesApi', () => {
   it('getAll fetches /payees', async () => {
     vi.mocked(apiClient.get).mockResolvedValue({ data: [{ id: 'p-1' }] });
     const result = await payeesApi.getAll();
-    expect(apiClient.get).toHaveBeenCalledWith('/payees');
+    expect(apiClient.get).toHaveBeenCalledWith('/payees', { params: {} });
+    expect(result).toHaveLength(1);
+  });
+
+  it('getAll fetches /payees with status filter', async () => {
+    vi.mocked(apiClient.get).mockResolvedValue({ data: [{ id: 'p-1' }] });
+    const result = await payeesApi.getAll('active');
+    expect(apiClient.get).toHaveBeenCalledWith('/payees', { params: { status: 'active' } });
     expect(result).toHaveLength(1);
   });
 

@@ -225,7 +225,7 @@ export function ScheduledTransactionForm({
     Promise.all([
       accountsApi.getAll(),
       categoriesApi.getAll(),
-      payeesApi.getAll(),
+      payeesApi.getAll('active'),
     ])
       .then(([accountsData, categoriesData, payeesData]) => {
         setAccounts(accountsData);

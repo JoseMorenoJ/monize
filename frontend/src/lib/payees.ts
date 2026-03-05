@@ -7,6 +7,9 @@ import {
   CategorySuggestion,
   CategorySuggestionsParams,
   CategoryAssignment,
+  DeactivationPreviewParams,
+  DeactivationCandidate,
+  PayeeStatusFilter,
 } from '@/types/payee';
 import { getCached, setCache, invalidateCache } from './apiCache';
 
@@ -18,12 +21,17 @@ export const payeesApi = {
     return response.data;
   },
 
-  // Get all payees
-  getAll: async (): Promise<Payee[]> => {
-    const cached = getCached<Payee[]>('payees:all');
+  // Get all payees (optionally filtered by status)
+  getAll: async (status?: PayeeStatusFilter): Promise<Payee[]> => {
+    const cacheKey = `payees:all:${status || 'default'}`;
+    const cached = getCached<Payee[]>(cacheKey);
     if (cached) return cached;
-    const response = await apiClient.get<Payee[]>('/payees');
-    setCache('payees:all', response.data);
+    const params: Record<string, string> = {};
+    if (status) {
+      params.status = status;
+    }
+    const response = await apiClient.get<Payee[]>('/payees', { params });
+    setCache(cacheKey, response.data);
     return response.data;
   },
 
@@ -46,7 +54,7 @@ export const payeesApi = {
     invalidateCache('payees:');
   },
 
-  // Search payees
+  // Search payees (only active)
   search: async (query: string, limit: number = 10): Promise<Payee[]> => {
     const response = await apiClient.get<Payee[]>('/payees/search', {
       params: { q: query, limit },
@@ -54,7 +62,7 @@ export const payeesApi = {
     return response.data;
   },
 
-  // Autocomplete payees
+  // Autocomplete payees (only active)
   autocomplete: async (query: string): Promise<Payee[]> => {
     const response = await apiClient.get<Payee[]>('/payees/autocomplete', {
       params: { q: query },
@@ -62,7 +70,7 @@ export const payeesApi = {
     return response.data;
   },
 
-  // Get most used payees
+  // Get most used payees (only active)
   getMostUsed: async (limit: number = 10): Promise<Payee[]> => {
     const response = await apiClient.get<Payee[]>('/payees/most-used', {
       params: { limit },
@@ -70,7 +78,7 @@ export const payeesApi = {
     return response.data;
   },
 
-  // Get recently used payees
+  // Get recently used payees (only active)
   getRecentlyUsed: async (limit: number = 10): Promise<Payee[]> => {
     const response = await apiClient.get<Payee[]>('/payees/recently-used', {
       params: { limit },
@@ -106,6 +114,39 @@ export const payeesApi = {
   applyCategorySuggestions: async (assignments: CategoryAssignment[]): Promise<{ updated: number }> => {
     const response = await apiClient.post<{ updated: number }>('/payees/category-suggestions/apply', assignments);
     invalidateCache('payees:');
+    return response.data;
+  },
+
+  // Preview deactivation candidates
+  getDeactivationPreview: async (params: DeactivationPreviewParams): Promise<DeactivationCandidate[]> => {
+    const response = await apiClient.get<DeactivationCandidate[]>('/payees/deactivation/preview', {
+      params: {
+        maxTransactions: params.maxTransactions,
+        monthsUnused: params.monthsUnused,
+      },
+    });
+    return response.data;
+  },
+
+  // Bulk deactivate payees
+  deactivatePayees: async (payeeIds: string[]): Promise<{ deactivated: number }> => {
+    const response = await apiClient.post<{ deactivated: number }>('/payees/deactivation/apply', { payeeIds });
+    invalidateCache('payees:');
+    return response.data;
+  },
+
+  // Reactivate a payee
+  reactivatePayee: async (id: string): Promise<Payee> => {
+    const response = await apiClient.post<Payee>(`/payees/${id}/reactivate`);
+    invalidateCache('payees:');
+    return response.data;
+  },
+
+  // Check if a payee name matches an inactive payee
+  findInactiveByName: async (name: string): Promise<Payee | null> => {
+    const response = await apiClient.get<Payee | null>('/payees/inactive/match', {
+      params: { name },
+    });
     return response.data;
   },
 };

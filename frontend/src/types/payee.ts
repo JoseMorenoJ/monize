@@ -7,8 +7,10 @@ export interface Payee {
   defaultCategoryId: string | null;
   defaultCategory: Category | null;
   notes: string | null;
+  isActive: boolean;
   createdAt: string;
   transactionCount?: number;
+  lastUsedDate?: string | null;
 }
 
 export interface CreatePayeeData {
@@ -17,12 +19,16 @@ export interface CreatePayeeData {
   notes?: string;
 }
 
-export interface UpdatePayeeData extends Partial<CreatePayeeData> {}
+export interface UpdatePayeeData extends Partial<CreatePayeeData> {
+  isActive?: boolean;
+}
 
 export interface PayeeSummary {
   totalPayees: number;
   payeesWithCategory: number;
   payeesWithoutCategory: number;
+  activePayees: number;
+  inactivePayees: number;
 }
 
 export interface CategorySuggestion {
@@ -47,3 +53,18 @@ export interface CategoryAssignment {
   payeeId: string;
   categoryId: string;
 }
+
+export interface DeactivationPreviewParams {
+  maxTransactions: number;
+  monthsUnused: number;
+}
+
+export interface DeactivationCandidate {
+  payeeId: string;
+  payeeName: string;
+  transactionCount: number;
+  lastUsedDate: string | null;
+  defaultCategoryName: string | null;
+}
+
+export type PayeeStatusFilter = 'active' | 'inactive' | 'all';

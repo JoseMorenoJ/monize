@@ -25,6 +25,8 @@ interface PayeeListProps {
   onEdit: (payee: Payee) => void;
   onRefresh: () => void;
   onDelete?: (payeeId: string) => void;
+  onReactivate?: (payeeId: string) => void;
+  showStatusColumn?: boolean;
   density?: DensityLevel;
   onDensityChange?: (density: DensityLevel) => void;
   sortField?: SortField;
@@ -39,7 +41,9 @@ interface PayeeRowProps {
   cellPadding: string;
   onEdit: (payee: Payee) => void;
   onDelete: (payee: Payee) => void;
+  onReactivate?: (payeeId: string) => void;
   onViewTransactions: (payee: Payee) => void;
+  showStatusColumn: boolean;
   index: number;
   categoryColorMap?: Map<string, string | null>;
 }
@@ -50,7 +54,9 @@ const PayeeRow = memo(function PayeeRow({
   cellPadding,
   onEdit,
   onDelete,
+  onReactivate,
   onViewTransactions,
+  showStatusColumn,
   index,
   categoryColorMap,
 }: PayeeRowProps) {
@@ -69,9 +75,13 @@ const PayeeRow = memo(function PayeeRow({
     onViewTransactions(payee);
   }, [onViewTransactions, payee]);
 
+  const handleReactivate = useCallback(() => {
+    onReactivate?.(payee.id);
+  }, [onReactivate, payee.id]);
+
   return (
     <tr
-      className={`hover:bg-gray-50 dark:hover:bg-gray-800 ${density !== 'normal' && index % 2 === 1 ? 'bg-gray-50 dark:bg-gray-800/50' : ''}`}
+      className={`hover:bg-gray-50 dark:hover:bg-gray-800 ${density !== 'normal' && index % 2 === 1 ? 'bg-gray-50 dark:bg-gray-800/50' : ''} ${!payee.isActive ? 'opacity-60' : ''}`}
     >
       <td className={`${cellPadding} whitespace-nowrap`}>
         <button
@@ -104,6 +114,19 @@ const PayeeRow = memo(function PayeeRow({
       <td className={`${cellPadding} whitespace-nowrap text-right text-sm text-gray-600 dark:text-gray-400 hidden md:table-cell`}>
         {payee.transactionCount ?? 0}
       </td>
+      {showStatusColumn && (
+        <td className={`${cellPadding} whitespace-nowrap hidden sm:table-cell`}>
+          {payee.isActive ? (
+            <span className="inline-flex text-xs font-medium rounded-full px-2 py-0.5 bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+              Active
+            </span>
+          ) : (
+            <span className="inline-flex text-xs font-medium rounded-full px-2 py-0.5 bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400">
+              Inactive
+            </span>
+          )}
+        </td>
+      )}
       {density === 'normal' && (
         <td className={`${cellPadding}`}>
           <div className="text-sm text-gray-500 dark:text-gray-400 max-w-xs truncate">
@@ -112,6 +135,16 @@ const PayeeRow = memo(function PayeeRow({
         </td>
       )}
       <td className={`${cellPadding} whitespace-nowrap text-right text-sm font-medium`}>
+        {!payee.isActive && onReactivate ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleReactivate}
+            className="text-green-600 dark:text-green-400 hover:text-green-900 dark:hover:text-green-300 mr-2"
+          >
+            {density === 'dense' ? 'Re' : 'Reactivate'}
+          </Button>
+        ) : null}
         <Button
           variant="ghost"
           size="sm"
@@ -138,6 +171,8 @@ export function PayeeList({
   onEdit,
   onRefresh,
   onDelete,
+  onReactivate,
+  showStatusColumn = false,
   density: propDensity,
   onDensityChange,
   sortField: propSortField,
@@ -288,6 +323,11 @@ export function PayeeList({
               >
                 Count<SortIcon field="count" sortField={sortField} sortDirection={sortDirection} />
               </th>
+              {showStatusColumn && (
+                <th className={`${headerPadding} text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden sm:table-cell`}>
+                  Status
+                </th>
+              )}
               {density === 'normal' && (
                 <th className={`${headerPadding} text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider`}>
                   Notes
@@ -307,7 +347,9 @@ export function PayeeList({
                 cellPadding={cellPadding}
                 onEdit={onEdit}
                 onDelete={setDeletePayee}
+                onReactivate={onReactivate}
                 onViewTransactions={handleViewTransactions}
+                showStatusColumn={showStatusColumn}
                 index={index}
                 categoryColorMap={categoryColorMap}
               />

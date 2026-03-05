@@ -18,6 +18,10 @@ describe("PayeesController", () => {
       getSummary: jest.fn(),
       calculateCategorySuggestions: jest.fn(),
       applyCategorySuggestions: jest.fn(),
+      previewDeactivation: jest.fn(),
+      deactivatePayees: jest.fn(),
+      reactivatePayee: jest.fn(),
+      findInactiveByName: jest.fn(),
       findOne: jest.fn(),
       update: jest.fn(),
       remove: jest.fn(),
@@ -50,14 +54,24 @@ describe("PayeesController", () => {
   });
 
   describe("findAll()", () => {
-    it("delegates to payeesService.findAll with userId", async () => {
+    it("delegates to payeesService.findAll with userId and status", async () => {
+      const expected = [{ id: "payee-1", name: "Store" }];
+      mockPayeesService.findAll.mockResolvedValue(expected);
+
+      const result = await controller.findAll(mockReq, "active");
+
+      expect(result).toEqual(expected);
+      expect(mockPayeesService.findAll).toHaveBeenCalledWith("user-1", "active");
+    });
+
+    it("delegates to payeesService.findAll with undefined status", async () => {
       const expected = [{ id: "payee-1", name: "Store" }];
       mockPayeesService.findAll.mockResolvedValue(expected);
 
       const result = await controller.findAll(mockReq);
 
       expect(result).toEqual(expected);
-      expect(mockPayeesService.findAll).toHaveBeenCalledWith("user-1");
+      expect(mockPayeesService.findAll).toHaveBeenCalledWith("user-1", undefined);
     });
   });
 

@@ -20,6 +20,7 @@ import { Transaction, TransactionStatus } from '@/types/transaction';
 import { Payee } from '@/types/payee';
 import { Category } from '@/types/category';
 import { Account } from '@/types/account';
+import { ReactivatePayeeDialog } from '@/components/payees/ReactivatePayeeDialog';
 import { buildCategoryTree } from '@/lib/categoryUtils';
 import { useNumberFormat } from '@/hooks/useNumberFormat';
 import { createLogger } from '@/lib/logger';
@@ -63,10 +64,16 @@ export function TransactionForm({ transaction, defaultAccountId, onSuccess, onCa
   const [isLoading, setIsLoading] = useState(false);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [payees, setPayees] = useState<Payee[]>([]); // Full list of payees
+  const [payees, setPayees] = useState<Payee[]>([]); // Full list of active payees
   const [selectedPayeeId, setSelectedPayeeId] = useState<string>(transaction?.payeeId || '');
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>(transaction?.categoryId || '');
   const [, setCategoryName] = useState<string>('');
+
+  // Reactivation modal state
+  const [inactivePayeeMatch, setInactivePayeeMatch] = useState<Payee | null>(null);
+  const [showReactivateDialog, setShowReactivateDialog] = useState(false);
+  const [isReactivating, setIsReactivating] = useState(false);
+  const [pendingPayeeName, setPendingPayeeName] = useState<string>('');
 
   // Determine initial mode based on transaction
   const getInitialMode = (): TransactionMode => {
@@ -255,12 +262,12 @@ export function TransactionForm({ transaction, defaultAccountId, onSuccess, onCa
     }
   }, [defaultAccountId, transaction, setValue]);
 
-  // Load accounts, categories, payees on mount
+  // Load accounts, categories, active payees on mount
   useEffect(() => {
     Promise.all([
       accountsApi.getAll(true),
       categoriesApi.getAll(),
-      payeesApi.getAll(),
+      payeesApi.getAll('active'),
     ])
       .then(([accountsData, categoriesData, payeesData]) => {
         setAccounts(accountsData);
@@ -304,10 +311,20 @@ export function TransactionForm({ transaction, defaultAccountId, onSuccess, onCa
   };
 
   // Handle creating a new payee - called when user clicks "Create" in dropdown
+  // First checks if name matches an inactive payee and offers reactivation
   const handlePayeeCreate = async (name: string) => {
     if (!name.trim()) return;
 
     try {
+      // Check if this name matches an inactive payee
+      const inactiveMatch = await payeesApi.findInactiveByName(name.trim());
+      if (inactiveMatch) {
+        setInactivePayeeMatch(inactiveMatch);
+        setPendingPayeeName(name.trim());
+        setShowReactivateDialog(true);
+        return;
+      }
+
       const newPayee = await payeesApi.create({ name: name.trim() });
       // Add to payees list
       setPayees(prev => [...prev, newPayee]);
@@ -320,6 +337,48 @@ export function TransactionForm({ transaction, defaultAccountId, onSuccess, onCa
       logger.error('Failed to create payee:', error);
       toast.error(getErrorMessage(error, 'Failed to create payee'));
     }
+  };
+
+  // Handle reactivating a payee from the reactivation dialog
+  const handleReactivatePayee = async () => {
+    if (!inactivePayeeMatch) return;
+
+    setIsReactivating(true);
+    try {
+      const reactivated = await payeesApi.reactivatePayee(inactivePayeeMatch.id);
+      // Add to active payees list
+      setPayees(prev => [...prev, reactivated]);
+      // Select the reactivated payee
+      setSelectedPayeeId(reactivated.id);
+      setValue('payeeId', reactivated.id, { shouldDirty: true, shouldValidate: true });
+      setValue('payeeName', reactivated.name, { shouldDirty: true, shouldValidate: true });
+
+      // Auto-fill category from reactivated payee's default category
+      if (reactivated.defaultCategoryId && !selectedCategoryId) {
+        setSelectedCategoryId(reactivated.defaultCategoryId);
+        setValue('categoryId', reactivated.defaultCategoryId, { shouldDirty: true });
+      }
+
+      toast.success(`Payee "${reactivated.name}" reactivated`);
+      setShowReactivateDialog(false);
+      setInactivePayeeMatch(null);
+      setPendingPayeeName('');
+    } catch (error) {
+      logger.error('Failed to reactivate payee:', error);
+      toast.error(getErrorMessage(error, 'Failed to reactivate payee'));
+    } finally {
+      setIsReactivating(false);
+    }
+  };
+
+  // Handle canceling reactivation - create a new payee with the name instead
+  const handleCancelReactivation = () => {
+    setShowReactivateDialog(false);
+    setInactivePayeeMatch(null);
+    // Just set the payee name as a custom value (no payee record)
+    setValue('payeeName', pendingPayeeName, { shouldDirty: true });
+    setValue('payeeId', undefined, { shouldDirty: true });
+    setPendingPayeeName('');
   };
 
   // Handle category selection - only create when explicitly selected from dropdown
@@ -750,6 +809,15 @@ export function TransactionForm({ transaction, defaultAccountId, onSuccess, onCa
       />
       {/* Actions */}
       <FormActions onCancel={onCancel} submitLabel={`${transaction ? 'Update' : 'Create'} ${mode === 'transfer' ? 'Transfer' : 'Transaction'}`} isSubmitting={isLoading} />
+
+      {/* Reactivate Payee Dialog */}
+      <ReactivatePayeeDialog
+        isOpen={showReactivateDialog}
+        payee={inactivePayeeMatch}
+        onReactivate={handleReactivatePayee}
+        onCancel={handleCancelReactivation}
+        isReactivating={isReactivating}
+      />
     </form>
   );
 }

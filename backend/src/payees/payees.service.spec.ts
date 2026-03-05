@@ -23,6 +23,7 @@ describe("PayeesService", () => {
     defaultCategoryId: "cat-1",
     notes: "Coffee shop",
     defaultCategory: { id: "cat-1", name: "Food & Drink" } as any,
+    isActive: true,
     createdAt: new Date("2025-01-01"),
   };
 
@@ -33,6 +34,7 @@ describe("PayeesService", () => {
     defaultCategoryId: null,
     notes: "" as any,
     defaultCategory: null as any,
+    isActive: true,
     createdAt: new Date("2025-01-02"),
   };
 
@@ -501,8 +503,11 @@ describe("PayeesService", () => {
   // ─── getSummary ──────────────────────────────────────────────────────
 
   describe("getSummary", () => {
-    it("should return counts of total, with category, and without category", async () => {
-      payeesRepository.count.mockResolvedValueOnce(10).mockResolvedValueOnce(6);
+    it("should return counts of total, with category, without category, active, and inactive", async () => {
+      payeesRepository.count
+        .mockResolvedValueOnce(10)  // totalPayees
+        .mockResolvedValueOnce(6)   // payeesWithCategory
+        .mockResolvedValueOnce(8);  // activePayees
 
       const result = await service.getSummary(userId);
 
@@ -510,11 +515,16 @@ describe("PayeesService", () => {
         totalPayees: 10,
         payeesWithCategory: 6,
         payeesWithoutCategory: 4,
+        activePayees: 8,
+        inactivePayees: 2,
       });
     });
 
     it("should return all zeros when no payees exist", async () => {
-      payeesRepository.count.mockResolvedValueOnce(0).mockResolvedValueOnce(0);
+      payeesRepository.count
+        .mockResolvedValueOnce(0)
+        .mockResolvedValueOnce(0)
+        .mockResolvedValueOnce(0);
 
       const result = await service.getSummary(userId);
 
@@ -522,11 +532,16 @@ describe("PayeesService", () => {
         totalPayees: 0,
         payeesWithCategory: 0,
         payeesWithoutCategory: 0,
+        activePayees: 0,
+        inactivePayees: 0,
       });
     });
 
     it("should handle all payees having categories", async () => {
-      payeesRepository.count.mockResolvedValueOnce(5).mockResolvedValueOnce(5);
+      payeesRepository.count
+        .mockResolvedValueOnce(5)
+        .mockResolvedValueOnce(5)
+        .mockResolvedValueOnce(5);
 
       const result = await service.getSummary(userId);
 
@@ -534,6 +549,8 @@ describe("PayeesService", () => {
         totalPayees: 5,
         payeesWithCategory: 5,
         payeesWithoutCategory: 0,
+        activePayees: 5,
+        inactivePayees: 0,
       });
     });
   });
