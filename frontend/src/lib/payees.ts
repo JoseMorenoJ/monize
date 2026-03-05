@@ -128,11 +128,19 @@ export const payeesApi = {
     return response.data;
   },
 
-  // Bulk deactivate payees
+  // Bulk deactivate payees (batches in chunks of 500 to respect server limit)
   deactivatePayees: async (payeeIds: string[]): Promise<{ deactivated: number }> => {
-    const response = await apiClient.post<{ deactivated: number }>('/payees/deactivation/apply', { payeeIds });
+    const BATCH_SIZE = 500;
+    let totalDeactivated = 0;
+
+    for (let i = 0; i < payeeIds.length; i += BATCH_SIZE) {
+      const batch = payeeIds.slice(i, i + BATCH_SIZE);
+      const response = await apiClient.post<{ deactivated: number }>('/payees/deactivation/apply', { payeeIds: batch });
+      totalDeactivated += response.data.deactivated;
+    }
+
     invalidateCache('payees:');
-    return response.data;
+    return { deactivated: totalDeactivated };
   },
 
   // Reactivate a payee
