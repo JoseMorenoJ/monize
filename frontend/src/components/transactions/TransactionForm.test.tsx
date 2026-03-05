@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@/test/render';
 import { TransactionForm } from './TransactionForm';
 import { TransactionStatus } from '@/types/transaction';
+import { getLocalDateString } from '@/lib/utils';
 import toast from 'react-hot-toast';
 
 // ---- Mock data ----
@@ -1390,7 +1391,7 @@ describe('TransactionForm', () => {
     it('defaults date to today for new transaction', async () => {
       render(<TransactionForm onSuccess={mockOnSuccess} onCancel={mockOnCancel} />);
 
-      const today = new Date().toISOString().split('T')[0];
+      const today = getLocalDateString();
 
       await waitFor(() => {
         const dateInput = screen.getByLabelText('Date') as HTMLInputElement;
@@ -2191,7 +2192,7 @@ describe('TransactionForm', () => {
       expect(statusSelect.value).toBe(TransactionStatus.UNRECONCILED);
 
       // Date should be today
-      const today = new Date().toISOString().split('T')[0];
+      const today = getLocalDateString();
       const dateInput = screen.getByLabelText('Date') as HTMLInputElement;
       expect(dateInput.value).toBe(today);
     });

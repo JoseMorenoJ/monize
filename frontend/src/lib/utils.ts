@@ -19,6 +19,19 @@ export const inputBaseClasses = [
 export const inputErrorClasses = 'border-red-300 focus:border-red-500 focus:ring-red-500 dark:border-red-500';
 
 /**
+ * Get today's date as a YYYY-MM-DD string using local timezone.
+ * Avoids the timezone bug where `new Date().toISOString().split('T')[0]`
+ * returns tomorrow's date for users in negative-UTC-offset timezones
+ * (e.g., 8pm EST on March 4 → toISOString() returns '2026-03-05').
+ */
+export function getLocalDateString(date: Date = new Date()): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/**
  * Parse a date string (YYYY-MM-DD) into a Date object without timezone conversion.
  * This prevents the date from shifting when displayed in local time.
  *

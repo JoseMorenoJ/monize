@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/Input';
 import { CurrencyInput } from '@/components/ui/CurrencyInput';
 import { Select } from '@/components/ui/Select';
 import { transactionsApi } from '@/lib/transactions';
+import { getLocalDateString } from '@/lib/utils';
 import { accountsApi } from '@/lib/accounts';
 import { Account } from '@/types/account';
 import { ReconciliationData, TransactionStatus } from '@/types/transaction';
@@ -41,7 +42,7 @@ function ReconcileContent() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState<string>(preselectedAccountId || '');
   const [statementDate, setStatementDate] = useState<string>(
-    new Date().toISOString().split('T')[0]
+    getLocalDateString()
   );
   const [statementBalance, setStatementBalance] = useState<number | undefined>(undefined);
   const [reconciliationData, setReconciliationData] = useState<ReconciliationData | null>(null);

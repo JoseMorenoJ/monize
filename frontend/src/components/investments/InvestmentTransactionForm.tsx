@@ -12,6 +12,7 @@ import { CurrencyInput } from '@/components/ui/CurrencyInput';
 import { NumericInput } from '@/components/ui/NumericInput';
 import { Select } from '@/components/ui/Select';
 import { investmentsApi } from '@/lib/investments';
+import { getLocalDateString } from '@/lib/utils';
 import { Account } from '@/types/account';
 import {
   InvestmentAction,
@@ -151,7 +152,7 @@ export function InvestmentTransactionForm({
       : {
           accountId: defaultAccountId || '',
           action: 'BUY',
-          transactionDate: new Date().toISOString().split('T')[0],
+          transactionDate: getLocalDateString(),
           fundingAccountId: '',
           quantity: undefined,
           price: undefined,

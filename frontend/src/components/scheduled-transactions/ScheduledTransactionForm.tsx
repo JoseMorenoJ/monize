@@ -12,6 +12,7 @@ import { Select } from '@/components/ui/Select';
 import { Combobox } from '@/components/ui/Combobox';
 import { SplitEditor, SplitRow, createEmptySplits, toSplitRows, toCreateSplitData } from '@/components/transactions/SplitEditor';
 import { scheduledTransactionsApi } from '@/lib/scheduled-transactions';
+import { getLocalDateString } from '@/lib/utils';
 import { payeesApi } from '@/lib/payees';
 import { categoriesApi } from '@/lib/categories';
 import { accountsApi } from '@/lib/accounts';
@@ -149,7 +150,7 @@ export function ScheduledTransactionForm({
       : {
           currencyCode: defaultCurrency,
           frequency: 'MONTHLY' as FrequencyType,
-          nextDueDate: new Date().toISOString().split('T')[0],
+          nextDueDate: getLocalDateString(),
           isActive: true,
           autoPost: false,
           reminderDaysBefore: 3,

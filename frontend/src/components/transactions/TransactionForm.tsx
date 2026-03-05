@@ -12,6 +12,7 @@ import { NormalTransactionFields } from './NormalTransactionFields';
 import { SplitTransactionFields } from './SplitTransactionFields';
 import { TransferTransactionFields } from './TransferTransactionFields';
 import { transactionsApi } from '@/lib/transactions';
+import { getLocalDateString } from '@/lib/utils';
 import { payeesApi } from '@/lib/payees';
 import { categoriesApi } from '@/lib/categories';
 import { accountsApi } from '@/lib/accounts';
@@ -164,7 +165,7 @@ export function TransactionForm({ transaction, defaultAccountId, onSuccess, onCa
         }
       : {
           accountId: defaultAccountId || '',
-          transactionDate: new Date().toISOString().split('T')[0],
+          transactionDate: getLocalDateString(),
           currencyCode: defaultCurrency,
           status: TransactionStatus.UNRECONCILED,
         },

@@ -12,6 +12,7 @@ import { ScheduledTransaction, PostScheduledTransactionData } from '@/types/sche
 import { Category } from '@/types/category';
 import { Account } from '@/types/account';
 import { scheduledTransactionsApi } from '@/lib/scheduled-transactions';
+import { getLocalDateString } from '@/lib/utils';
 import { buildCategoryTree } from '@/lib/categoryUtils';
 import { roundToCents, getCurrencySymbol } from '@/lib/format';
 import { getErrorMessage } from '@/lib/errors';
@@ -71,10 +72,7 @@ export function PostTransactionDialog({
   const [transactionDate, setTransactionDate] = useState<string>('');
   const [referenceNumber, setReferenceNumber] = useState<string>('');
 
-  const todayStr = useMemo(() => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  }, []);
+  const todayStr = useMemo(() => getLocalDateString(), []);
 
   const sourceAccount = scheduledTransaction.account
     ? accounts.find(a => a.id === scheduledTransaction.accountId) ?? scheduledTransaction.account
