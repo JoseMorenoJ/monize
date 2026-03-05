@@ -5,7 +5,7 @@ import {
   BadRequestException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository, Like, In } from "typeorm";
+import { Repository, Like, In, Not, IsNull } from "typeorm";
 import { Payee } from "./entities/payee.entity";
 import { Transaction } from "../transactions/entities/transaction.entity";
 import { ScheduledTransaction } from "../scheduled-transactions/entities/scheduled-transaction.entity";
@@ -55,10 +55,22 @@ export class PayeesService {
 
   async findAll(
     userId: string,
-  ): Promise<(Payee & { transactionCount: number })[]> {
+    status?: "active" | "inactive" | "all",
+  ): Promise<
+    (Payee & { transactionCount: number; lastUsedDate: string | null })[]
+  > {
+    // Build where clause based on status filter
+    const where: any = { userId };
+    if (status === "active") {
+      where.isActive = true;
+    } else if (status === "inactive") {
+      where.isActive = false;
+    }
+    // "all" or undefined = no isActive filter
+
     // Get all payees with their default category
     const payees = await this.payeesRepository.find({
-      where: { userId },
+      where,
       relations: ["defaultCategory"],
       order: { name: "ASC" },
     });
@@ -67,8 +79,8 @@ export class PayeesService {
       return [];
     }
 
-    // Get transaction counts for all payees in one query
-    const counts = await this.payeesRepository
+    // Get transaction counts and last used dates for all payees in one query
+    const stats = await this.payeesRepository
       .createQueryBuilder("payee")
       .leftJoin(
         "transactions",
@@ -78,19 +90,26 @@ export class PayeesService {
       )
       .where("payee.user_id = :userId", { userId })
       .groupBy("payee.id")
-      .select(["payee.id as id", "COUNT(transaction.id) as count"])
+      .select([
+        "payee.id as id",
+        "COUNT(transaction.id) as count",
+        "MAX(transaction.transaction_date) as last_used_date",
+      ])
       .getRawMany();
 
-    // Create a map of payee ID to transaction count
+    // Create maps for counts and last used dates
     const countMap = new Map<string, number>();
-    for (const row of counts) {
+    const lastUsedMap = new Map<string, string | null>();
+    for (const row of stats) {
       countMap.set(row.id, parseInt(row.count || "0", 10));
+      lastUsedMap.set(row.id, row.last_used_date || null);
     }
 
-    // Merge counts with payees
+    // Merge stats with payees
     return payees.map((payee) => ({
       ...payee,
       transactionCount: countMap.get(payee.id) || 0,
+      lastUsedDate: lastUsedMap.get(payee.id) || null,
     }));
   }
 
@@ -115,6 +134,7 @@ export class PayeesService {
     return this.payeesRepository.find({
       where: {
         userId,
+        isActive: true,
         name: Like(`%${escapeLikeWildcards(query)}%`),
       },
       relations: ["defaultCategory"],
@@ -124,10 +144,11 @@ export class PayeesService {
   }
 
   async autocomplete(userId: string, query: string): Promise<Payee[]> {
-    // Return payees that start with the query (for autocomplete)
+    // Return active payees that start with the query (for autocomplete)
     return this.payeesRepository.find({
       where: {
         userId,
+        isActive: true,
         name: Like(`${escapeLikeWildcards(query)}%`),
       },
       relations: ["defaultCategory"],
@@ -141,6 +162,23 @@ export class PayeesService {
       where: { userId, name },
       relations: ["defaultCategory"],
     });
+  }
+
+  /**
+   * Find an inactive payee by name (case-insensitive).
+   * Used to check if a typed payee name matches a deactivated payee.
+   */
+  async findInactiveByName(
+    userId: string,
+    name: string,
+  ): Promise<Payee | null> {
+    return this.payeesRepository
+      .createQueryBuilder("payee")
+      .leftJoinAndSelect("payee.defaultCategory", "defaultCategory")
+      .where("payee.user_id = :userId", { userId })
+      .andWhere("payee.is_active = false")
+      .andWhere("LOWER(payee.name) = LOWER(:name)", { name })
+      .getOne();
   }
 
   async findOrCreate(
@@ -192,6 +230,8 @@ export class PayeesService {
     if (updatePayeeDto.defaultCategoryId !== undefined)
       payee.defaultCategoryId = updatePayeeDto.defaultCategoryId;
     if (updatePayeeDto.notes !== undefined) payee.notes = updatePayeeDto.notes;
+    if (updatePayeeDto.isActive !== undefined)
+      payee.isActive = updatePayeeDto.isActive;
 
     const saved = await this.payeesRepository.save(payee);
 
@@ -217,6 +257,7 @@ export class PayeesService {
 
   async getMostUsed(userId: string, limit: number = 10): Promise<Payee[]> {
     // Single query: join defaultCategory + aggregate transaction count, avoiding two-step fetch
+    // Only return active payees for dropdown use
     return this.payeesRepository
       .createQueryBuilder("payee")
       .leftJoinAndSelect("payee.defaultCategory", "defaultCategory")
@@ -227,6 +268,7 @@ export class PayeesService {
         { userId },
       )
       .where("payee.user_id = :userId", { userId })
+      .andWhere("payee.is_active = true")
       .groupBy("payee.id")
       .addGroupBy("defaultCategory.id")
       .orderBy("COUNT(transaction.id)", "DESC")
@@ -236,6 +278,7 @@ export class PayeesService {
 
   async getRecentlyUsed(userId: string, limit: number = 10): Promise<Payee[]> {
     // Single query: join defaultCategory + aggregate most recent date, avoiding two-step fetch
+    // Only return active payees for dropdown use
     return this.payeesRepository
       .createQueryBuilder("payee")
       .leftJoinAndSelect("payee.defaultCategory", "defaultCategory")
@@ -246,6 +289,7 @@ export class PayeesService {
         { userId },
       )
       .where("payee.user_id = :userId", { userId })
+      .andWhere("payee.is_active = true")
       .groupBy("payee.id")
       .addGroupBy("defaultCategory.id")
       .orderBy("MAX(transaction.transaction_date)", "DESC")
@@ -265,10 +309,18 @@ export class PayeesService {
       },
     });
 
+    const activePayees = await this.payeesRepository.count({
+      where: { userId, isActive: true },
+    });
+
+    const inactivePayees = totalPayees - activePayees;
+
     return {
       totalPayees,
       payeesWithCategory,
       payeesWithoutCategory: totalPayees - payeesWithCategory,
+      activePayees,
+      inactivePayees,
     };
   }
 
@@ -281,6 +333,107 @@ export class PayeesService {
       relations: ["defaultCategory"],
       order: { name: "ASC" },
     });
+  }
+
+  /**
+   * Preview which payees would be deactivated based on the given criteria.
+   * Returns payees with fewer than maxTransactions and last used before the cutoff date.
+   */
+  async previewDeactivation(
+    userId: string,
+    maxTransactions: number,
+    monthsUnused: number,
+  ): Promise<
+    Array<{
+      payeeId: string;
+      payeeName: string;
+      transactionCount: number;
+      lastUsedDate: string | null;
+      defaultCategoryName: string | null;
+    }>
+  > {
+    // Calculate the cutoff date
+    const cutoffDate = new Date();
+    cutoffDate.setMonth(cutoffDate.getMonth() - monthsUnused);
+    const cutoffDateStr = cutoffDate.toISOString().split("T")[0];
+
+    // Get active payees with their transaction counts and last used dates
+    const results = await this.payeesRepository
+      .createQueryBuilder("payee")
+      .leftJoinAndSelect("payee.defaultCategory", "defaultCategory")
+      .leftJoin(
+        "transactions",
+        "t",
+        "t.payee_id = payee.id AND t.user_id = :userId",
+        { userId },
+      )
+      .where("payee.user_id = :userId", { userId })
+      .andWhere("payee.is_active = true")
+      .groupBy("payee.id")
+      .addGroupBy("defaultCategory.id")
+      .having("COUNT(t.id) <= :maxTransactions", { maxTransactions })
+      .andHaving(
+        "(MAX(t.transaction_date) IS NULL OR MAX(t.transaction_date) < :cutoffDate)",
+        { cutoffDate: cutoffDateStr },
+      )
+      .select([
+        "payee.id as payee_id",
+        "payee.name as payee_name",
+        "COUNT(t.id) as transaction_count",
+        "MAX(t.transaction_date) as last_used_date",
+        "defaultCategory.name as default_category_name",
+      ])
+      .orderBy("payee.name", "ASC")
+      .getRawMany();
+
+    return results.map((row) => ({
+      payeeId: row.payee_id,
+      payeeName: row.payee_name,
+      transactionCount: parseInt(row.transaction_count || "0", 10),
+      lastUsedDate: row.last_used_date || null,
+      defaultCategoryName: row.default_category_name || null,
+    }));
+  }
+
+  /**
+   * Bulk deactivate payees by IDs.
+   */
+  async deactivatePayees(
+    userId: string,
+    payeeIds: string[],
+  ): Promise<{ deactivated: number }> {
+    if (payeeIds.length === 0) {
+      return { deactivated: 0 };
+    }
+
+    const uniqueIds = [...new Set(payeeIds)];
+    const payees = await this.payeesRepository.find({
+      where: { id: In(uniqueIds), userId, isActive: true },
+    });
+
+    const toSave: Payee[] = [];
+    for (const payee of payees) {
+      payee.isActive = false;
+      toSave.push(payee);
+    }
+
+    if (toSave.length > 0) {
+      await this.payeesRepository.save(toSave);
+    }
+
+    return { deactivated: toSave.length };
+  }
+
+  /**
+   * Reactivate a single payee by ID.
+   */
+  async reactivatePayee(userId: string, id: string): Promise<Payee> {
+    const payee = await this.findOne(userId, id);
+    if (payee.isActive) {
+      return payee;
+    }
+    payee.isActive = true;
+    return this.payeesRepository.save(payee);
   }
 
   /**
@@ -503,6 +656,3 @@ export class PayeesService {
     return { updated: toSave.length };
   }
 }
-
-// Import these at the top with other imports
-import { Not, IsNull } from "typeorm";

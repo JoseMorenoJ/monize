@@ -56,7 +56,7 @@ export function BulkUpdateModal({
     if (isOpen) {
       Promise.all([
         categoriesApi.getAll(),
-        payeesApi.getAll(),
+        payeesApi.getAll('active'),
       ]).then(([categoriesData, payeesData]) => {
         setCategories(categoriesData);
         setPayees(payeesData);

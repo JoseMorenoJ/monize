@@ -23,6 +23,7 @@ describe("PayeesService", () => {
     defaultCategoryId: "cat-1",
     notes: "Coffee shop",
     defaultCategory: { id: "cat-1", name: "Food & Drink" } as any,
+    isActive: true,
     createdAt: new Date("2025-01-01"),
   };
 
@@ -33,6 +34,7 @@ describe("PayeesService", () => {
     defaultCategoryId: null,
     notes: "" as any,
     defaultCategory: null as any,
+    isActive: true,
     createdAt: new Date("2025-01-02"),
   };
 
@@ -501,8 +503,11 @@ describe("PayeesService", () => {
   // ─── getSummary ──────────────────────────────────────────────────────
 
   describe("getSummary", () => {
-    it("should return counts of total, with category, and without category", async () => {
-      payeesRepository.count.mockResolvedValueOnce(10).mockResolvedValueOnce(6);
+    it("should return counts of total, with category, without category, active, and inactive", async () => {
+      payeesRepository.count
+        .mockResolvedValueOnce(10) // totalPayees
+        .mockResolvedValueOnce(6) // payeesWithCategory
+        .mockResolvedValueOnce(8); // activePayees
 
       const result = await service.getSummary(userId);
 
@@ -510,11 +515,16 @@ describe("PayeesService", () => {
         totalPayees: 10,
         payeesWithCategory: 6,
         payeesWithoutCategory: 4,
+        activePayees: 8,
+        inactivePayees: 2,
       });
     });
 
     it("should return all zeros when no payees exist", async () => {
-      payeesRepository.count.mockResolvedValueOnce(0).mockResolvedValueOnce(0);
+      payeesRepository.count
+        .mockResolvedValueOnce(0)
+        .mockResolvedValueOnce(0)
+        .mockResolvedValueOnce(0);
 
       const result = await service.getSummary(userId);
 
@@ -522,11 +532,16 @@ describe("PayeesService", () => {
         totalPayees: 0,
         payeesWithCategory: 0,
         payeesWithoutCategory: 0,
+        activePayees: 0,
+        inactivePayees: 0,
       });
     });
 
     it("should handle all payees having categories", async () => {
-      payeesRepository.count.mockResolvedValueOnce(5).mockResolvedValueOnce(5);
+      payeesRepository.count
+        .mockResolvedValueOnce(5)
+        .mockResolvedValueOnce(5)
+        .mockResolvedValueOnce(5);
 
       const result = await service.getSummary(userId);
 
@@ -534,6 +549,8 @@ describe("PayeesService", () => {
         totalPayees: 5,
         payeesWithCategory: 5,
         payeesWithoutCategory: 0,
+        activePayees: 5,
+        inactivePayees: 0,
       });
     });
   });
@@ -975,6 +992,382 @@ describe("PayeesService", () => {
         expect.arrayContaining([
           expect.objectContaining({ defaultCategoryId: "cat-new" }),
         ]),
+      );
+    });
+  });
+
+  // ─── findAll with status filter ───────────────────────────────────
+
+  describe("findAll with status filter", () => {
+    it("should filter by active status when status is 'active'", async () => {
+      payeesRepository.find.mockResolvedValue([mockPayee]);
+      const qb = {
+        ...queryBuilderMock,
+        getRawMany: jest
+          .fn()
+          .mockResolvedValue([
+            { id: "payee-1", count: "5", last_used_date: "2025-01-15" },
+          ]),
+      };
+      payeesRepository.createQueryBuilder.mockReturnValue(qb);
+
+      await service.findAll(userId, "active");
+
+      expect(payeesRepository.find).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { userId, isActive: true },
+        }),
+      );
+    });
+
+    it("should filter by inactive status when status is 'inactive'", async () => {
+      payeesRepository.find.mockResolvedValue([]);
+
+      await service.findAll(userId, "inactive");
+
+      expect(payeesRepository.find).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { userId, isActive: false },
+        }),
+      );
+    });
+
+    it("should not filter by isActive when status is 'all'", async () => {
+      payeesRepository.find.mockResolvedValue([]);
+
+      await service.findAll(userId, "all");
+
+      expect(payeesRepository.find).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { userId },
+        }),
+      );
+    });
+
+    it("should include lastUsedDate in results", async () => {
+      payeesRepository.find.mockResolvedValue([mockPayee]);
+      const qb = {
+        ...queryBuilderMock,
+        getRawMany: jest
+          .fn()
+          .mockResolvedValue([
+            { id: "payee-1", count: "5", last_used_date: "2025-06-15" },
+          ]),
+      };
+      payeesRepository.createQueryBuilder.mockReturnValue(qb);
+
+      const result = await service.findAll(userId);
+
+      expect(result[0]).toMatchObject({
+        id: "payee-1",
+        transactionCount: 5,
+        lastUsedDate: "2025-06-15",
+      });
+    });
+
+    it("should return null lastUsedDate for payees without transactions", async () => {
+      payeesRepository.find.mockResolvedValue([mockPayee]);
+      const qb = {
+        ...queryBuilderMock,
+        getRawMany: jest
+          .fn()
+          .mockResolvedValue([
+            { id: "payee-1", count: "0", last_used_date: null },
+          ]),
+      };
+      payeesRepository.createQueryBuilder.mockReturnValue(qb);
+
+      const result = await service.findAll(userId);
+
+      expect(result[0].lastUsedDate).toBeNull();
+    });
+  });
+
+  // ─── findInactiveByName ────────────────────────────────────────────
+
+  describe("findInactiveByName", () => {
+    it("should find an inactive payee by case-insensitive name", async () => {
+      const inactivePayee = { ...mockPayee, isActive: false };
+      queryBuilderMock.getOne = jest.fn().mockResolvedValue(inactivePayee);
+      payeesRepository.createQueryBuilder.mockReturnValue(queryBuilderMock);
+
+      const result = await service.findInactiveByName(userId, "starbucks");
+
+      expect(result).toEqual(inactivePayee);
+      expect(queryBuilderMock.where).toHaveBeenCalledWith(
+        "payee.user_id = :userId",
+        { userId },
+      );
+      expect(queryBuilderMock.andWhere).toHaveBeenCalledWith(
+        "payee.is_active = false",
+      );
+      expect(queryBuilderMock.andWhere).toHaveBeenCalledWith(
+        "LOWER(payee.name) = LOWER(:name)",
+        { name: "starbucks" },
+      );
+    });
+
+    it("should return null when no inactive match found", async () => {
+      queryBuilderMock.getOne = jest.fn().mockResolvedValue(null);
+      payeesRepository.createQueryBuilder.mockReturnValue(queryBuilderMock);
+
+      const result = await service.findInactiveByName(userId, "Unknown");
+
+      expect(result).toBeNull();
+    });
+  });
+
+  // ─── previewDeactivation ──────────────────────────────────────────
+
+  describe("previewDeactivation", () => {
+    it("should return payees matching deactivation criteria", async () => {
+      queryBuilderMock.andHaving = jest.fn().mockReturnThis();
+      queryBuilderMock.getRawMany = jest.fn().mockResolvedValue([
+        {
+          payee_id: "payee-1",
+          payee_name: "Old Store",
+          transaction_count: "2",
+          last_used_date: "2024-01-01",
+          default_category_name: "Shopping",
+        },
+      ]);
+      payeesRepository.createQueryBuilder.mockReturnValue(queryBuilderMock);
+
+      const result = await service.previewDeactivation(userId, 5, 12);
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual({
+        payeeId: "payee-1",
+        payeeName: "Old Store",
+        transactionCount: 2,
+        lastUsedDate: "2024-01-01",
+        defaultCategoryName: "Shopping",
+      });
+    });
+
+    it("should return payees that were never used", async () => {
+      queryBuilderMock.andHaving = jest.fn().mockReturnThis();
+      queryBuilderMock.getRawMany = jest.fn().mockResolvedValue([
+        {
+          payee_id: "payee-2",
+          payee_name: "Never Used",
+          transaction_count: "0",
+          last_used_date: null,
+          default_category_name: null,
+        },
+      ]);
+      payeesRepository.createQueryBuilder.mockReturnValue(queryBuilderMock);
+
+      const result = await service.previewDeactivation(userId, 3, 6);
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toMatchObject({
+        transactionCount: 0,
+        lastUsedDate: null,
+        defaultCategoryName: null,
+      });
+    });
+
+    it("should return empty array when no payees match criteria", async () => {
+      queryBuilderMock.andHaving = jest.fn().mockReturnThis();
+      queryBuilderMock.getRawMany = jest.fn().mockResolvedValue([]);
+      payeesRepository.createQueryBuilder.mockReturnValue(queryBuilderMock);
+
+      const result = await service.previewDeactivation(userId, 0, 1);
+
+      expect(result).toEqual([]);
+    });
+
+    it("should only consider active payees", async () => {
+      queryBuilderMock.andHaving = jest.fn().mockReturnThis();
+      queryBuilderMock.getRawMany = jest.fn().mockResolvedValue([]);
+      payeesRepository.createQueryBuilder.mockReturnValue(queryBuilderMock);
+
+      await service.previewDeactivation(userId, 5, 12);
+
+      expect(queryBuilderMock.andWhere).toHaveBeenCalledWith(
+        "payee.is_active = true",
+      );
+    });
+  });
+
+  // ─── deactivatePayees ─────────────────────────────────────────────
+
+  describe("deactivatePayees", () => {
+    it("should bulk deactivate payees and return count", async () => {
+      const payee1 = { ...mockPayee, isActive: true };
+      const payee2 = { ...mockPayeeNoCategory, isActive: true };
+      payeesRepository.find.mockResolvedValue([payee1, payee2]);
+
+      const result = await service.deactivatePayees(userId, [
+        "payee-1",
+        "payee-2",
+      ]);
+
+      expect(result).toEqual({ deactivated: 2 });
+      expect(payee1.isActive).toBe(false);
+      expect(payee2.isActive).toBe(false);
+      expect(payeesRepository.save).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({ id: "payee-1", isActive: false }),
+          expect.objectContaining({ id: "payee-2", isActive: false }),
+        ]),
+      );
+    });
+
+    it("should handle empty payeeIds array", async () => {
+      const result = await service.deactivatePayees(userId, []);
+
+      expect(result).toEqual({ deactivated: 0 });
+      expect(payeesRepository.find).not.toHaveBeenCalled();
+      expect(payeesRepository.save).not.toHaveBeenCalled();
+    });
+
+    it("should skip payees not belonging to user", async () => {
+      payeesRepository.find.mockResolvedValue([{ ...mockPayee }]);
+
+      const result = await service.deactivatePayees(userId, [
+        "payee-1",
+        "other-user-payee",
+      ]);
+
+      expect(result).toEqual({ deactivated: 1 });
+    });
+
+    it("should only deactivate currently active payees", async () => {
+      payeesRepository.find.mockResolvedValue([]);
+
+      const result = await service.deactivatePayees(userId, [
+        "already-inactive",
+      ]);
+
+      expect(result).toEqual({ deactivated: 0 });
+      expect(payeesRepository.find).toHaveBeenCalledWith({
+        where: expect.objectContaining({ isActive: true }),
+      });
+    });
+
+    it("should deduplicate payee IDs", async () => {
+      payeesRepository.find.mockResolvedValue([{ ...mockPayee }]);
+
+      await service.deactivatePayees(userId, ["payee-1", "payee-1", "payee-1"]);
+
+      // Should only query for unique IDs
+      const findCall = payeesRepository.find.mock.calls[0][0];
+      expect(findCall.where.id).toBeDefined();
+    });
+  });
+
+  // ─── reactivatePayee ──────────────────────────────────────────────
+
+  describe("reactivatePayee", () => {
+    it("should reactivate an inactive payee", async () => {
+      const inactivePayee = { ...mockPayee, isActive: false };
+      payeesRepository.findOne.mockResolvedValue(inactivePayee);
+
+      const result = await service.reactivatePayee(userId, "payee-1");
+
+      expect(inactivePayee.isActive).toBe(true);
+      expect(payeesRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "payee-1", isActive: true }),
+      );
+      expect(result.isActive).toBe(true);
+    });
+
+    it("should return payee unchanged if already active", async () => {
+      const activePayee = { ...mockPayee, isActive: true };
+      payeesRepository.findOne.mockResolvedValue(activePayee);
+
+      const result = await service.reactivatePayee(userId, "payee-1");
+
+      expect(result.isActive).toBe(true);
+      expect(payeesRepository.save).not.toHaveBeenCalled();
+    });
+
+    it("should throw NotFoundException for non-existent payee", async () => {
+      payeesRepository.findOne.mockResolvedValue(null);
+
+      await expect(
+        service.reactivatePayee(userId, "nonexistent"),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  // ─── update with isActive ─────────────────────────────────────────
+
+  describe("update with isActive", () => {
+    it("should update isActive field via update DTO", async () => {
+      const existingPayee = { ...mockPayee, isActive: true };
+      payeesRepository.findOne.mockResolvedValueOnce(existingPayee);
+
+      await service.update(userId, "payee-1", { isActive: false });
+
+      expect(existingPayee.isActive).toBe(false);
+      expect(payeesRepository.save).toHaveBeenCalled();
+    });
+
+    it("should not modify isActive when not included in DTO", async () => {
+      const existingPayee = { ...mockPayee, isActive: true };
+      payeesRepository.findOne.mockResolvedValueOnce(existingPayee);
+
+      await service.update(userId, "payee-1", { notes: "Updated" });
+
+      expect(existingPayee.isActive).toBe(true);
+    });
+  });
+
+  // ─── search and autocomplete filter active ────────────────────────
+
+  describe("search filters active payees", () => {
+    it("should include isActive: true in search query", async () => {
+      payeesRepository.find.mockResolvedValue([]);
+
+      await service.search(userId, "test");
+
+      expect(payeesRepository.find).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ isActive: true }),
+        }),
+      );
+    });
+  });
+
+  describe("autocomplete filters active payees", () => {
+    it("should include isActive: true in autocomplete query", async () => {
+      payeesRepository.find.mockResolvedValue([]);
+
+      await service.autocomplete(userId, "test");
+
+      expect(payeesRepository.find).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ isActive: true }),
+        }),
+      );
+    });
+  });
+
+  describe("getMostUsed filters active payees", () => {
+    it("should include is_active = true filter", async () => {
+      queryBuilderMock.getMany.mockResolvedValue([]);
+      payeesRepository.createQueryBuilder.mockReturnValue(queryBuilderMock);
+
+      await service.getMostUsed(userId);
+
+      expect(queryBuilderMock.andWhere).toHaveBeenCalledWith(
+        "payee.is_active = true",
+      );
+    });
+  });
+
+  describe("getRecentlyUsed filters active payees", () => {
+    it("should include is_active = true filter", async () => {
+      queryBuilderMock.getMany.mockResolvedValue([]);
+      payeesRepository.createQueryBuilder.mockReturnValue(queryBuilderMock);
+
+      await service.getRecentlyUsed(userId);
+
+      expect(queryBuilderMock.andWhere).toHaveBeenCalledWith(
+        "payee.is_active = true",
       );
     });
   });

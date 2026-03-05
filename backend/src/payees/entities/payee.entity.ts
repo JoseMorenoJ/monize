@@ -42,6 +42,10 @@ export class Payee {
   @Column({ type: "text", nullable: true })
   notes: string;
 
+  @ApiProperty({ example: true, description: "Whether the payee is active" })
+  @Column({ type: "boolean", name: "is_active", default: true })
+  isActive: boolean;
+
   @ManyToOne(() => Category, { nullable: true })
   @JoinColumn({ name: "default_category_id" })
   defaultCategory: Category;

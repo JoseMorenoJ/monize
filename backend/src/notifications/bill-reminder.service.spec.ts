@@ -408,6 +408,7 @@ describe("BillReminderService", () => {
               userId: userId1,
               defaultCategoryId: null,
               notes: "",
+              isActive: true,
               defaultCategory: null as any,
               createdAt: new Date(),
             },

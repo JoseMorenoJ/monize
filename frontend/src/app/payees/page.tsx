@@ -7,12 +7,13 @@ import { Pagination } from '@/components/ui/Pagination';
 import { PayeeForm } from '@/components/payees/PayeeForm';
 import { PayeeList, type DensityLevel, type SortField, type SortDirection } from '@/components/payees/PayeeList';
 import { CategoryAutoAssignDialog } from '@/components/payees/CategoryAutoAssignDialog';
+import { DeactivateUnusedPayeesDialog } from '@/components/payees/DeactivateUnusedPayeesDialog';
 import { Modal } from '@/components/ui/Modal';
 import { UnsavedChangesDialog } from '@/components/ui/UnsavedChangesDialog';
 import { payeesApi } from '@/lib/payees';
 import { categoriesApi } from '@/lib/categories';
 import { buildCategoryColorMap } from '@/lib/categoryUtils';
-import { Payee } from '@/types/payee';
+import { Payee, PayeeStatusFilter } from '@/types/payee';
 import { Category } from '@/types/category';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { PageLayout } from '@/components/layout/PageLayout';
@@ -40,7 +41,9 @@ function PayeesContent() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showAutoAssign, setShowAutoAssign] = useState(false);
+  const [showDeactivate, setShowDeactivate] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<PayeeStatusFilter>('active');
   const [currentPage, setCurrentPage] = useState(1);
   const [listDensity, setListDensity] = useLocalStorage<DensityLevel>('monize-payees-density', 'normal');
   const [sortField, setSortField] = useState<SortField>('name');
@@ -51,7 +54,7 @@ function PayeesContent() {
     setIsLoading(true);
     try {
       const [payeesData, categoriesData] = await Promise.all([
-        payeesApi.getAll(),
+        payeesApi.getAll('all'),
         categoriesApi.getAll(),
       ]);
       setPayees(payeesData);
@@ -80,13 +83,11 @@ function PayeesContent() {
         const updated = await payeesApi.update(editingItem.id, cleanedData);
         toast.success('Payee updated successfully');
         close();
-        // Update in-place instead of refetching all payees
         setPayees(prev => prev.map(p => p.id === updated.id ? updated : p));
       } else {
         const created = await payeesApi.create(cleanedData);
         toast.success('Payee created successfully');
         close();
-        // Prepend new payee instead of refetching all
         setPayees(prev => [created, ...prev]);
       }
     } catch (error) {
@@ -95,24 +96,41 @@ function PayeesContent() {
     }
   };
 
+  const handleReactivate = async (payeeId: string) => {
+    try {
+      const reactivated = await payeesApi.reactivatePayee(payeeId);
+      toast.success(`Payee "${reactivated.name}" reactivated`);
+      setPayees(prev => prev.map(p => p.id === reactivated.id ? reactivated : p));
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Failed to reactivate payee'));
+      logger.error(error);
+    }
+  };
+
   const categoryColorMap = useMemo(() => buildCategoryColorMap(categories), [categories]);
 
+  // Apply status filter
+  const statusFilteredPayees = useMemo(() => {
+    if (statusFilter === 'all') return payees;
+    return payees.filter(p => statusFilter === 'active' ? p.isActive : !p.isActive);
+  }, [payees, statusFilter]);
+
   const filteredPayees = useMemo(() => {
-    if (!searchQuery) return payees;
-    return payees.filter((p) =>
+    if (!searchQuery) return statusFilteredPayees;
+    return statusFilteredPayees.filter((p) =>
       p.name.toLowerCase().includes(searchQuery.toLowerCase())
     );
-  }, [payees, searchQuery]);
+  }, [statusFilteredPayees, searchQuery]);
 
   const sortedPayees = useMemo(() => {
     return [...filteredPayees].sort((a, b) => {
       let comparison = 0;
       if (sortField === 'name') {
-        comparison = a.name.localeCompare(b.name);
+        comparison = a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
       } else if (sortField === 'category') {
         const catA = a.defaultCategory?.name || '';
         const catB = b.defaultCategory?.name || '';
-        comparison = catA.localeCompare(catB);
+        comparison = catA.localeCompare(catB, undefined, { sensitivity: 'base' });
       } else if (sortField === 'count') {
         comparison = (a.transactionCount ?? 0) - (b.transactionCount ?? 0);
       }
@@ -138,7 +156,7 @@ function PayeesContent() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery]);
+  }, [searchQuery, statusFilter]);
 
   const goToPage = (page: number) => {
     if (page >= 1 && page <= totalPages) {
@@ -146,6 +164,9 @@ function PayeesContent() {
     }
   };
 
+  // Summary counts
+  const activeCount = payees.filter(p => p.isActive).length;
+  const inactiveCount = payees.filter(p => !p.isActive).length;
   const payeesWithCategory = payees.filter((p) => p.defaultCategoryId).length;
   const payeesWithoutCategory = payees.length - payeesWithCategory;
 
@@ -157,6 +178,9 @@ function PayeesContent() {
           subtitle="Manage your payees and their default categories"
           actions={
             <>
+              <Button variant="secondary" onClick={() => setShowDeactivate(true)}>
+                Deactivate Unused
+              </Button>
               <Button variant="secondary" onClick={() => setShowAutoAssign(true)}>
                 Auto-Assign Categories
               </Button>
@@ -165,35 +189,64 @@ function PayeesContent() {
           }
         />
         {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           <SummaryCard
             label="Total Payees"
             value={payees.length}
             icon={SummaryIcons.users}
           />
           <SummaryCard
-            label="With Category"
-            value={payeesWithCategory}
+            label="Active"
+            value={activeCount}
             icon={SummaryIcons.checkCircle}
             valueColor="green"
+          />
+          <SummaryCard
+            label="Inactive"
+            value={inactiveCount}
+            icon={SummaryIcons.warning}
+            valueColor={inactiveCount > 0 ? 'yellow' : undefined}
           />
           <SummaryCard
             label="Without Category"
             value={payeesWithoutCategory}
             icon={SummaryIcons.warning}
-            valueColor="yellow"
+            valueColor={payeesWithoutCategory > 0 ? 'yellow' : undefined}
           />
         </div>
 
-        {/* Search */}
-        <div className="mb-6">
+        {/* Search and Status Filter */}
+        <div className="mb-6 flex flex-col sm:flex-row gap-4">
           <input
             type="text"
             placeholder="Search payees..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="block w-full max-w-md rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-400 dark:focus:border-blue-400 dark:focus:ring-blue-400"
+            className="block w-full sm:max-w-md rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-400 dark:focus:border-blue-400 dark:focus:ring-blue-400"
           />
+          <div className="flex rounded-md shadow-sm">
+            {(['all', 'active', 'inactive'] as PayeeStatusFilter[]).map((status) => (
+              <button
+                key={status}
+                onClick={() => setStatusFilter(status)}
+                className={`px-4 py-2 text-sm font-medium border ${
+                  statusFilter === status
+                    ? 'bg-blue-600 text-white border-blue-600 dark:bg-blue-500 dark:border-blue-500'
+                    : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700'
+                } ${
+                  status === 'all' ? 'rounded-l-md' : ''
+                } ${
+                  status === 'inactive' ? 'rounded-r-md' : ''
+                } ${
+                  status !== 'all' ? '-ml-px' : ''
+                }`}
+              >
+                {status === 'active' ? `Active (${activeCount})` :
+                 status === 'inactive' ? `Inactive (${inactiveCount})` :
+                 `All (${payees.length})`}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Form Modal */}
@@ -222,6 +275,8 @@ function PayeesContent() {
               onEdit={openEdit}
               onRefresh={loadData}
               onDelete={(deletedId) => setPayees(prev => prev.filter(p => p.id !== deletedId))}
+              onReactivate={handleReactivate}
+              showStatusColumn={statusFilter === 'all' || statusFilter === 'inactive'}
               density={listDensity}
               onDensityChange={setListDensity}
               sortField={sortField}
@@ -258,6 +313,13 @@ function PayeesContent() {
       <CategoryAutoAssignDialog
         isOpen={showAutoAssign}
         onClose={() => setShowAutoAssign(false)}
+        onSuccess={loadData}
+      />
+
+      {/* Deactivate Unused Payees Dialog */}
+      <DeactivateUnusedPayeesDialog
+        isOpen={showDeactivate}
+        onClose={() => setShowDeactivate(false)}
         onSuccess={loadData}
       />
     </PageLayout>

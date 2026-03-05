@@ -26,6 +26,7 @@ import { PayeesService } from "./payees.service";
 import { CreatePayeeDto } from "./dto/create-payee.dto";
 import { UpdatePayeeDto } from "./dto/update-payee.dto";
 import { ApplyCategorySuggestionsDto } from "./dto/apply-category-suggestions.dto";
+import { DeactivatePayeesDto } from "./dto/deactivate-payees.dto";
 import { Payee } from "./entities/payee.entity";
 
 @ApiTags("Payees")
@@ -52,9 +53,18 @@ export class PayeesController {
 
   @Get()
   @ApiOperation({ summary: "Get all payees for the authenticated user" })
+  @ApiQuery({
+    name: "status",
+    required: false,
+    enum: ["active", "inactive", "all"],
+    description: "Filter by active status (default: all)",
+  })
   @ApiResponse({ status: 200, description: "List of payees", type: [Payee] })
-  findAll(@Request() req): Promise<Payee[]> {
-    return this.payeesService.findAll(req.user.id);
+  findAll(
+    @Request() req,
+    @Query("status") status?: "active" | "inactive" | "all",
+  ): Promise<Payee[]> {
+    return this.payeesService.findAll(req.user.id, status);
   }
 
   @Get("search")
@@ -194,6 +204,85 @@ export class PayeesController {
       req.user.id,
       dto.assignments,
     );
+  }
+
+  @Get("deactivation/preview")
+  @ApiOperation({
+    summary: "Preview which payees would be deactivated based on criteria",
+  })
+  @ApiQuery({
+    name: "maxTransactions",
+    required: false,
+    type: Number,
+    description: "Maximum transaction count threshold (default: 3)",
+  })
+  @ApiQuery({
+    name: "monthsUnused",
+    required: false,
+    type: Number,
+    description: "Months since last use (default: 12)",
+  })
+  @ApiResponse({
+    status: 200,
+    description: "List of payees that match deactivation criteria",
+  })
+  previewDeactivation(
+    @Request() req,
+    @Query("maxTransactions", new DefaultValuePipe(3), ParseIntPipe)
+    maxTransactions: number,
+    @Query("monthsUnused", new DefaultValuePipe(12), ParseIntPipe)
+    monthsUnused: number,
+  ) {
+    const safeMaxTransactions = Math.min(Math.max(maxTransactions, 0), 1000);
+    const safeMonthsUnused = Math.min(Math.max(monthsUnused, 1), 120);
+    return this.payeesService.previewDeactivation(
+      req.user.id,
+      safeMaxTransactions,
+      safeMonthsUnused,
+    );
+  }
+
+  @Post("deactivation/apply")
+  @ApiOperation({ summary: "Bulk deactivate payees" })
+  @ApiResponse({
+    status: 200,
+    description: "Payees deactivated successfully",
+  })
+  deactivatePayees(@Request() req, @Body() dto: DeactivatePayeesDto) {
+    return this.payeesService.deactivatePayees(req.user.id, dto.payeeIds);
+  }
+
+  @Post(":id/reactivate")
+  @ApiOperation({ summary: "Reactivate a deactivated payee" })
+  @ApiResponse({
+    status: 200,
+    description: "Payee reactivated successfully",
+    type: Payee,
+  })
+  @ApiResponse({ status: 404, description: "Payee not found" })
+  reactivatePayee(
+    @Request() req,
+    @Param("id", ParseUUIDPipe) id: string,
+  ): Promise<Payee> {
+    return this.payeesService.reactivatePayee(req.user.id, id);
+  }
+
+  @Get("inactive/match")
+  @ApiOperation({
+    summary: "Check if a payee name matches an inactive payee",
+  })
+  @ApiQuery({
+    name: "name",
+    required: true,
+    description: "Payee name to check",
+  })
+  @ApiResponse({
+    status: 200,
+    description: "Matching inactive payee or null",
+  })
+  findInactiveByName(@Request() req, @Query("name") name: string) {
+    const safeName = name ? name.slice(0, 255) : "";
+    return this.payeesService.findInactiveByName(req.user.id, safeName);
   }
 
   @Get(":id")

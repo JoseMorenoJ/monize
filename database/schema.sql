@@ -171,11 +171,13 @@ CREATE TABLE payees (
     name VARCHAR(255) NOT NULL,
     default_category_id UUID REFERENCES categories(id),
     notes TEXT,
+    is_active BOOLEAN NOT NULL DEFAULT true,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(user_id, name)
 );
 
 CREATE INDEX idx_payees_user ON payees(user_id);
+CREATE INDEX idx_payees_user_active ON payees(user_id, is_active);
 
 -- Transactions
 CREATE TABLE transactions (

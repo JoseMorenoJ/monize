@@ -18,6 +18,10 @@ describe("PayeesController", () => {
       getSummary: jest.fn(),
       calculateCategorySuggestions: jest.fn(),
       applyCategorySuggestions: jest.fn(),
+      previewDeactivation: jest.fn(),
+      deactivatePayees: jest.fn(),
+      reactivatePayee: jest.fn(),
+      findInactiveByName: jest.fn(),
       findOne: jest.fn(),
       update: jest.fn(),
       remove: jest.fn(),
@@ -50,14 +54,30 @@ describe("PayeesController", () => {
   });
 
   describe("findAll()", () => {
-    it("delegates to payeesService.findAll with userId", async () => {
+    it("delegates to payeesService.findAll with userId and status", async () => {
+      const expected = [{ id: "payee-1", name: "Store" }];
+      mockPayeesService.findAll.mockResolvedValue(expected);
+
+      const result = await controller.findAll(mockReq, "active");
+
+      expect(result).toEqual(expected);
+      expect(mockPayeesService.findAll).toHaveBeenCalledWith(
+        "user-1",
+        "active",
+      );
+    });
+
+    it("delegates to payeesService.findAll with undefined status", async () => {
       const expected = [{ id: "payee-1", name: "Store" }];
       mockPayeesService.findAll.mockResolvedValue(expected);
 
       const result = await controller.findAll(mockReq);
 
       expect(result).toEqual(expected);
-      expect(mockPayeesService.findAll).toHaveBeenCalledWith("user-1");
+      expect(mockPayeesService.findAll).toHaveBeenCalledWith(
+        "user-1",
+        undefined,
+      );
     });
   });
 
@@ -222,6 +242,121 @@ describe("PayeesController", () => {
       expect(mockPayeesService.remove).toHaveBeenCalledWith(
         "user-1",
         "payee-1",
+      );
+    });
+  });
+
+  // ─── Deactivation endpoints ───────────────────────────────────────
+
+  describe("previewDeactivation()", () => {
+    it("delegates to payeesService.previewDeactivation with userId and params", async () => {
+      const expected = [
+        {
+          payeeId: "p1",
+          payeeName: "Old Store",
+          transactionCount: 1,
+          lastUsedDate: "2023-01-01",
+        },
+      ];
+      mockPayeesService.previewDeactivation.mockResolvedValue(expected);
+
+      const result = await controller.previewDeactivation(mockReq, 5, 12);
+
+      expect(result).toEqual(expected);
+      expect(mockPayeesService.previewDeactivation).toHaveBeenCalledWith(
+        "user-1",
+        5,
+        12,
+      );
+    });
+
+    it("clamps maxTransactions to valid range", async () => {
+      mockPayeesService.previewDeactivation.mockResolvedValue([]);
+
+      await controller.previewDeactivation(mockReq, -5, 12);
+
+      expect(mockPayeesService.previewDeactivation).toHaveBeenCalledWith(
+        "user-1",
+        0,
+        12,
+      );
+    });
+
+    it("clamps monthsUnused to valid range", async () => {
+      mockPayeesService.previewDeactivation.mockResolvedValue([]);
+
+      await controller.previewDeactivation(mockReq, 5, 999);
+
+      expect(mockPayeesService.previewDeactivation).toHaveBeenCalledWith(
+        "user-1",
+        5,
+        120,
+      );
+    });
+  });
+
+  describe("deactivatePayees()", () => {
+    it("delegates to payeesService.deactivatePayees with userId and payeeIds", async () => {
+      const dto = { payeeIds: ["p1", "p2"] };
+      const expected = { deactivated: 2 };
+      mockPayeesService.deactivatePayees.mockResolvedValue(expected);
+
+      const result = await controller.deactivatePayees(mockReq, dto as any);
+
+      expect(result).toEqual(expected);
+      expect(mockPayeesService.deactivatePayees).toHaveBeenCalledWith(
+        "user-1",
+        ["p1", "p2"],
+      );
+    });
+  });
+
+  describe("reactivatePayee()", () => {
+    it("delegates to payeesService.reactivatePayee with userId and id", async () => {
+      const expected = { id: "payee-1", name: "Store", isActive: true };
+      mockPayeesService.reactivatePayee.mockResolvedValue(expected);
+
+      const result = await controller.reactivatePayee(mockReq, "payee-1");
+
+      expect(result).toEqual(expected);
+      expect(mockPayeesService.reactivatePayee).toHaveBeenCalledWith(
+        "user-1",
+        "payee-1",
+      );
+    });
+  });
+
+  describe("findInactiveByName()", () => {
+    it("delegates to payeesService.findInactiveByName with userId and name", async () => {
+      const expected = { id: "payee-1", name: "Store", isActive: false };
+      mockPayeesService.findInactiveByName.mockResolvedValue(expected);
+
+      const result = await controller.findInactiveByName(mockReq, "Store");
+
+      expect(result).toEqual(expected);
+      expect(mockPayeesService.findInactiveByName).toHaveBeenCalledWith(
+        "user-1",
+        "Store",
+      );
+    });
+
+    it("returns null when no inactive match found", async () => {
+      mockPayeesService.findInactiveByName.mockResolvedValue(null);
+
+      const result = await controller.findInactiveByName(mockReq, "Unknown");
+
+      expect(result).toBeNull();
+    });
+
+    it("truncates long names to 255 chars", async () => {
+      mockPayeesService.findInactiveByName.mockResolvedValue(null);
+      const longName = "A".repeat(300);
+
+      await controller.findInactiveByName(mockReq, longName);
+
+      expect(mockPayeesService.findInactiveByName).toHaveBeenCalledWith(
+        "user-1",
+        "A".repeat(255),
       );
     });
   });

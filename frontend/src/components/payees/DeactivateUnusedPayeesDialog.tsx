@@ -1,0 +1,322 @@
+'use client';
+
+import { useState, useEffect, useCallback } from 'react';
+import { Button } from '@/components/ui/Button';
+import { Modal } from '@/components/ui/Modal';
+import { payeesApi } from '@/lib/payees';
+import { DeactivationCandidate } from '@/types/payee';
+import toast from 'react-hot-toast';
+import { createLogger } from '@/lib/logger';
+import { getErrorMessage } from '@/lib/errors';
+
+const logger = createLogger('DeactivateUnusedPayees');
+
+interface DeactivateUnusedPayeesDialogProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onSuccess: () => void;
+}
+
+export function DeactivateUnusedPayeesDialog({
+  isOpen,
+  onClose,
+  onSuccess,
+}: DeactivateUnusedPayeesDialogProps) {
+  const [maxTransactions, setMaxTransactions] = useState(3);
+  const [monthsUnused, setMonthsUnused] = useState(12);
+  const [candidates, setCandidates] = useState<DeactivationCandidate[]>([]);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isLoading, setIsLoading] = useState(false);
+  const [isApplying, setIsApplying] = useState(false);
+  const [hasPreviewLoaded, setHasPreviewLoaded] = useState(false);
+
+  const loadPreview = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const results = await payeesApi.getDeactivationPreview({
+        maxTransactions,
+        monthsUnused,
+      });
+      setCandidates(results);
+      setSelectedIds(new Set(results.map(c => c.payeeId)));
+      setHasPreviewLoaded(true);
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Failed to load preview'));
+      logger.error(error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [maxTransactions, monthsUnused]);
+
+  // Reset state when dialog opens
+  useEffect(() => {
+    if (isOpen) {
+      setCandidates([]);
+      setSelectedIds(new Set());
+      setHasPreviewLoaded(false);
+    }
+  }, [isOpen]);
+
+  const handleApply = async () => {
+    if (selectedIds.size === 0) {
+      toast.error('Please select at least one payee to deactivate');
+      return;
+    }
+
+    setIsApplying(true);
+    try {
+      const payeeIds = candidates
+        .filter(c => selectedIds.has(c.payeeId))
+        .map(c => c.payeeId);
+
+      const result = await payeesApi.deactivatePayees(payeeIds);
+      toast.success(`Deactivated ${result.deactivated} payee${result.deactivated !== 1 ? 's' : ''}`);
+      onSuccess();
+      onClose();
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Failed to deactivate payees'));
+      logger.error(error);
+    } finally {
+      setIsApplying(false);
+    }
+  };
+
+  const togglePayee = (payeeId: string) => {
+    setSelectedIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(payeeId)) {
+        newSet.delete(payeeId);
+      } else {
+        newSet.add(payeeId);
+      }
+      return newSet;
+    });
+  };
+
+  const selectAll = () => {
+    setSelectedIds(new Set(candidates.map(c => c.payeeId)));
+  };
+
+  const selectNone = () => {
+    setSelectedIds(new Set());
+  };
+
+  const formatMonthsLabel = (months: number): string => {
+    if (months < 12) return `${months} month${months !== 1 ? 's' : ''}`;
+    const years = Math.floor(months / 12);
+    const remainingMonths = months % 12;
+    if (remainingMonths === 0) return `${years} year${years !== 1 ? 's' : ''}`;
+    return `${years}.5 years`;
+  };
+
+  const formatDate = (dateStr: string | null): string => {
+    if (!dateStr) return 'Never used';
+    const date = new Date(dateStr + 'T00:00:00');
+    return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  };
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} maxWidth="2xl" className="overflow-hidden flex flex-col">
+      {/* Header */}
+      <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+        <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">
+          Deactivate Unused Payees
+        </h2>
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto px-6 py-4">
+        {/* Description */}
+        <div className="mb-6 p-4 bg-amber-50 dark:bg-amber-900/30 rounded-lg border border-amber-200 dark:border-amber-800">
+          <h3 className="text-sm font-semibold text-amber-800 dark:text-amber-200 mb-2">
+            How it works
+          </h3>
+          <p className="text-sm text-amber-700 dark:text-amber-300">
+            This feature finds payees that are rarely used and deactivates them.
+            Deactivated payees will not appear in payee dropdowns when creating transactions,
+            but their historical transactions are preserved. You can reactivate a payee at any time
+            from the payees list.
+          </p>
+        </div>
+
+        {/* Settings */}
+        <div className="space-y-6 mb-6">
+          {/* Maximum Transactions */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <span className="font-bold">{maxTransactions}</span> or fewer transaction{maxTransactions !== 1 ? 's' : ''}
+            </label>
+            <input
+              type="range"
+              min="0"
+              max="20"
+              value={maxTransactions}
+              onChange={(e) => setMaxTransactions(parseInt(e.target.value))}
+              className="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer accent-amber-600"
+            />
+            <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mt-1">
+              <span>0</span>
+              <span>10</span>
+              <span>20</span>
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              Only include payees with this many transactions or fewer
+            </p>
+          </div>
+
+          {/* Months Unused */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Last used more than <span className="font-bold">{formatMonthsLabel(monthsUnused)}</span> ago
+            </label>
+            <input
+              type="range"
+              min="6"
+              max="120"
+              step="6"
+              value={monthsUnused}
+              onChange={(e) => setMonthsUnused(parseInt(e.target.value))}
+              className="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer accent-amber-600"
+            />
+            <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mt-1">
+              <span>6 months</span>
+              <span>5 years</span>
+              <span>10 years</span>
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              Only include payees not used since this long ago (or never used)
+            </p>
+          </div>
+        </div>
+
+        {/* Preview Button */}
+        <div className="mb-4">
+          <Button
+            onClick={loadPreview}
+            disabled={isLoading}
+            variant="secondary"
+            className="w-full"
+          >
+            {isLoading ? 'Loading...' : 'Preview Unused Payees'}
+          </Button>
+        </div>
+
+        {/* Results */}
+        {hasPreviewLoaded && (
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                Candidates ({candidates.length} found)
+              </h3>
+              {candidates.length > 0 && (
+                <div className="flex gap-2">
+                  <button
+                    onClick={selectAll}
+                    className="text-xs text-amber-600 dark:text-amber-400 hover:underline"
+                  >
+                    Select all
+                  </button>
+                  <span className="text-gray-300 dark:text-gray-600">|</span>
+                  <button
+                    onClick={selectNone}
+                    className="text-xs text-amber-600 dark:text-amber-400 hover:underline"
+                  >
+                    Select none
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {candidates.length === 0 ? (
+              <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                <p>No payees match the current criteria.</p>
+                <p className="text-sm mt-1">Try adjusting the settings above.</p>
+              </div>
+            ) : (
+              <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+                <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                  <thead className="bg-gray-50 dark:bg-gray-700">
+                    <tr>
+                      <th className="w-10 px-3 py-2"></th>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                        Payee
+                      </th>
+                      <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase hidden sm:table-cell">
+                        Transactions
+                      </th>
+                      <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                        Last Used
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                    {candidates.map((candidate) => (
+                      <tr
+                        key={candidate.payeeId}
+                        className="hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
+                        onClick={() => togglePayee(candidate.payeeId)}
+                      >
+                        <td className="px-3 py-2">
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(candidate.payeeId)}
+                            onChange={() => togglePayee(candidate.payeeId)}
+                            onClick={(e) => e.stopPropagation()}
+                            className="h-4 w-4 text-amber-600 focus:ring-amber-500 border-gray-300 dark:border-gray-600 rounded"
+                          />
+                        </td>
+                        <td className="px-3 py-2">
+                          <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                            {candidate.payeeName}
+                          </div>
+                          {candidate.defaultCategoryName && (
+                            <div className="text-xs text-gray-500 dark:text-gray-400">
+                              {candidate.defaultCategoryName}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-right text-sm text-gray-600 dark:text-gray-400 hidden sm:table-cell">
+                          {candidate.transactionCount}
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          <span className={`text-sm ${
+                            candidate.lastUsedDate === null
+                              ? 'text-red-600 dark:text-red-400'
+                              : 'text-gray-600 dark:text-gray-400'
+                          }`}>
+                            {formatDate(candidate.lastUsedDate)}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Footer */}
+      <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex justify-between items-center">
+        <div className="text-sm text-gray-500 dark:text-gray-400">
+          {selectedIds.size > 0 && (
+            <span>{selectedIds.size} payee{selectedIds.size !== 1 ? 's' : ''} selected</span>
+          )}
+        </div>
+        <div className="flex gap-3">
+          <Button variant="secondary" onClick={onClose} disabled={isApplying}>
+            Cancel
+          </Button>
+          <Button
+            variant="danger"
+            onClick={handleApply}
+            disabled={isApplying || selectedIds.size === 0}
+          >
+            {isApplying ? 'Deactivating...' : `Deactivate ${selectedIds.size} Payee${selectedIds.size !== 1 ? 's' : ''}`}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}

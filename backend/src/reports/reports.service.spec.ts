@@ -70,6 +70,7 @@ describe("ReportsService", () => {
     name: "Walmart",
     defaultCategoryId: null,
     notes: "" as any,
+    isActive: true,
     defaultCategory: null as any,
     createdAt: new Date("2025-01-01"),
   };
