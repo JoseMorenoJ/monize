@@ -9,6 +9,7 @@ import {
   UseGuards,
   Request,
   Query,
+  Res,
   ParseBoolPipe,
   ParseUUIDPipe,
   BadRequestException,
@@ -21,8 +22,10 @@ import {
   ApiParam,
   ApiQuery,
 } from "@nestjs/swagger";
+import { Response } from "express";
 import { AuthGuard } from "@nestjs/passport";
 import { AccountsService } from "./accounts.service";
+import { AccountExportService } from "./account-export.service";
 import { CreateAccountDto } from "./dto/create-account.dto";
 import { UpdateAccountDto } from "./dto/update-account.dto";
 import { LoanPreviewDto } from "./dto/loan-preview.dto";
@@ -43,7 +46,10 @@ import { formatDateYMD } from "../common/date-utils";
 @UseGuards(AuthGuard("jwt"))
 @ApiBearerAuth()
 export class AccountsController {
-  constructor(private readonly accountsService: AccountsService) {}
+  constructor(
+    private readonly accountsService: AccountsService,
+    private readonly accountExportService: AccountExportService,
+  ) {}
 
   @Post()
   @ApiOperation({ summary: "Create a new account" })
@@ -181,6 +187,60 @@ export class AccountsController {
       ...result,
       endDate: formatDateYMD(result.endDate),
     };
+  }
+
+  @Get(":id/export")
+  @ApiOperation({ summary: "Export account transactions as CSV or QIF" })
+  @ApiParam({ name: "id", description: "Account UUID" })
+  @ApiQuery({
+    name: "format",
+    required: true,
+    enum: ["csv", "qif"],
+    description: "Export format",
+  })
+  @ApiResponse({
+    status: 200,
+    description: "File downloaded successfully",
+  })
+  @ApiResponse({ status: 400, description: "Invalid format" })
+  @ApiResponse({ status: 401, description: "Unauthorized" })
+  @ApiResponse({ status: 404, description: "Account not found" })
+  async exportAccount(
+    @Request() req,
+    @Param("id", ParseUUIDPipe) id: string,
+    @Query("format") format: string,
+    @Res() res: Response,
+  ) {
+    if (format !== "csv" && format !== "qif") {
+      throw new BadRequestException("Format must be csv or qif");
+    }
+
+    const account = await this.accountsService.findOne(req.user.id, id);
+    const safeName = account.name.replace(/[^a-zA-Z0-9_-]/g, "_");
+
+    if (format === "csv") {
+      const content = await this.accountExportService.exportCsv(
+        req.user.id,
+        id,
+      );
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${safeName}.csv"`,
+      );
+      res.send(content);
+    } else {
+      const content = await this.accountExportService.exportQif(
+        req.user.id,
+        id,
+      );
+      res.setHeader("Content-Type", "application/x-qif; charset=utf-8");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${safeName}.qif"`,
+      );
+      res.send(content);
+    }
   }
 
   @Get(":id")
