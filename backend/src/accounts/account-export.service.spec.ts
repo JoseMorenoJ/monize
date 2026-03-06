@@ -242,8 +242,8 @@ describe("AccountExportService", () => {
 
       // Header + 1 transaction row only (no sub-rows)
       expect(lines).toHaveLength(2);
-      // Should not contain "-- Split --" marker
-      expect(lines[1]).not.toContain("-- Split --");
+      // Should show "-- Split --" as the category label
+      expect(lines[1]).toContain("-- Split --");
       // Should contain the transaction data on a single line
       expect(lines[1]).toContain("Store");
       expect(lines[1]).toContain("2025-02-01");

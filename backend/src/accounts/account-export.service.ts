@@ -101,7 +101,9 @@ export class AccountExportService {
       } else {
         const categoryLabel = tx.isTransfer
           ? `Transfer: ${tx.transferAccountName}`
-          : tx.categoryPath;
+          : tx.isSplit
+            ? "-- Split --"
+            : tx.categoryPath;
         rows.push(
           this.csvRow(
             tx.date,
