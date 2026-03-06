@@ -1782,6 +1782,90 @@ describe("NetWorthService", () => {
       expect(result[0].value).toBe(2200);
     });
 
+    it("converts multiple accounts with different currencies to default currency", async () => {
+      prefRepository.findOne.mockResolvedValue({
+        defaultCurrency: "CAD",
+      });
+
+      // accounts query: CAD brokerage + USD brokerage
+      dataSource.query.mockResolvedValueOnce([
+        {
+          id: "brok-cad",
+          account_type: "INVESTMENT",
+          account_sub_type: "INVESTMENT_BROKERAGE",
+          currency_code: "CAD",
+          opening_balance: 0,
+        },
+        {
+          id: "brok-usd",
+          account_type: "INVESTMENT",
+          account_sub_type: "INVESTMENT_BROKERAGE",
+          currency_code: "USD",
+          opening_balance: 0,
+        },
+      ]);
+
+      // investment transactions for both accounts
+      dataSource.query.mockResolvedValueOnce([
+        {
+          account_id: "brok-cad",
+          security_id: "sec-cad",
+          action: "BUY",
+          quantity: "100",
+          transaction_date: "2025-02-01",
+        },
+        {
+          account_id: "brok-usd",
+          security_id: "sec-usd",
+          action: "BUY",
+          quantity: "50",
+          transaction_date: "2025-02-01",
+        },
+      ]);
+
+      // securities
+      securityRepository.findByIds.mockResolvedValue([
+        { id: "sec-cad", skipPriceUpdates: false },
+        { id: "sec-usd", skipPriceUpdates: false },
+      ]);
+
+      // security prices
+      dataSource.query.mockResolvedValueOnce([
+        {
+          security_id: "sec-cad",
+          price_date: "2025-03-01",
+          close_price: "50.00",
+        },
+        {
+          security_id: "sec-usd",
+          price_date: "2025-03-01",
+          close_price: "100.00",
+        },
+      ]);
+
+      // exchange rates (buildRateIndex): USD->CAD rate
+      dataSource.query.mockResolvedValueOnce([
+        {
+          from_currency: "USD",
+          to_currency: "CAD",
+          rate: "1.37",
+          rate_date: "2025-02-28",
+        },
+      ]);
+
+      const result = await service.getDailyInvestments(
+        "user-1",
+        "2025-03-01",
+        "2025-03-01",
+      );
+
+      // CAD brokerage: 100 * $50 CAD = $5000 CAD (no conversion needed)
+      // USD brokerage: 50 * $100 USD = $5000 USD * 1.37 = $6850 CAD
+      // Total: $11850 CAD
+      expect(result).toHaveLength(1);
+      expect(result[0].value).toBe(11850);
+    });
+
     it("returns empty when accountIds resolve to no accounts", async () => {
       prefRepository.findOne.mockResolvedValue({
         defaultCurrency: "USD",
