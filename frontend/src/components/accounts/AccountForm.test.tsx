@@ -249,7 +249,7 @@ describe('AccountForm', () => {
     });
   });
 
-  it('shows Import QIF button only when editing an existing account', async () => {
+  it('shows Import and Export buttons only when editing an existing account', async () => {
     const existingAccount = createExistingAccount();
 
     render(
@@ -261,17 +261,20 @@ describe('AccountForm', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('Import QIF')).toBeInTheDocument();
+      expect(screen.getByTitle('Import transactions from QIF file')).toBeInTheDocument();
+      expect(screen.getByTitle('Export transactions as CSV')).toBeInTheDocument();
+      expect(screen.getByTitle('Export transactions as QIF')).toBeInTheDocument();
     });
   });
 
-  it('does not show Import QIF button for new accounts', async () => {
+  it('does not show Import or Export buttons for new accounts', async () => {
     render(
       <AccountForm onSubmit={mockOnSubmit} onCancel={mockOnCancel} />
     );
 
     await waitFor(() => {
-      expect(screen.queryByText('Import QIF')).not.toBeInTheDocument();
+      expect(screen.queryByTitle('Import transactions from QIF file')).not.toBeInTheDocument();
+      expect(screen.queryByTitle('Export transactions as CSV')).not.toBeInTheDocument();
     });
   });
 

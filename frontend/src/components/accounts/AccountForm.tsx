@@ -307,6 +307,22 @@ export function AccountForm({ account, onSubmit, onCancel, onDirtyChange, submit
     }
   };
 
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleExport = async (format: 'csv' | 'qif') => {
+    if (!account || isExporting) return;
+    setIsExporting(true);
+    try {
+      await accountsApi.exportAccount(account.id, format);
+      toast.success(`Exported as ${format.toUpperCase()}`);
+    } catch (error) {
+      logger.error('Export failed', error);
+      toast.error(getErrorMessage(error, 'Failed to export account'));
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   // Handle interest category selection (for loan/mortgage)
   const handleInterestCategoryChange = (categoryId: string) => {
     setSelectedInterestCategoryId(categoryId);
@@ -576,29 +592,75 @@ export function AccountForm({ account, onSubmit, onCancel, onDirtyChange, submit
         {/* Hidden input for form registration */}
         <input type="hidden" {...register('isFavourite')} />
 
-        {/* Import QIF button - only shown when editing */}
+        {/* Import/Export buttons - only shown when editing */}
         {account && (
-          <button
-            type="button"
-            onClick={handleImportQif}
-            className="flex items-center gap-2 px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-            title="Import transactions from QIF file"
-          >
-            <svg
-              className="w-5 h-5 text-gray-500 dark:text-gray-400"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleImportQif}
+              className="flex items-center gap-2 px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+              title="Import transactions from QIF file"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"
-              />
-            </svg>
-            <span className="text-sm text-gray-700 dark:text-gray-300">Import QIF</span>
-          </button>
+              <svg
+                className="w-5 h-5 text-gray-500 dark:text-gray-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"
+                />
+              </svg>
+              <span className="text-sm text-gray-700 dark:text-gray-300">Import</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleExport('csv')}
+              disabled={isExporting}
+              className="flex items-center gap-2 px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
+              title="Export transactions as CSV"
+            >
+              <svg
+                className="w-5 h-5 text-gray-500 dark:text-gray-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                />
+              </svg>
+              <span className="text-sm text-gray-700 dark:text-gray-300">CSV</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleExport('qif')}
+              disabled={isExporting}
+              className="flex items-center gap-2 px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
+              title="Export transactions as QIF"
+            >
+              <svg
+                className="w-5 h-5 text-gray-500 dark:text-gray-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                />
+              </svg>
+              <span className="text-sm text-gray-700 dark:text-gray-300">QIF</span>
+            </button>
+          </div>
         )}
       </div>
 

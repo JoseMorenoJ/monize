@@ -248,6 +248,24 @@ describe("AccountExportService", () => {
       expect(lines[1]).toContain('"Item with, comma"');
     });
 
+    it("guards against CSV formula injection", async () => {
+      const transactions = [
+        {
+          ...buildMockTransactions()[0],
+          payeeName: "=cmd|'/C calc'!A0",
+          description: "+SUM(A1:A2)",
+        },
+      ];
+      const qb = createMockQueryBuilder(transactions);
+      mockTransactionRepo.createQueryBuilder.mockReturnValue(qb);
+
+      const csv = await service.exportCsv(userId, accountId);
+      const lines = csv.split("\n");
+
+      expect(lines[1]).toContain("'=cmd");
+      expect(lines[1]).toContain("'+SUM(A1:A2)");
+    });
+
     it("does not update running balance for void transactions", async () => {
       const transactions = [
         { ...buildMockTransactions()[0], status: "VOID", amount: 9999 },
