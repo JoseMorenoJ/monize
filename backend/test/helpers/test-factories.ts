@@ -132,7 +132,9 @@ export async function createTestAccount(
 export async function createTestCategory(
   dataSource: DataSource,
   userId: string,
-  overrides: Partial<CategoryData & { isIncome: boolean; parentId: string }> = {},
+  overrides: Partial<
+    CategoryData & { isIncome: boolean; parentId: string }
+  > = {},
 ): Promise<Category> {
   const { isIncome, parentId, ...rest } = overrides;
   const data = buildCategory(userId, rest);

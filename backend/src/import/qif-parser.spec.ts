@@ -891,11 +891,7 @@ T-20.00
 
     it("re-parses transaction dates correctly after auto-detecting YYYY-DD-MM", () => {
       // First dates are ambiguous, last one disambiguates as YYYY-DD-MM
-      const dates = [
-        "2025-03-05",
-        "2025-06-01",
-        "2025-18-03",
-      ];
+      const dates = ["2025-03-05", "2025-06-01", "2025-18-03"];
       const result = parseQif(buildQifWithDates(dates));
       expect(result.detectedDateFormat).toBe("YYYY-DD-MM");
       // With YYYY-DD-MM: 2025-03-05 -> day=03, month=05 -> 2025-05-03

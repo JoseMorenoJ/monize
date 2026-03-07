@@ -174,9 +174,7 @@ describe("TransactionsService (integration)", () => {
       expect(account!.currentBalance).toBe(1000);
 
       // Transaction should no longer exist
-      await expect(service.findOne(userId, tx.id)).rejects.toThrow(
-        "not found",
-      );
+      await expect(service.findOne(userId, tx.id)).rejects.toThrow("not found");
     });
   });
 
