@@ -262,16 +262,24 @@ describe("ExchangeRateService", () => {
         regularMarketPrice: 1.4,
       });
 
-      const existingRate = { ...mockExchangeRate };
-      exchangeRateRepository.findOne.mockResolvedValue(existingRate);
+      // Return a fresh copy for each findOne call so mutations don't bleed
+      exchangeRateRepository.findOne.mockImplementation(() => ({
+        ...mockExchangeRate,
+      }));
       exchangeRateRepository.save.mockImplementation((data) => data);
 
       const result = await service.refreshAllRates();
 
       expect(result.updated).toBe(1);
-      // Save should be called with updated rate value
+      // Save should be called with both forward and inverse rates
       expect(exchangeRateRepository.save).toHaveBeenCalledWith(
         expect.objectContaining({ rate: 1.4, source: "yahoo_finance" }),
+      );
+      expect(exchangeRateRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          rate: Math.round((1 / 1.4) * 10000) / 10000,
+          source: "yahoo_finance",
+        }),
       );
     });
 

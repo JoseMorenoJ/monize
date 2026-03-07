@@ -119,8 +119,8 @@ function CurrenciesContent() {
       } else {
         toast.success(`Exchange rates refreshed: ${updated} pairs updated`);
       }
-      // Reload rates into the UI so the list reflects updated values
-      await refreshRates();
+      // Reload rates and currency data so the list reflects updated values
+      await Promise.all([refreshRates(), loadData()]);
     } catch (error) {
       toast.error(getErrorMessage(error, 'Failed to refresh exchange rates'));
     } finally {

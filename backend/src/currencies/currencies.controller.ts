@@ -133,10 +133,8 @@ export class CurrenciesController {
   }
 
   @Post("exchange-rates/refresh")
-  @UseGuards(RolesGuard)
-  @Roles("admin")
   @ApiOperation({
-    summary: "Manually trigger exchange rate refresh (admin only)",
+    summary: "Manually trigger exchange rate refresh",
   })
   @ApiResponse({ status: 201, description: "Refresh summary" })
   refreshRates(): Promise<RateRefreshSummary> {

@@ -164,9 +164,25 @@ export class ExchangeRateService implements OnModuleInit {
   }
 
   /**
-   * Save or update an exchange rate for a given date
+   * Save or update an exchange rate for a given date,
+   * and also save the inverse rate for the reverse pair.
    */
   private async saveRate(
+    from: string,
+    to: string,
+    rate: number,
+    date: Date,
+  ): Promise<ExchangeRate> {
+    const result = await this.saveOneDirection(from, to, rate, date);
+
+    // Also save the inverse rate so both directions stay current
+    const inverseRate = Math.round((1 / rate) * 10000) / 10000;
+    await this.saveOneDirection(to, from, inverseRate, date);
+
+    return result;
+  }
+
+  private async saveOneDirection(
     from: string,
     to: string,
     rate: number,
