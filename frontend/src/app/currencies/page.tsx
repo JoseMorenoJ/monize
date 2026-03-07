@@ -176,6 +176,7 @@ function CurrenciesContent() {
         <PageHeader
           title="Currencies"
           subtitle="Manage currencies used across your accounts and securities"
+          helpUrl="https://github.com/kenlasko/monize/wiki/Currency-Management"
           actions={
             <div className="flex gap-2">
               <Button

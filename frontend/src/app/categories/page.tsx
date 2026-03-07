@@ -110,6 +110,7 @@ function CategoriesContent() {
         <PageHeader
           title="Categories"
           subtitle="Organize your transactions with custom categories"
+          helpUrl="https://github.com/kenlasko/monize/wiki/Categories-and-Payees"
           actions={<Button onClick={openCreate}>+ New Category</Button>}
         />
         {/* Summary Cards */}

@@ -176,6 +176,7 @@ function PayeesContent() {
         <PageHeader
           title="Payees"
           subtitle="Manage your payees and their default categories"
+          helpUrl="https://github.com/kenlasko/monize/wiki/Categories-and-Payees"
           actions={
             <>
               <Button variant="secondary" onClick={() => setShowDeactivate(true)}>

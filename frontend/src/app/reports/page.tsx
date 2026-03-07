@@ -625,6 +625,7 @@ function ReportsContent() {
         <PageHeader
           title="Reports"
           subtitle="Generate insights about your financial health"
+          helpUrl="https://github.com/kenlasko/monize/wiki/Reports"
           actions={
             <>
               <Button

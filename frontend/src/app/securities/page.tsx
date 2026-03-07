@@ -164,6 +164,7 @@ function SecuritiesContent() {
         <PageHeader
           title="Securities"
           subtitle="Manage your stocks, ETFs, mutual funds, and other securities"
+          helpUrl="https://github.com/kenlasko/monize/wiki/Investments"
           actions={<Button onClick={handleCreateNew}>+ New Security</Button>}
         />
         {/* Summary Cards */}

@@ -82,6 +82,7 @@ function BudgetsContent() {
         <PageHeader
           title="Budgets"
           subtitle="Manage your budgets and track spending"
+          helpUrl="https://github.com/kenlasko/monize/wiki/Budgets"
           actions={
             <Button onClick={() => setShowWizard(true)}>
               + New Budget
