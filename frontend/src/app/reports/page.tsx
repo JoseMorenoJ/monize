@@ -559,6 +559,7 @@ function ReportsContent() {
   const router = useRouter();
   const [density, setDensity] = useLocalStorage<DensityLevel>('monize-reports-density', 'normal');
   const [categoryFilter, setCategoryFilter] = useLocalStorage<ReportCategory | 'all'>('monize-reports-category', 'all');
+  const [searchQuery, setSearchQuery] = useState('');
   const [customReports, setCustomReports] = useState<CustomReport[]>([]);
   const [isLoadingCustom, setIsLoadingCustom] = useState(true);
 
@@ -604,9 +605,14 @@ function ReportsContent() {
 
   const allReports = [...reports, ...customReportsAsReports];
 
-  const filteredReports = categoryFilter === 'all'
-    ? allReports
-    : allReports.filter(r => r.category === categoryFilter);
+  const filteredReports = allReports.filter(r => {
+    if (categoryFilter !== 'all' && r.category !== categoryFilter) return false;
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      return r.name.toLowerCase().includes(q) || r.description.toLowerCase().includes(q);
+    }
+    return true;
+  });
 
   const handleReportClick = (reportId: string) => {
     router.push(`/reports/${reportId}`);
@@ -619,6 +625,7 @@ function ReportsContent() {
         <PageHeader
           title="Reports"
           subtitle="Generate insights about your financial health"
+          helpUrl="https://github.com/kenlasko/monize/wiki/Reports"
           actions={
             <>
               <Button
@@ -643,6 +650,17 @@ function ReportsContent() {
             </>
           }
         />
+        {/* Search */}
+        <div className="mb-4">
+          <input
+            type="text"
+            placeholder="Search reports by name or description..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="block w-full max-w-md rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-400 dark:focus:border-blue-400 dark:focus:ring-blue-400 font-sans"
+          />
+        </div>
+
         {/* Category Filter */}
         <div className="mb-6 flex flex-wrap gap-2">
           <button

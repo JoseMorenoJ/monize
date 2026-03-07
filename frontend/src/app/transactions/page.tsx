@@ -388,6 +388,7 @@ function TransactionsContent() {
         <PageHeader
           title="Transactions"
           subtitle="Manage your income and expenses"
+          helpUrl="https://github.com/kenlasko/monize/wiki/Transactions"
           actions={<Button onClick={handleCreateNew}>+ New Transaction</Button>}
         />
         {filters.filterCategoryIds.length > 0 || filters.filterPayeeIds.length > 0 || filters.filterSearch.length > 0 ? (

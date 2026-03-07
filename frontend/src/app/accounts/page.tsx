@@ -137,6 +137,7 @@ function AccountsContent() {
         <PageHeader
           title="Accounts"
           subtitle="Manage your bank accounts, credit cards, and investments"
+          helpUrl="https://github.com/kenlasko/monize/wiki/Accounts"
           actions={<Button onClick={openCreate}>+ New Account</Button>}
         />
         {/* Summary Cards */}

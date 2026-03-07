@@ -156,6 +156,7 @@ function ImportContent() {
         <PageHeader
           title="Import Transactions"
           subtitle="Import transactions from a QIF file"
+          helpUrl="https://github.com/kenlasko/monize/wiki/Importing-from-Microsoft-Money"
         />
         {/* Progress indicator */}
         <div className="mb-8">

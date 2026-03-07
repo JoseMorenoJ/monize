@@ -326,6 +326,106 @@ describe('ReportsPage', () => {
     });
   });
 
+  it('renders the search input', async () => {
+    render(<ReportsPage />);
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/search reports/i)).toBeInTheDocument();
+    });
+  });
+
+  it('filters reports by name when searching', async () => {
+    render(<ReportsPage />);
+    await waitFor(() => {
+      expect(screen.getByText('Spending by Category')).toBeInTheDocument();
+    });
+    fireEvent.change(screen.getByPlaceholderText(/search reports/i), {
+      target: { value: 'Tax Summary' },
+    });
+    expect(screen.getByText('Tax Summary')).toBeInTheDocument();
+    expect(screen.queryByText('Spending by Category')).not.toBeInTheDocument();
+    expect(screen.queryByText('Income vs Expenses')).not.toBeInTheDocument();
+  });
+
+  it('filters reports by description when searching', async () => {
+    render(<ReportsPage />);
+    await waitFor(() => {
+      expect(screen.getByText('Spending by Category')).toBeInTheDocument();
+    });
+    fireEvent.change(screen.getByPlaceholderText(/search reports/i), {
+      target: { value: 'subscriptions' },
+    });
+    // "Recurring Expenses Tracker" has "subscriptions" in its description
+    expect(screen.getByText('Recurring Expenses Tracker')).toBeInTheDocument();
+    expect(screen.queryByText('Spending by Category')).not.toBeInTheDocument();
+  });
+
+  it('search is case-insensitive', async () => {
+    render(<ReportsPage />);
+    await waitFor(() => {
+      expect(screen.getByText('Tax Summary')).toBeInTheDocument();
+    });
+    fireEvent.change(screen.getByPlaceholderText(/search reports/i), {
+      target: { value: 'tax summary' },
+    });
+    expect(screen.getByText('Tax Summary')).toBeInTheDocument();
+  });
+
+  it('shows no reports when search has no matches', async () => {
+    render(<ReportsPage />);
+    await waitFor(() => {
+      expect(screen.getByText('Spending by Category')).toBeInTheDocument();
+    });
+    fireEvent.change(screen.getByPlaceholderText(/search reports/i), {
+      target: { value: 'xyznonexistent' },
+    });
+    expect(screen.getByText('0 reports available')).toBeInTheDocument();
+  });
+
+  it('search works combined with category filter', async () => {
+    currentCategoryFilter = 'spending';
+    render(<ReportsPage />);
+    await waitFor(() => {
+      expect(screen.getByText('Spending by Category')).toBeInTheDocument();
+    });
+    // "Monthly Spending Trend" is in spending category
+    fireEvent.change(screen.getByPlaceholderText(/search reports/i), {
+      target: { value: 'monthly' },
+    });
+    expect(screen.getByText('Monthly Spending Trend')).toBeInTheDocument();
+    // "Monthly Comparison" is in insights category, not spending - should be excluded
+    expect(screen.queryByText('Monthly Comparison')).not.toBeInTheDocument();
+  });
+
+  it('search filters custom reports', async () => {
+    mockGetAllReports.mockResolvedValue([
+      {
+        id: 'cr-1',
+        name: 'My Custom Report',
+        description: 'A custom report',
+        icon: null,
+        backgroundColor: null,
+        viewType: 'TABLE',
+        timeframeType: 'LAST_30_DAYS',
+        groupBy: 'CATEGORY',
+        filters: {},
+        config: {},
+        isFavourite: false,
+        sortOrder: 0,
+        createdAt: '2026-01-01',
+        updatedAt: '2026-01-01',
+      },
+    ]);
+    render(<ReportsPage />);
+    await waitFor(() => {
+      expect(screen.getByText('My Custom Report')).toBeInTheDocument();
+    });
+    fireEvent.change(screen.getByPlaceholderText(/search reports/i), {
+      target: { value: 'My Custom' },
+    });
+    expect(screen.getByText('My Custom Report')).toBeInTheDocument();
+    expect(screen.queryByText('Spending by Category')).not.toBeInTheDocument();
+  });
+
   it('filters to custom category shows only custom reports', async () => {
     currentCategoryFilter = 'custom';
     mockGetAllReports.mockResolvedValue([

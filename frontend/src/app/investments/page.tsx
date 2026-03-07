@@ -103,6 +103,7 @@ function InvestmentsContent() {
           <PageHeader
             title="Investments"
             subtitle="Track your investment portfolio"
+            helpUrl="https://github.com/kenlasko/monize/wiki/Investments"
             actions={
               <>
                 <div className="flex items-stretch gap-3 w-full sm:w-auto">
