@@ -55,6 +55,14 @@ export class UserPreference {
   })
   budgetDigestDay: string;
 
+  @Column({
+    name: "favourite_report_ids",
+    type: "text",
+    array: true,
+    default: "{}",
+  })
+  favouriteReportIds: string[];
+
   @CreateDateColumn({ name: "created_at" })
   createdAt: Date;
 

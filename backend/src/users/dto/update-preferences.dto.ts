@@ -4,9 +4,12 @@ import {
   IsOptional,
   IsBoolean,
   IsInt,
+  IsArray,
   Min,
   Max,
   MaxLength,
+  ArrayMaxSize,
+  Matches,
   IsIn,
 } from "class-validator";
 
@@ -93,4 +96,20 @@ export class UpdatePreferencesDto {
   @IsString()
   @IsIn(["MONDAY", "FRIDAY"])
   budgetDigestDay?: string;
+
+  @ApiPropertyOptional({
+    description: "IDs of favourite built-in reports",
+    example: ["spending-by-category", "net-worth"],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @MaxLength(100, { each: true })
+  @Matches(/^[a-z0-9-]+$/, {
+    each: true,
+    message:
+      "each value in favouriteReportIds must contain only lowercase letters, numbers, and hyphens",
+  })
+  @ArrayMaxSize(100)
+  favouriteReportIds?: string[];
 }

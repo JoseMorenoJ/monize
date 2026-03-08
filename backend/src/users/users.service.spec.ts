@@ -49,6 +49,7 @@ describe("UsersService", () => {
     notificationBrowser: true,
     twoFactorEnabled: false,
     gettingStartedDismissed: false,
+    favouriteReportIds: [],
   };
 
   beforeEach(async () => {
@@ -278,6 +279,7 @@ describe("UsersService", () => {
       expect(result.defaultCurrency).toBe("USD");
       expect(result.dateFormat).toBe("browser");
       expect(result.theme).toBe("system");
+      expect(result.favouriteReportIds).toEqual([]);
     });
   });
 
@@ -319,6 +321,20 @@ describe("UsersService", () => {
       expect(savedData.theme).toBe("dark");
       expect(savedData.notificationEmail).toBe(false);
       expect(savedData.gettingStartedDismissed).toBe(true);
+    });
+
+    it("updates favouriteReportIds", async () => {
+      preferencesRepository.findOne.mockResolvedValue({ ...mockPreferences });
+
+      await service.updatePreferences("user-1", {
+        favouriteReportIds: ["spending-by-category", "net-worth"],
+      });
+
+      const savedData = preferencesRepository.save.mock.calls[0][0];
+      expect(savedData.favouriteReportIds).toEqual([
+        "spending-by-category",
+        "net-worth",
+      ]);
     });
   });
 

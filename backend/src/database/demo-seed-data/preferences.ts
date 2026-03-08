@@ -8,4 +8,5 @@ export const demoPreferences = {
   notificationBrowser: false,
   twoFactorEnabled: false,
   gettingStartedDismissed: true,
+  favouriteReportIds: [],
 };

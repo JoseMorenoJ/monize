@@ -116,6 +116,7 @@ export class UsersService {
       preferences.notificationBrowser = true;
       preferences.twoFactorEnabled = false;
       preferences.gettingStartedDismissed = false;
+      preferences.favouriteReportIds = [];
       await this.preferencesRepository.save(preferences);
     }
 
@@ -159,6 +160,9 @@ export class UsersService {
     }
     if (dto.gettingStartedDismissed !== undefined) {
       preferences.gettingStartedDismissed = dto.gettingStartedDismissed;
+    }
+    if (dto.favouriteReportIds !== undefined) {
+      preferences.favouriteReportIds = dto.favouriteReportIds;
     }
 
     return this.preferencesRepository.save(preferences);
