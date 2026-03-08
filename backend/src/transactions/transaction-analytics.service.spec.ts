@@ -1082,4 +1082,156 @@ describe("TransactionAnalyticsService", () => {
       );
     });
   });
+
+  describe("amount range filter", () => {
+    describe("getSummary", () => {
+      it("applies amountFrom filter when provided", async () => {
+        await service.getSummary(
+          userId,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          -100.5,
+        );
+
+        expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
+          "transaction.amount >= :amountFrom",
+          { amountFrom: -100.5 },
+        );
+      });
+
+      it("applies amountTo filter when provided", async () => {
+        await service.getSummary(
+          userId,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          500.25,
+        );
+
+        expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
+          "transaction.amount <= :amountTo",
+          { amountTo: 500.25 },
+        );
+      });
+
+      it("applies both amountFrom and amountTo when provided", async () => {
+        await service.getSummary(
+          userId,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          10,
+          200,
+        );
+
+        expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
+          "transaction.amount >= :amountFrom",
+          { amountFrom: 10 },
+        );
+        expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
+          "transaction.amount <= :amountTo",
+          { amountTo: 200 },
+        );
+      });
+
+      it("does not apply amount filters when not provided", async () => {
+        await service.getSummary(userId);
+
+        expect(mockQueryBuilder.andWhere).not.toHaveBeenCalledWith(
+          "transaction.amount >= :amountFrom",
+          expect.anything(),
+        );
+        expect(mockQueryBuilder.andWhere).not.toHaveBeenCalledWith(
+          "transaction.amount <= :amountTo",
+          expect.anything(),
+        );
+      });
+    });
+
+    describe("getMonthlyTotals", () => {
+      it("applies amountFrom filter when provided", async () => {
+        await service.getMonthlyTotals(
+          userId,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          -50,
+        );
+
+        expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
+          "transaction.amount >= :amountFrom",
+          { amountFrom: -50 },
+        );
+      });
+
+      it("applies amountTo filter when provided", async () => {
+        await service.getMonthlyTotals(
+          userId,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          1000,
+        );
+
+        expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
+          "transaction.amount <= :amountTo",
+          { amountTo: 1000 },
+        );
+      });
+
+      it("applies both amount filters together", async () => {
+        await service.getMonthlyTotals(
+          userId,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          -100,
+          500,
+        );
+
+        expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
+          "transaction.amount >= :amountFrom",
+          { amountFrom: -100 },
+        );
+        expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
+          "transaction.amount <= :amountTo",
+          { amountTo: 500 },
+        );
+      });
+
+      it("does not apply amount filters when not provided", async () => {
+        await service.getMonthlyTotals(userId);
+
+        expect(mockQueryBuilder.andWhere).not.toHaveBeenCalledWith(
+          "transaction.amount >= :amountFrom",
+          expect.anything(),
+        );
+        expect(mockQueryBuilder.andWhere).not.toHaveBeenCalledWith(
+          "transaction.amount <= :amountTo",
+          expect.anything(),
+        );
+      });
+    });
+  });
 });

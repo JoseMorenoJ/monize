@@ -73,6 +73,8 @@ export const transactionsApi = {
     limit?: number;
     search?: string;
     targetTransactionId?: string;
+    amountFrom?: number;
+    amountTo?: number;
   }): Promise<PaginatedTransactions> => {
     const apiParams = {
       ...buildFilterParams(params),
@@ -82,6 +84,8 @@ export const transactionsApi = {
       limit: params?.limit,
       search: params?.search,
       targetTransactionId: params?.targetTransactionId,
+      amountFrom: params?.amountFrom,
+      amountTo: params?.amountTo,
     };
 
     const response = await apiClient.get<PaginatedTransactions>('/transactions', {
@@ -153,12 +157,16 @@ export const transactionsApi = {
     payeeId?: string;
     payeeIds?: string[];
     search?: string;
+    amountFrom?: number;
+    amountTo?: number;
   }): Promise<TransactionSummary> => {
     const apiParams = {
       ...buildFilterParams(params),
       startDate: params?.startDate,
       endDate: params?.endDate,
       search: params?.search,
+      amountFrom: params?.amountFrom,
+      amountTo: params?.amountTo,
     };
 
     const response = await apiClient.get<TransactionSummary>('/transactions/summary', {
@@ -176,12 +184,16 @@ export const transactionsApi = {
     categoryIds?: string[];
     payeeIds?: string[];
     search?: string;
+    amountFrom?: number;
+    amountTo?: number;
   }): Promise<MonthlyTotal[]> => {
     const apiParams = {
       ...buildFilterParams(params),
       startDate: params?.startDate,
       endDate: params?.endDate,
       search: params?.search,
+      amountFrom: params?.amountFrom,
+      amountTo: params?.amountTo,
     };
 
     const response = await apiClient.get<MonthlyTotal[]>('/transactions/monthly-totals', {

@@ -191,6 +191,8 @@ export class TransactionsService {
     includeInvestmentBrokerage: boolean = false,
     search?: string,
     targetTransactionId?: string,
+    amountFrom?: number,
+    amountTo?: number,
   ): Promise<PaginatedTransactions> {
     let safePage = Math.max(1, page);
     const safeLimit = Math.min(200, Math.max(1, limit));
@@ -261,6 +263,16 @@ export class TransactionsService {
         "(transaction.description ILIKE :search OR transaction.payeeName ILIKE :search OR splits.memo ILIKE :search)",
         { search: searchPattern },
       );
+    }
+
+    if (amountFrom !== undefined) {
+      queryBuilder.andWhere("transaction.amount >= :amountFrom", {
+        amountFrom,
+      });
+    }
+
+    if (amountTo !== undefined) {
+      queryBuilder.andWhere("transaction.amount <= :amountTo", { amountTo });
     }
 
     if (targetTransactionId) {
@@ -977,6 +989,8 @@ export class TransactionsService {
     categoryIds?: string[],
     payeeIds?: string[],
     search?: string,
+    amountFrom?: number,
+    amountTo?: number,
   ) {
     return this.analyticsService.getSummary(
       userId,
@@ -986,6 +1000,8 @@ export class TransactionsService {
       categoryIds,
       payeeIds,
       search,
+      amountFrom,
+      amountTo,
     );
   }
 
@@ -997,6 +1013,8 @@ export class TransactionsService {
     categoryIds?: string[],
     payeeIds?: string[],
     search?: string,
+    amountFrom?: number,
+    amountTo?: number,
   ) {
     return this.analyticsService.getMonthlyTotals(
       userId,
@@ -1006,6 +1024,8 @@ export class TransactionsService {
       categoryIds,
       payeeIds,
       search,
+      amountFrom,
+      amountTo,
     );
   }
 

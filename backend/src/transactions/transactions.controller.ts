@@ -127,6 +127,16 @@ export class TransactionsController {
       "Search text to filter by description, payee name, or split memo",
   })
   @ApiQuery({
+    name: "amountFrom",
+    required: false,
+    description: "Filter by minimum amount (inclusive)",
+  })
+  @ApiQuery({
+    name: "amountTo",
+    required: false,
+    description: "Filter by maximum amount (inclusive)",
+  })
+  @ApiQuery({
     name: "targetTransactionId",
     required: false,
     description:
@@ -153,6 +163,8 @@ export class TransactionsController {
     includeInvestmentBrokerage?: boolean,
     @Query("search") search?: string,
     @Query("targetTransactionId") targetTransactionId?: string,
+    @Query("amountFrom") amountFrom?: string,
+    @Query("amountTo") amountTo?: string,
   ) {
     // Validate pagination parameters
     if (page !== undefined) {
@@ -182,6 +194,18 @@ export class TransactionsController {
     // Truncate search to prevent excessive ILIKE query length
     const sanitizedSearch = search ? search.slice(0, 200) : undefined;
 
+    const parsedAmountFrom =
+      amountFrom !== undefined ? parseFloat(amountFrom) : undefined;
+    if (parsedAmountFrom !== undefined && isNaN(parsedAmountFrom)) {
+      throw new BadRequestException("amountFrom must be a number");
+    }
+
+    const parsedAmountTo =
+      amountTo !== undefined ? parseFloat(amountTo) : undefined;
+    if (parsedAmountTo !== undefined && isNaN(parsedAmountTo)) {
+      throw new BadRequestException("amountTo must be a number");
+    }
+
     return this.transactionsService.findAll(
       req.user.id,
       parseIds(accountIds, accountId),
@@ -194,6 +218,8 @@ export class TransactionsController {
       includeInvestmentBrokerage === true,
       sanitizedSearch,
       targetTransactionId,
+      parsedAmountFrom,
+      parsedAmountTo,
     );
   }
 
@@ -245,6 +271,16 @@ export class TransactionsController {
     description:
       "Search text to filter by description, payee name, or split memo",
   })
+  @ApiQuery({
+    name: "amountFrom",
+    required: false,
+    description: "Filter by minimum amount (inclusive)",
+  })
+  @ApiQuery({
+    name: "amountTo",
+    required: false,
+    description: "Filter by maximum amount (inclusive)",
+  })
   @ApiResponse({
     status: 200,
     description: "Transaction summary retrieved successfully",
@@ -261,9 +297,23 @@ export class TransactionsController {
     @Query("payeeId") payeeId?: string,
     @Query("payeeIds") payeeIds?: string,
     @Query("search") search?: string,
+    @Query("amountFrom") amountFrom?: string,
+    @Query("amountTo") amountTo?: string,
   ) {
     validateDateParam(startDate, "startDate");
     validateDateParam(endDate, "endDate");
+
+    const parsedAmountFrom =
+      amountFrom !== undefined ? parseFloat(amountFrom) : undefined;
+    if (parsedAmountFrom !== undefined && isNaN(parsedAmountFrom)) {
+      throw new BadRequestException("amountFrom must be a number");
+    }
+
+    const parsedAmountTo =
+      amountTo !== undefined ? parseFloat(amountTo) : undefined;
+    if (parsedAmountTo !== undefined && isNaN(parsedAmountTo)) {
+      throw new BadRequestException("amountTo must be a number");
+    }
 
     return this.transactionsService.getSummary(
       req.user.id,
@@ -273,6 +323,8 @@ export class TransactionsController {
       parseCategoryIds(categoryIds ?? categoryId),
       parseIds(payeeIds, payeeId),
       search,
+      parsedAmountFrom,
+      parsedAmountTo,
     );
   }
 
@@ -310,6 +362,16 @@ export class TransactionsController {
     description:
       "Search text to filter by description, payee name, or split memo",
   })
+  @ApiQuery({
+    name: "amountFrom",
+    required: false,
+    description: "Filter by minimum amount (inclusive)",
+  })
+  @ApiQuery({
+    name: "amountTo",
+    required: false,
+    description: "Filter by maximum amount (inclusive)",
+  })
   @ApiResponse({
     status: 200,
     description: "Monthly totals retrieved successfully",
@@ -323,9 +385,23 @@ export class TransactionsController {
     @Query("categoryIds") categoryIds?: string,
     @Query("payeeIds") payeeIds?: string,
     @Query("search") search?: string,
+    @Query("amountFrom") amountFrom?: string,
+    @Query("amountTo") amountTo?: string,
   ) {
     validateDateParam(startDate, "startDate");
     validateDateParam(endDate, "endDate");
+
+    const parsedAmountFrom =
+      amountFrom !== undefined ? parseFloat(amountFrom) : undefined;
+    if (parsedAmountFrom !== undefined && isNaN(parsedAmountFrom)) {
+      throw new BadRequestException("amountFrom must be a number");
+    }
+
+    const parsedAmountTo =
+      amountTo !== undefined ? parseFloat(amountTo) : undefined;
+    if (parsedAmountTo !== undefined && isNaN(parsedAmountTo)) {
+      throw new BadRequestException("amountTo must be a number");
+    }
 
     return this.transactionsService.getMonthlyTotals(
       req.user.id,
@@ -335,6 +411,8 @@ export class TransactionsController {
       parseCategoryIds(categoryIds),
       parseUuids(payeeIds),
       search,
+      parsedAmountFrom,
+      parsedAmountTo,
     );
   }
 

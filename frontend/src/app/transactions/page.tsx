@@ -127,6 +127,9 @@ function TransactionsContent() {
       if (filters.filterEndDate) chartParams.endDate = filters.filterEndDate;
       if (filters.filterAccountIds.length > 0) chartParams.accountIds = filters.filterAccountIds.join(',');
 
+      const parsedAmountFrom = filters.filterAmountFrom ? parseFloat(filters.filterAmountFrom) : undefined;
+      const parsedAmountTo = filters.filterAmountTo ? parseFloat(filters.filterAmountTo) : undefined;
+
       const chartPromise = hasCategoryOrPayeeFilter
         ? transactionsApi.getMonthlyTotals({
             accountIds: accountIdsForQuery,
@@ -135,6 +138,8 @@ function TransactionsContent() {
             categoryIds: filters.filterCategoryIds.length > 0 ? filters.filterCategoryIds : undefined,
             payeeIds: filters.filterPayeeIds.length > 0 ? filters.filterPayeeIds : undefined,
             search: filters.filterSearch || undefined,
+            amountFrom: parsedAmountFrom,
+            amountTo: parsedAmountTo,
           }).catch(() => [] as MonthlyTotal[])
         : accountsApi.getDailyBalances(
             Object.keys(chartParams).length > 0 ? chartParams : undefined,
@@ -151,6 +156,8 @@ function TransactionsContent() {
           page,
           limit: PAGE_SIZE,
           targetTransactionId: targetTransactionId || undefined,
+          amountFrom: parsedAmountFrom,
+          amountTo: parsedAmountTo,
         }),
         chartPromise,
       ]);
@@ -188,7 +195,7 @@ function TransactionsContent() {
     } finally {
       setIsLoading(false);
     }
-  }, [filters.filterAccountIds, filters.filterAccountStatus, filters.filteredAccounts, filters.filterCategoryIds, filters.filterPayeeIds, filters.filterStartDate, filters.filterEndDate, filters.filterSearch]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [filters.filterAccountIds, filters.filterAccountStatus, filters.filteredAccounts, filters.filterCategoryIds, filters.filterPayeeIds, filters.filterStartDate, filters.filterEndDate, filters.filterSearch, filters.filterAmountFrom, filters.filterAmountTo]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadData = useCallback(async (page: number = filters.currentPage) => {
     await loadTransactions(page);
@@ -226,6 +233,8 @@ function TransactionsContent() {
         startDate: filters.filterStartDate,
         endDate: filters.filterEndDate,
         search: filters.filterSearch,
+        amountFrom: filters.filterAmountFrom,
+        amountTo: filters.filterAmountTo,
       }, wasFilterChange);
     }
 
@@ -237,7 +246,7 @@ function TransactionsContent() {
     } else {
       loadTransactions(page);
     }
-  }, [filters.currentPage, filters.filterAccountIds, filters.filterCategoryIds, filters.filterPayeeIds, filters.filterStartDate, filters.filterEndDate, filters.filterSearch, filters.updateUrl, loadTransactions, filters.filtersInitialized]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [filters.currentPage, filters.filterAccountIds, filters.filterCategoryIds, filters.filterPayeeIds, filters.filterStartDate, filters.filterEndDate, filters.filterSearch, filters.filterAmountFrom, filters.filterAmountTo, filters.updateUrl, loadTransactions, filters.filtersInitialized]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Patch popstate handler to skip when modals open
   useEffect(() => {
@@ -334,8 +343,10 @@ function TransactionsContent() {
     if (filters.filterStartDate) f.startDate = filters.filterStartDate;
     if (filters.filterEndDate) f.endDate = filters.filterEndDate;
     if (filters.filterSearch) f.search = filters.filterSearch;
+    if (filters.filterAmountFrom) f.amountFrom = parseFloat(filters.filterAmountFrom);
+    if (filters.filterAmountTo) f.amountTo = parseFloat(filters.filterAmountTo);
     return f;
-  }, [filters.filterAccountIds, filters.filterAccountStatus, filters.filteredAccounts, filters.filterCategoryIds, filters.filterPayeeIds, filters.filterStartDate, filters.filterEndDate, filters.filterSearch]);
+  }, [filters.filterAccountIds, filters.filterAccountStatus, filters.filteredAccounts, filters.filterCategoryIds, filters.filterPayeeIds, filters.filterStartDate, filters.filterEndDate, filters.filterSearch, filters.filterAmountFrom, filters.filterAmountTo]);
 
   // Derive chart currency and aggregate per-account daily balances
   const { chartBalances, chartCurrency } = useMemo(() => {
@@ -442,6 +453,8 @@ function TransactionsContent() {
           searchInput={filters.searchInput}
           filterAccountStatus={filters.filterAccountStatus}
           filterTimePeriod={filters.filterTimePeriod}
+          filterAmountFrom={filters.filterAmountFrom}
+          filterAmountTo={filters.filterAmountTo}
           weekStartsOn={weekStartsOn}
           handleArrayFilterChange={filters.handleArrayFilterChange}
           handleFilterChange={filters.handleFilterChange}
@@ -454,6 +467,8 @@ function TransactionsContent() {
           setFilterEndDate={filters.setFilterEndDate}
           setFilterSearch={filters.setFilterSearch}
           setFilterTimePeriod={filters.setFilterTimePeriod}
+          setFilterAmountFrom={filters.setFilterAmountFrom}
+          setFilterAmountTo={filters.setFilterAmountTo}
           filtersExpanded={filters.filtersExpanded}
           setFiltersExpanded={filters.setFiltersExpanded}
           activeFilterCount={filters.activeFilterCount}

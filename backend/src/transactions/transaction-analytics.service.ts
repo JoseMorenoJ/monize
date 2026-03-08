@@ -22,6 +22,8 @@ export class TransactionAnalyticsService {
     categoryIds?: string[],
     payeeIds?: string[],
     search?: string,
+    amountFrom?: number,
+    amountTo?: number,
   ): Promise<{
     totalIncome: number;
     totalExpenses: number;
@@ -159,6 +161,16 @@ export class TransactionAnalyticsService {
       );
     }
 
+    if (amountFrom !== undefined) {
+      queryBuilder.andWhere("transaction.amount >= :amountFrom", {
+        amountFrom,
+      });
+    }
+
+    if (amountTo !== undefined) {
+      queryBuilder.andWhere("transaction.amount <= :amountTo", { amountTo });
+    }
+
     // When category filter joins splits, use the split amount for split
     // transactions so we only count the matching split, not the full parent.
     const amountExpr = splitsCategoryJoin
@@ -230,6 +242,8 @@ export class TransactionAnalyticsService {
     categoryIds?: string[],
     payeeIds?: string[],
     search?: string,
+    amountFrom?: number,
+    amountTo?: number,
   ): Promise<Array<{ month: string; total: number; count: number }>> {
     const queryBuilder = this.transactionsRepository
       .createQueryBuilder("transaction")
@@ -345,6 +359,16 @@ export class TransactionAnalyticsService {
         "(transaction.description ILIKE :search OR transaction.payeeName ILIKE :search OR splits.memo ILIKE :search)",
         { search: searchPattern },
       );
+    }
+
+    if (amountFrom !== undefined) {
+      queryBuilder.andWhere("transaction.amount >= :amountFrom", {
+        amountFrom,
+      });
+    }
+
+    if (amountTo !== undefined) {
+      queryBuilder.andWhere("transaction.amount <= :amountTo", { amountTo });
     }
 
     // When category filter joins splits, use the split amount for split

@@ -166,6 +166,8 @@ export interface BulkUpdateFilters {
   categoryIds?: string[];
   payeeIds?: string[];
   search?: string;
+  amountFrom?: number;
+  amountTo?: number;
 }
 
 export interface BulkUpdateData {

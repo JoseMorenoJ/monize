@@ -19,6 +19,8 @@ const STORAGE_KEYS = {
   endDate: 'transactions.filter.endDate',
   search: 'transactions.filter.search',
   timePeriod: 'transactions.filter.timePeriod',
+  amountFrom: 'transactions.filter.amountFrom',
+  amountTo: 'transactions.filter.amountTo',
 };
 
 // Helper to get filter values as array
@@ -87,6 +89,8 @@ export function useTransactionFilters({ accounts, categories, payees, weekStarts
   const [filterSearch, setFilterSearch] = useState<string>('');
   const [searchInput, setSearchInput] = useState<string>('');
   const [filterTimePeriod, setFilterTimePeriod] = useState<string>('');
+  const [filterAmountFrom, setFilterAmountFrom] = useState<string>('');
+  const [filterAmountTo, setFilterAmountTo] = useState<string>('');
   const searchDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const [filtersInitialized, setFiltersInitialized] = useState(false);
   const [filtersExpanded, setFiltersExpanded] = useState(true);
@@ -109,6 +113,8 @@ export function useTransactionFilters({ accounts, categories, payees, weekStarts
     startDate: string;
     endDate: string;
     search: string;
+    amountFrom: string;
+    amountTo: string;
   }, push: boolean = false) => {
     const params = new URLSearchParams();
     if (page > 1) params.set('page', page.toString());
@@ -118,6 +124,8 @@ export function useTransactionFilters({ accounts, categories, payees, weekStarts
     if (filters.startDate) params.set('startDate', filters.startDate);
     if (filters.endDate) params.set('endDate', filters.endDate);
     if (filters.search) params.set('search', filters.search);
+    if (filters.amountFrom) params.set('amountFrom', filters.amountFrom);
+    if (filters.amountTo) params.set('amountTo', filters.amountTo);
 
     const queryString = params.toString();
     const newUrl = queryString ? `/transactions?${queryString}` : '/transactions';
@@ -231,8 +239,10 @@ export function useTransactionFilters({ accounts, categories, payees, weekStarts
     if (filterStartDate) count++;
     if (filterEndDate) count++;
     if (filterSearch) count++;
+    if (filterAmountFrom) count++;
+    if (filterAmountTo) count++;
     return count;
-  }, [filterAccountIds, filterCategoryIds, filterPayeeIds, filterStartDate, filterEndDate, filterSearch]);
+  }, [filterAccountIds, filterCategoryIds, filterPayeeIds, filterStartDate, filterEndDate, filterSearch, filterAmountFrom, filterAmountTo]);
 
   // Auto-collapse filters when there are active filters, expand when none
   useEffect(() => {
@@ -252,7 +262,9 @@ export function useTransactionFilters({ accounts, categories, payees, weekStarts
       searchParams.has('payeeIds') ||
       searchParams.has('startDate') ||
       searchParams.has('endDate') ||
-      searchParams.has('search');
+      searchParams.has('search') ||
+      searchParams.has('amountFrom') ||
+      searchParams.has('amountTo');
 
     const getAccountIds = () => {
       const ids = searchParams.get('accountIds');
@@ -280,6 +292,8 @@ export function useTransactionFilters({ accounts, categories, payees, weekStarts
     const initialSearch = getFilterValue(STORAGE_KEYS.search, searchParams.get('search'), hasAnyUrlParams);
     setFilterSearch(initialSearch);
     setSearchInput(initialSearch);
+    setFilterAmountFrom(getFilterValue(STORAGE_KEYS.amountFrom, searchParams.get('amountFrom'), hasAnyUrlParams));
+    setFilterAmountTo(getFilterValue(STORAGE_KEYS.amountTo, searchParams.get('amountTo'), hasAnyUrlParams));
     if (hasAnyUrlParams) {
       setFilterTimePeriod((initialStartDate || initialEndDate) ? 'custom' : '');
     } else {
@@ -303,7 +317,9 @@ export function useTransactionFilters({ accounts, categories, payees, weekStarts
     localStorage.setItem(STORAGE_KEYS.endDate, filterEndDate);
     localStorage.setItem(STORAGE_KEYS.search, filterSearch);
     localStorage.setItem(STORAGE_KEYS.timePeriod, filterTimePeriod);
-  }, [filterAccountIds, filterCategoryIds, filterPayeeIds, filterStartDate, filterEndDate, filterSearch, filterTimePeriod, filtersInitialized]);
+    localStorage.setItem(STORAGE_KEYS.amountFrom, filterAmountFrom);
+    localStorage.setItem(STORAGE_KEYS.amountTo, filterAmountTo);
+  }, [filterAccountIds, filterCategoryIds, filterPayeeIds, filterStartDate, filterEndDate, filterSearch, filterTimePeriod, filterAmountFrom, filterAmountTo, filtersInitialized]);
 
   // Helper to update array filter and mark as filter change
   const handleArrayFilterChange = useCallback(<T,>(setter: (value: T) => void, value: T) => {
@@ -351,6 +367,8 @@ export function useTransactionFilters({ accounts, categories, payees, weekStarts
       const search = params.get('search') || '';
       setFilterSearch(search);
       setSearchInput(search);
+      setFilterAmountFrom(params.get('amountFrom') || '');
+      setFilterAmountTo(params.get('amountTo') || '');
       const hasDateParams = params.has('startDate') || params.has('endDate');
       setFilterTimePeriod(hasDateParams ? 'custom' : '');
       const pageParam = params.get('page');
@@ -402,6 +420,8 @@ export function useTransactionFilters({ accounts, categories, payees, weekStarts
     setFilterEndDate('');
     setFilterSearch('');
     setFilterTimePeriod('');
+    setFilterAmountFrom('');
+    setFilterAmountTo('');
     localStorage.removeItem(STORAGE_KEYS.accountIds);
     localStorage.removeItem(STORAGE_KEYS.categoryIds);
     localStorage.removeItem(STORAGE_KEYS.payeeIds);
@@ -409,6 +429,8 @@ export function useTransactionFilters({ accounts, categories, payees, weekStarts
     localStorage.removeItem(STORAGE_KEYS.endDate);
     localStorage.removeItem(STORAGE_KEYS.search);
     localStorage.removeItem(STORAGE_KEYS.timePeriod);
+    localStorage.removeItem(STORAGE_KEYS.amountFrom);
+    localStorage.removeItem(STORAGE_KEYS.amountTo);
     router.replace('/transactions', { scroll: false });
   }, [router]);
 
@@ -430,6 +452,8 @@ export function useTransactionFilters({ accounts, categories, payees, weekStarts
     filterSearch, setFilterSearch,
     searchInput,
     filterTimePeriod, setFilterTimePeriod,
+    filterAmountFrom, setFilterAmountFrom,
+    filterAmountTo, setFilterAmountTo,
     filtersInitialized,
     filtersExpanded, setFiltersExpanded,
     activeFilterCount,
