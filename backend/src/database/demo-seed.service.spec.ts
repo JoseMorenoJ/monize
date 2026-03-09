@@ -66,10 +66,11 @@ describe("DemoSeedService", () => {
 
       const userLookup = dataSource.query.mock.calls.find(
         (call: string[]) =>
-          call[0].includes("SELECT id FROM users") && call[0].includes("email"),
+          call[0].includes("SELECT id FROM users") &&
+          call[0].includes("first_name"),
       );
       expect(userLookup).toBeDefined();
-      expect(userLookup[1]).toContain("demo@monize.com");
+      expect(userLookup[1]).toContain("Demo");
     });
 
     it("throws if demo user is not found after base seeding", async () => {

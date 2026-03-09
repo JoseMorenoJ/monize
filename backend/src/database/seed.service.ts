@@ -1,7 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository, DataSource } from "typeorm";
-import * as bcrypt from "bcryptjs";
 import { User } from "../users/entities/user.entity";
 
 @Injectable()
@@ -76,30 +75,26 @@ export class SeedService {
   }
 
   private async seedDemoUser(): Promise<string> {
-    console.log("\n👤 Seeding demo user...");
-
-    const email = "demo@monize.com";
-    const password = "Demo123!";
-    const hashedPassword = await bcrypt.hash(password, 10);
+    console.log("\n👤 Seeding demo profile...");
 
     const existingUser = await this.dataSource.query(
-      "SELECT id FROM users WHERE email = $1",
-      [email],
+      "SELECT id FROM users WHERE first_name = $1 AND last_name = $2",
+      ["Demo", "User"],
     );
 
     if (existingUser.length > 0) {
-      console.log("   ✓ Demo user already exists");
+      console.log("   ✓ Demo profile already exists");
       return existingUser[0].id;
     }
 
     const result = await this.dataSource.query(
-      `INSERT INTO users (email, password_hash, first_name, last_name, auth_provider, is_active)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO users (first_name, last_name)
+       VALUES ($1, $2)
        RETURNING id`,
-      [email, hashedPassword, "Demo", "User", "local", true],
+      ["Demo", "User"],
     );
 
-    console.log(`   ✓ Created demo user: ${email}`);
+    console.log("   ✓ Created demo profile");
     return result[0].id;
   }
 

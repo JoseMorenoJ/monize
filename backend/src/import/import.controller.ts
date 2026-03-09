@@ -5,7 +5,7 @@ import {
   ApiResponse,
   ApiBearerAuth,
 } from "@nestjs/swagger";
-import { AuthGuard } from "@nestjs/passport";
+import { SessionGuard } from "../common/guards/session.guard";
 import { ImportService } from "./import.service";
 import {
   ParseQifDto,
@@ -16,7 +16,7 @@ import {
 
 @ApiTags("Import")
 @ApiBearerAuth()
-@UseGuards(AuthGuard("jwt"))
+@UseGuards(SessionGuard)
 @Controller("import")
 export class ImportController {
   constructor(private readonly importService: ImportService) {}

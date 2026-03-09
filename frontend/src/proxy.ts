@@ -3,7 +3,7 @@ import type { NextRequest } from 'next/server';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('Proxy');
-const publicPaths = ['/login', '/register', '/auth/callback', '/forgot-password', '/reset-password'];
+const publicPaths = ['/profiles'];
 let backendConnected = false;
 
 function buildCspHeader(nonce: string): string {
@@ -82,17 +82,16 @@ export async function proxy(request: NextRequest) {
   // Handle auth redirects for non-API routes
   // Check for either access token or refresh token (access token expires in 15m,
   // but refresh token lasts 7 days — if present, the frontend will refresh transparently)
-  const token = request.cookies.get('auth_token')?.value || request.cookies.get('refresh_token')?.value;
+  const token = request.cookies.get('profile_session')?.value;
 
-  // Allow public paths - don't redirect auth pages to dashboard based on cookie alone,
-  // as the cookie may reference a deleted/inactive user. Let the client handle redirects.
+  // Allow public paths (profile picker) without a session
   if (publicPaths.some(path => pathname.startsWith(path))) {
     return nextWithCsp(request);
   }
 
   // Protect all other routes
   if (!token) {
-    const loginUrl = new URL('/login', request.url);
+    const loginUrl = new URL('/profiles', request.url);
     return NextResponse.redirect(loginUrl);
   }
 

@@ -135,10 +135,8 @@ describe("BudgetPeriodCronService", () => {
 
   const mockUser: Partial<User> = {
     id: "user-1",
-    email: "alice@example.com",
     firstName: "Alice",
     lastName: "Smith",
-    isActive: true,
   };
 
   beforeEach(async () => {
@@ -395,7 +393,7 @@ describe("BudgetPeriodCronService", () => {
       );
     });
 
-    it("calls sendMonthlySummaryEmails after closing periods", async () => {
+    it("does not send emails after closing periods (profiles have no email)", async () => {
       budgetsRepository.find.mockResolvedValue([mockBudget]);
       periodsRepository.findOne.mockResolvedValue({
         ...mockOpenPeriod,
@@ -403,12 +401,9 @@ describe("BudgetPeriodCronService", () => {
       });
       budgetPeriodService.closePeriod.mockResolvedValue(mockClosedPeriod);
 
-      usersRepository.findOne.mockResolvedValue(mockUser);
-      preferencesRepository.findOne.mockResolvedValue(null);
-
       await service.closeExpiredPeriods();
 
-      expect(emailService.sendMail).toHaveBeenCalled();
+      expect(emailService.sendMail).not.toHaveBeenCalled();
     });
 
     it("does not call sendMonthlySummaryEmails when no periods were closed", async () => {
@@ -432,181 +427,13 @@ describe("BudgetPeriodCronService", () => {
 
       await service.sendMonthlySummaryEmails(closedPeriods);
 
-      expect(usersRepository.findOne).not.toHaveBeenCalled();
       expect(emailService.sendMail).not.toHaveBeenCalled();
     });
 
-    it("skips users with disabled email notifications", async () => {
-      preferencesRepository.findOne.mockResolvedValue({
-        userId: "user-1",
-        notificationEmail: false,
-        budgetDigestEnabled: true,
-      });
-
-      await service.sendMonthlySummaryEmails(closedPeriods);
-
-      expect(usersRepository.findOne).not.toHaveBeenCalled();
-      expect(emailService.sendMail).not.toHaveBeenCalled();
-    });
-
-    it("skips users with disabled budget digest", async () => {
-      preferencesRepository.findOne.mockResolvedValue({
-        userId: "user-1",
-        notificationEmail: true,
-        budgetDigestEnabled: false,
-      });
-
-      await service.sendMonthlySummaryEmails(closedPeriods);
-
-      expect(usersRepository.findOne).not.toHaveBeenCalled();
-      expect(emailService.sendMail).not.toHaveBeenCalled();
-    });
-
-    it("skips users without an email address", async () => {
-      preferencesRepository.findOne.mockResolvedValue(null);
-      usersRepository.findOne.mockResolvedValue({
-        ...mockUser,
-        email: null,
-      });
-
+    it("does not send emails (profiles have no email addresses)", async () => {
       await service.sendMonthlySummaryEmails(closedPeriods);
 
       expect(emailService.sendMail).not.toHaveBeenCalled();
-    });
-
-    it("skips when user is not found", async () => {
-      preferencesRepository.findOne.mockResolvedValue(null);
-      usersRepository.findOne.mockResolvedValue(null);
-
-      await service.sendMonthlySummaryEmails(closedPeriods);
-
-      expect(emailService.sendMail).not.toHaveBeenCalled();
-    });
-
-    it("sends email with correct template data", async () => {
-      preferencesRepository.findOne.mockResolvedValue(null);
-      usersRepository.findOne.mockResolvedValue(mockUser);
-
-      await service.sendMonthlySummaryEmails(closedPeriods);
-
-      expect(emailService.sendMail).toHaveBeenCalledTimes(1);
-      expect(emailService.sendMail).toHaveBeenCalledWith(
-        "alice@example.com",
-        expect.stringContaining("Monthly budget summary"),
-        expect.stringContaining("Monthly Budget Summary"),
-      );
-
-      const htmlArg = emailService.sendMail.mock.calls[0][2];
-      expect(htmlArg).toContain("Alice");
-      expect(htmlArg).toContain("Monthly Budget");
-    });
-
-    it("includes health score in email when available", async () => {
-      preferencesRepository.findOne.mockResolvedValue(null);
-      usersRepository.findOne.mockResolvedValue(mockUser);
-
-      await service.sendMonthlySummaryEmails(closedPeriods);
-
-      const htmlArg = emailService.sendMail.mock.calls[0][2];
-      expect(htmlArg).toContain("Health Score");
-      expect(htmlArg).toContain("85/100");
-    });
-
-    it("still sends email when health score fetch fails", async () => {
-      budgetReportsService.getHealthScore.mockRejectedValue(
-        new Error("Health score unavailable"),
-      );
-      preferencesRepository.findOne.mockResolvedValue(null);
-      usersRepository.findOne.mockResolvedValue(mockUser);
-
-      await service.sendMonthlySummaryEmails(closedPeriods);
-
-      expect(emailService.sendMail).toHaveBeenCalledTimes(1);
-      const htmlArg = emailService.sendMail.mock.calls[0][2];
-      expect(htmlArg).not.toContain("Health Score");
-    });
-
-    it("groups multiple budgets for the same user into one email", async () => {
-      const secondBudget = {
-        ...mockBudget,
-        id: "budget-2",
-        name: "Annual Budget",
-      };
-      const secondPeriod = {
-        ...mockClosedPeriod,
-        id: "period-2",
-        budgetId: "budget-2",
-      };
-      const multiPeriods = [
-        { budget: mockBudget, period: mockClosedPeriod },
-        { budget: secondBudget, period: secondPeriod },
-      ];
-
-      preferencesRepository.findOne.mockResolvedValue(null);
-      usersRepository.findOne.mockResolvedValue(mockUser);
-
-      await service.sendMonthlySummaryEmails(multiPeriods);
-
-      expect(emailService.sendMail).toHaveBeenCalledTimes(1);
-      expect(emailService.sendMail).toHaveBeenCalledWith(
-        "alice@example.com",
-        expect.stringContaining("2 budgets"),
-        expect.any(String),
-      );
-    });
-
-    it("handles errors for individual users without stopping others", async () => {
-      const otherBudget = {
-        ...mockBudget,
-        id: "budget-3",
-        userId: "user-2",
-        name: "Other Budget",
-      };
-      const multiPeriods = [
-        { budget: mockBudget, period: mockClosedPeriod },
-        {
-          budget: otherBudget,
-          period: { ...mockClosedPeriod, budgetId: otherBudget.id },
-        },
-      ];
-
-      preferencesRepository.findOne.mockResolvedValue(null);
-      usersRepository.findOne
-        .mockResolvedValueOnce(null)
-        .mockResolvedValueOnce({
-          id: "user-2",
-          email: "bob@example.com",
-          firstName: "Bob",
-        });
-
-      await service.sendMonthlySummaryEmails(multiPeriods);
-
-      expect(emailService.sendMail).toHaveBeenCalledTimes(1);
-      expect(emailService.sendMail).toHaveBeenCalledWith(
-        "bob@example.com",
-        expect.any(String),
-        expect.any(String),
-      );
-    });
-
-    it("uses correct subject line for single budget", async () => {
-      preferencesRepository.findOne.mockResolvedValue(null);
-      usersRepository.findOne.mockResolvedValue(mockUser);
-
-      await service.sendMonthlySummaryEmails(closedPeriods);
-
-      const subject = emailService.sendMail.mock.calls[0][1];
-      expect(subject).toMatch(/^Monize: Monthly budget summary -/);
-    });
-
-    it("includes the app URL link in the email", async () => {
-      preferencesRepository.findOne.mockResolvedValue(null);
-      usersRepository.findOne.mockResolvedValue(mockUser);
-
-      await service.sendMonthlySummaryEmails(closedPeriods);
-
-      const htmlArg = emailService.sendMail.mock.calls[0][2];
-      expect(htmlArg).toContain("https://monize.app/budgets");
     });
   });
 });

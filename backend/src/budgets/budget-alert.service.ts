@@ -16,10 +16,6 @@ import { UserPreference } from "../users/entities/user-preference.entity";
 import { ScheduledTransaction } from "../scheduled-transactions/entities/scheduled-transaction.entity";
 import { EmailService } from "../notifications/email.service";
 import {
-  budgetAlertImmediateTemplate,
-  budgetWeeklyDigestTemplate,
-} from "../notifications/email-templates";
-import {
   getCurrentMonthPeriodDates,
   PeriodDateRange,
 } from "./budget-date.utils";
@@ -583,149 +579,19 @@ export class BudgetAlertService {
   }
 
   private async sendImmediateAlertEmail(
-    userId: string,
-    alerts: BudgetAlert[],
+    _userId: string,
+    _alerts: BudgetAlert[],
   ): Promise<boolean> {
-    if (!this.emailService.getStatus().configured) return false;
-
-    try {
-      const prefs = await this.preferencesRepository.findOne({
-        where: { userId },
-      });
-      if (prefs && !prefs.notificationEmail) return false;
-
-      const user = await this.usersRepository.findOne({
-        where: { id: userId },
-      });
-      if (!user || !user.email) return false;
-
-      const appUrl = this.configService.get<string>(
-        "PUBLIC_APP_URL",
-        "http://localhost:3000",
-      );
-
-      const alertData = alerts.map((a) => ({
-        title: a.title,
-        message: a.message,
-        severity: a.severity,
-        categoryName: (a.data?.categoryName as string) || "",
-      }));
-
-      const html = budgetAlertImmediateTemplate(
-        user.firstName || "",
-        alertData,
-        appUrl,
-      );
-
-      const subject =
-        alerts.length === 1
-          ? `Monize: Alert - ${alerts[0].title}`
-          : `Monize: ${alerts.length} alerts need attention`;
-
-      await this.emailService.sendMail(user.email, subject, html);
-      return true;
-    } catch (error) {
-      this.logger.error(
-        `Failed to send immediate budget alert email to user ${userId}`,
-        error instanceof Error ? error.stack : error,
-      );
-      return false;
-    }
+    // Profiles have no email addresses; email sending is disabled
+    return false;
   }
 
   private async sendDigestForUser(
-    userId: string,
-    budgets: Budget[],
+    _userId: string,
+    _budgets: Budget[],
   ): Promise<boolean> {
-    const prefs = await this.preferencesRepository.findOne({
-      where: { userId },
-    });
-    if (prefs && !prefs.notificationEmail) return false;
-    if (prefs && prefs.budgetDigestEnabled === false) return false;
-
-    const user = await this.usersRepository.findOne({
-      where: { id: userId },
-    });
-    if (!user || !user.email) return false;
-
-    const { periodStart } = this.getCurrentPeriodDates();
-
-    const allRecentAlerts = await this.alertsRepository.find({
-      where: {
-        userId,
-        periodStart,
-      },
-      order: { createdAt: "DESC" },
-      take: 20,
-    });
-
-    if (allRecentAlerts.length === 0) return false;
-
-    // Filter out BILL_DUE alerts for bills already paid ahead of time
-    const billAlerts = allRecentAlerts.filter(
-      (a) => a.alertType === AlertType.BILL_DUE,
-    );
-    const paidBillIds = new Set<string>();
-    if (billAlerts.length > 0) {
-      const billIds = billAlerts
-        .map((a) => (a.data as Record<string, unknown>)?.billId as string)
-        .filter(Boolean);
-      if (billIds.length > 0) {
-        const bills = await this.scheduledTransactionsRepository
-          .createQueryBuilder("st")
-          .where("st.id IN (:...billIds)", { billIds })
-          .getMany();
-        for (const bill of bills) {
-          const alertForBill = billAlerts.find(
-            (a) => (a.data as Record<string, unknown>)?.billId === bill.id,
-          );
-          if (!alertForBill) continue;
-          const alertDueDate = (alertForBill.data as Record<string, unknown>)
-            ?.dueDate as string;
-          // Bill was posted and nextDueDate advanced past the alert's due date
-          if (
-            alertDueDate &&
-            bill.nextDueDate &&
-            String(bill.nextDueDate) > alertDueDate
-          ) {
-            paidBillIds.add(bill.id);
-          }
-        }
-      }
-    }
-
-    const recentAlerts = allRecentAlerts.filter((a) => {
-      if (a.alertType !== AlertType.BILL_DUE) return true;
-      const billId = (a.data as Record<string, unknown>)?.billId as string;
-      return !paidBillIds.has(billId);
-    });
-
-    if (recentAlerts.length === 0) return false;
-
-    const appUrl = this.configService.get<string>(
-      "PUBLIC_APP_URL",
-      "http://localhost:3000",
-    );
-
-    const alertData = recentAlerts.map((a) => ({
-      title: a.title,
-      message: a.message,
-      severity: a.severity,
-      categoryName: (a.data?.categoryName as string) || "",
-    }));
-
-    const budgetNames = budgets.map((b) => b.name);
-
-    const html = budgetWeeklyDigestTemplate(
-      user.firstName || "",
-      alertData,
-      budgetNames,
-      appUrl,
-    );
-
-    const subject = "Monize: Your weekly budget summary";
-    await this.emailService.sendMail(user.email, subject, html);
-    return true;
+    // Profiles have no email addresses; email sending is disabled
+    return false;
   }
 
   async checkSeasonalSpikes(

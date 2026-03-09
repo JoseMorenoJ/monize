@@ -1,28 +1,20 @@
-import { useAuthStore } from '@/store/authStore';
+import { useProfileStore } from '@/store/profileStore';
 
 export function setAuthenticatedState() {
-  useAuthStore.setState({
-    user: {
+  useProfileStore.setState({
+    profile: {
       id: 'test-user-id',
-      email: 'test@example.com',
       firstName: 'Test',
       lastName: 'User',
-      authProvider: 'local',
-      hasPassword: true,
-      role: 'user',
-      isActive: true,
-      mustChangePassword: false,
+      avatarColor: '#6366f1',
       createdAt: '2026-01-01T00:00:00Z',
       updatedAt: '2026-01-01T00:00:00Z',
     },
-    isAuthenticated: true,
-    isLoading: false,
+    isSelected: true,
     _hasHydrated: true,
-    token: 'httpOnly',
-    error: null,
   });
 }
 
 export function resetStores() {
-  useAuthStore.getState().logout();
+  useProfileStore.getState().deselectProfile();
 }

@@ -20,11 +20,9 @@ import {
   ApiResponse,
   ApiQuery,
 } from "@nestjs/swagger";
-import { AuthGuard } from "@nestjs/passport";
+import { SessionGuard } from "../common/guards/session.guard";
 import { Throttle } from "@nestjs/throttler";
 import { ParseSymbolPipe } from "../common/pipes/parse-symbol.pipe";
-import { RolesGuard } from "../auth/guards/roles.guard";
-import { Roles } from "../auth/decorators/roles.decorator";
 import { SecuritiesService } from "./securities.service";
 import {
   SecurityPriceService,
@@ -41,7 +39,7 @@ import { Security } from "./entities/security.entity";
 
 @ApiTags("Securities")
 @ApiBearerAuth()
-@UseGuards(AuthGuard("jwt"))
+@UseGuards(SessionGuard)
 @Controller("securities")
 export class SecuritiesController {
   private readonly logger = new Logger(SecuritiesController.name);
@@ -191,8 +189,6 @@ export class SecuritiesController {
   }
 
   @Post("prices/refresh")
-  @UseGuards(RolesGuard)
-  @Roles("admin")
   @ApiOperation({
     summary: "Refresh prices for all active securities (admin only)",
     description:
@@ -279,8 +275,6 @@ export class SecuritiesController {
   }
 
   @Post("prices/backfill")
-  @UseGuards(RolesGuard)
-  @Roles("admin")
   @ApiOperation({
     summary:
       "Backfill historical prices for all active securities (admin only)",

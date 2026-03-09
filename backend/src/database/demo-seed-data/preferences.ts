@@ -4,8 +4,5 @@ export const demoPreferences = {
   numberFormat: "en-CA",
   theme: "system",
   timezone: "America/Toronto",
-  notificationEmail: false,
-  notificationBrowser: false,
-  twoFactorEnabled: false,
   gettingStartedDismissed: true,
 };

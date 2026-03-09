@@ -12,7 +12,7 @@ Personal finance management app (Microsoft Money replacement). NestJS backend, N
 | Styling | Tailwind CSS | 4.x |
 | State | Zustand (frontend), class-validator DTOs (backend) |
 | Forms | react-hook-form + Zod (frontend), class-validator (backend) |
-| Auth | JWT + Passport + OIDC + TOTP 2FA |
+| Auth | Profile-based sessions (signed cookies, no passwords) |
 | AI | Anthropic SDK, OpenAI SDK, Ollama (user-configurable) |
 | Testing | Jest (backend), Vitest (frontend), Playwright (e2e) |
 
@@ -55,7 +55,6 @@ backend/src/
     {feature}.service.spec.ts
     {feature}.controller.spec.ts
   common/                    # Shared guards, pipes, decorators, utils
-  auth/                      # JWT, OIDC, 2FA, PATs, refresh tokens
   ai/                        # AI providers, query engine, MCP server
 
 frontend/src/
@@ -63,7 +62,7 @@ frontend/src/
   components/{feature}/      # Feature-organized React components
   lib/                       # API clients (axios), utilities
   hooks/                     # Custom React hooks
-  store/                     # Zustand stores (auth, preferences, demo)
+  store/                     # Zustand stores (profileStore, preferencesStore, demoStore)
   types/                     # Shared TypeScript interfaces
 
 database/
@@ -97,13 +96,11 @@ After writing or editing code, check LSP diagnostics and fix errors before proce
 
 ### Security (Do Not Regress)
 - Parameterized queries only (TypeORM QueryBuilder or parameterized raw SQL). Never interpolate user input into SQL strings
-- All controllers use `@UseGuards(AuthGuard('jwt'))` at class level (except health + auth)
-- All service methods derive `userId` from JWT (`req.user.id`), never from request params/body
+- All controllers use `@UseGuards(SessionGuard)` at class level (except health + profile selection endpoints)
+- All service methods derive `userId` from session cookie (`req.user.id`), never from request params/body
 - All path `:id` params use `ParseUUIDPipe`
 - DTOs use `whitelist: true` + `forbidNonWhitelisted: true`
-- All user-controlled values in HTML email templates must use `escapeHtml()`
 - API keys encrypted with AES-256-GCM before storage, never returned to client
-- CSRF double-submit cookie pattern is global; use `@SkipCsrf()` only for non-cookie auth (e.g., PAT bearer)
 
 ## Backend Patterns
 
@@ -114,7 +111,7 @@ Every feature follows this structure:
 ```typescript
 // controller -- thin, delegates to service
 @Controller('feature')
-@UseGuards(AuthGuard('jwt'))
+@UseGuards(SessionGuard)
 export class FeatureController {
   constructor(private featureService: FeatureService) {}
 
@@ -265,7 +262,7 @@ Wrap user interactions that trigger async state updates: `await act(async () => 
 ### State Management
 
 Three Zustand stores in `frontend/src/store/`:
-- `authStore` -- user, isAuthenticated, login/logout
+- `profileStore` -- active profile, isSelected, select/deselect profile
 - `preferencesStore` -- defaultCurrency, dateFormat, theme
 - `demoStore` -- demo mode state
 
@@ -280,9 +277,7 @@ Three Zustand stores in `frontend/src/store/`:
 ## Environment
 
 Key env vars (see `.env.example` for full list):
-- `JWT_SECRET` -- minimum 32 chars, enforced at startup
+- `COOKIE_SECRET` -- signs profile session cookies (required in production, dev has default)
 - `AI_ENCRYPTION_KEY` -- minimum 32 chars, for API key encryption
 - `DATABASE_*` -- PostgreSQL connection
 - `DEMO_MODE=true` -- enables demo restrictions, daily reset at 4 AM UTC
-- `LOCAL_AUTH_ENABLED` / `REGISTRATION_ENABLED` -- auth toggles
-- `OIDC_*` -- OpenID Connect provider config

@@ -11,14 +11,8 @@ import { ConfigModule, ConfigService } from "@nestjs/config";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import { ScheduleModule } from "@nestjs/schedule";
 import { ThrottlerModule, ThrottlerGuard } from "@nestjs/throttler";
-import { CsrfGuard } from "./common/guards/csrf.guard";
 import { DemoModeGuard } from "./common/guards/demo-mode.guard";
-import { MustChangePasswordGuard } from "./auth/guards/must-change-password.guard";
-import { PatScopeGuard } from "./auth/guards/pat-scope.guard";
-import { CsrfRefreshInterceptor } from "./common/interceptors/csrf-refresh.interceptor";
 import { DemoModeModule } from "./common/demo-mode.module";
-
-import { AuthModule } from "./auth/auth.module";
 import { UsersModule } from "./users/users.module";
 import { AccountsModule } from "./accounts/accounts.module";
 import { TransactionsModule } from "./transactions/transactions.module";
@@ -34,7 +28,6 @@ import { NetWorthModule } from "./net-worth/net-worth.module";
 import { BuiltInReportsModule } from "./built-in-reports/built-in-reports.module";
 import { NotificationsModule } from "./notifications/notifications.module";
 import { HealthModule } from "./health/health.module";
-import { AdminModule } from "./admin/admin.module";
 import { AiModule } from "./ai/ai.module";
 import { McpModule } from "./mcp/mcp.module";
 import { BudgetsModule } from "./budgets/budgets.module";
@@ -89,7 +82,6 @@ import { BudgetsModule } from "./budgets/budgets.module";
 
     // Feature modules
     HealthModule,
-    AuthModule,
     UsersModule,
     AccountsModule,
     TransactionsModule,
@@ -104,7 +96,6 @@ import { BudgetsModule } from "./budgets/budgets.module";
     NetWorthModule,
     BuiltInReportsModule,
     NotificationsModule,
-    AdminModule,
     AiModule,
     McpModule,
     BudgetsModule,
@@ -112,11 +103,7 @@ import { BudgetsModule } from "./budgets/budgets.module";
   providers: [
     { provide: APP_FILTER, useClass: GlobalExceptionFilter },
     { provide: APP_GUARD, useClass: ThrottlerGuard },
-    { provide: APP_GUARD, useClass: CsrfGuard },
-    { provide: APP_GUARD, useClass: MustChangePasswordGuard },
-    { provide: APP_GUARD, useClass: PatScopeGuard },
     { provide: APP_GUARD, useClass: DemoModeGuard },
-    { provide: APP_INTERCEPTOR, useClass: CsrfRefreshInterceptor },
     {
       provide: APP_INTERCEPTOR,
       useFactory: (reflector: Reflector) =>

@@ -1,10 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
-import { useAuthStore } from '@/store/authStore';
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { useProfileStore } from '@/store/profileStore';
 import { usePreferencesStore } from '@/store/preferencesStore';
-import { authApi } from '@/lib/auth';
 import { useDemoStore } from '@/store/demoStore';
 
 interface ProtectedRouteProps {
@@ -13,54 +12,24 @@ interface ProtectedRouteProps {
 
 export function ProtectedRoute({ children }: ProtectedRouteProps) {
   const router = useRouter();
-  const pathname = usePathname();
-  const { user, isAuthenticated, isLoading, _hasHydrated } = useAuthStore();
+  const { isSelected, _hasHydrated } = useProfileStore();
   const { preferences } = usePreferencesStore();
-  const [force2fa, setForce2fa] = useState(false);
 
   useEffect(() => {
-    if (_hasHydrated && !isLoading && !isAuthenticated) {
-      router.push('/login');
+    if (_hasHydrated && !isSelected) {
+      router.push('/profiles');
     }
-  }, [isAuthenticated, isLoading, _hasHydrated, router]);
+  }, [isSelected, _hasHydrated, router]);
 
-  // Fetch force2fa setting
+  // Set demo mode from preferences (backend sets this via DemoModeGuard)
   useEffect(() => {
-    if (isAuthenticated && user?.hasPassword) {
-      authApi.getAuthMethods().then((methods) => {
-        setForce2fa(methods.force2fa);
-        useDemoStore.getState().setDemoMode(methods.demo ?? false);
-      }).catch(() => {});
+    if (preferences) {
+      // Demo mode is server-side enforced; no client-side flag needed
+      useDemoStore.getState().setDemoMode(false);
     }
-  }, [isAuthenticated, user?.hasPassword]);
+  }, [preferences]);
 
-  // Force password change for users with a local password
-  useEffect(() => {
-    if (
-      user?.mustChangePassword &&
-      user.hasPassword &&
-      pathname !== '/change-password'
-    ) {
-      router.push('/change-password');
-    }
-  }, [user, pathname, router]);
-
-  // Force 2FA setup for users with a local password when FORCE_2FA is enabled
-  useEffect(() => {
-    if (
-      force2fa &&
-      user?.hasPassword &&
-      !user?.mustChangePassword &&
-      preferences &&
-      !preferences.twoFactorEnabled &&
-      pathname !== '/setup-2fa' &&
-      pathname !== '/change-password'
-    ) {
-      router.push('/setup-2fa');
-    }
-  }, [force2fa, user, preferences, pathname, router]);
-
-  if (!_hasHydrated || isLoading) {
+  if (!_hasHydrated) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
         <div className="text-center">
@@ -71,7 +40,7 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     );
   }
 
-  if (!isAuthenticated) {
+  if (!isSelected) {
     return null;
   }
 

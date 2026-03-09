@@ -53,16 +53,6 @@ export class UpdatePreferencesDto {
   @MaxLength(100)
   timezone?: string;
 
-  @ApiPropertyOptional({ description: "Receive email notifications" })
-  @IsOptional()
-  @IsBoolean()
-  notificationEmail?: boolean;
-
-  @ApiPropertyOptional({ description: "Receive browser notifications" })
-  @IsOptional()
-  @IsBoolean()
-  notificationBrowser?: boolean;
-
   @ApiPropertyOptional({ description: "Dismiss the Getting Started guide" })
   @IsOptional()
   @IsBoolean()

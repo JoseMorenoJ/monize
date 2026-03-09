@@ -4,9 +4,6 @@ import { DemoResetService } from "./demo-reset.service";
 import { DemoSeedService } from "./demo-seed.service";
 import { DemoModeService } from "../common/demo-mode.service";
 
-jest.mock("bcryptjs", () => ({
-  hash: jest.fn().mockResolvedValue("$2a$10$hashedpassword"),
-}));
 
 describe("DemoResetService", () => {
   let service: DemoResetService;
@@ -61,7 +58,7 @@ describe("DemoResetService", () => {
     expect(demoSeedService.seedDemoData).not.toHaveBeenCalled();
   });
 
-  it("looks up demo user by email", async () => {
+  it("looks up demo user by name", async () => {
     queryRunner.query.mockImplementation((sql: string) => {
       if (sql.includes("SELECT id FROM users")) {
         return Promise.resolve([{ id: "demo-user-id" }]);
@@ -75,7 +72,8 @@ describe("DemoResetService", () => {
       call[0].includes("SELECT id FROM users"),
     );
     expect(userQuery).toBeDefined();
-    expect(userQuery[0]).toContain("demo@monize.com");
+    expect(userQuery[0]).toContain("first_name");
+    expect(userQuery[0]).toContain("Demo");
   });
 
   it("rolls back and returns early if demo user not found", async () => {
@@ -114,8 +112,8 @@ describe("DemoResetService", () => {
         .filter((call: string[]) => call[0].includes("DELETE FROM"))
         .map((call: string[]) => call[0]);
 
-      // Should delete 17 tables in FK-safe order
-      expect(deleteCalls.length).toBe(17);
+      // Should delete 15 tables in FK-safe order
+      expect(deleteCalls.length).toBe(15);
 
       // First deletes should be the leaf dependencies
       expect(deleteCalls[0]).toContain("investment_transactions");
@@ -127,23 +125,17 @@ describe("DemoResetService", () => {
       expect(deleteCalls[deleteCalls.length - 1]).toContain("user_preferences");
     });
 
-    it("resets user record with fresh password and defaults", async () => {
+    it("resets user record with default name", async () => {
       await service.resetDemoData();
 
       const updateCall = queryRunner.query.mock.calls.find(
-        (call: string[]) =>
-          call[0].includes("UPDATE users SET") &&
-          call[0].includes("password_hash"),
+        (call: string[]) => call[0].includes("UPDATE users SET"),
       );
 
       expect(updateCall).toBeDefined();
       expect(updateCall[0]).toContain("first_name = 'Demo'");
       expect(updateCall[0]).toContain("last_name = 'User'");
-      expect(updateCall[0]).toContain("must_change_password = false");
-      expect(updateCall[0]).toContain("two_factor_secret = NULL");
-      expect(updateCall[0]).toContain("reset_token = NULL");
-      expect(updateCall[1][0]).toBe("$2a$10$hashedpassword");
-      expect(updateCall[1][1]).toBe("demo-user-id");
+      expect(updateCall[1][0]).toBe("demo-user-id");
     });
 
     it("re-seeds demo data after clearing", async () => {

@@ -18,8 +18,8 @@ describe('userSettingsApi', () => {
 
   it('updateProfile patches /users/profile', async () => {
     vi.mocked(apiClient.patch).mockResolvedValue({ data: { id: 'u-1' } });
-    await userSettingsApi.updateProfile({ name: 'Updated' } as any);
-    expect(apiClient.patch).toHaveBeenCalledWith('/users/profile', { name: 'Updated' });
+    await userSettingsApi.updateProfile({ firstName: 'Updated' });
+    expect(apiClient.patch).toHaveBeenCalledWith('/users/profile', { firstName: 'Updated' });
   });
 
   it('getPreferences fetches /users/preferences', async () => {
@@ -31,35 +31,7 @@ describe('userSettingsApi', () => {
 
   it('updatePreferences patches /users/preferences', async () => {
     vi.mocked(apiClient.patch).mockResolvedValue({ data: { theme: 'light' } });
-    await userSettingsApi.updatePreferences({ theme: 'light' } as any);
+    await userSettingsApi.updatePreferences({ theme: 'light' });
     expect(apiClient.patch).toHaveBeenCalledWith('/users/preferences', { theme: 'light' });
-  });
-
-  it('changePassword posts to /users/change-password', async () => {
-    vi.mocked(apiClient.post).mockResolvedValue({});
-    await userSettingsApi.changePassword({ currentPassword: 'old', newPassword: 'new' } as any);
-    expect(apiClient.post).toHaveBeenCalledWith('/users/change-password', {
-      currentPassword: 'old', newPassword: 'new',
-    });
-  });
-
-  it('deleteAccount calls DELETE /users/account', async () => {
-    vi.mocked(apiClient.delete).mockResolvedValue({});
-    await userSettingsApi.deleteAccount();
-    expect(apiClient.delete).toHaveBeenCalledWith('/users/account');
-  });
-
-  it('getSmtpStatus fetches /notifications/smtp-status', async () => {
-    vi.mocked(apiClient.get).mockResolvedValue({ data: { configured: true } });
-    const result = await userSettingsApi.getSmtpStatus();
-    expect(apiClient.get).toHaveBeenCalledWith('/notifications/smtp-status');
-    expect(result.configured).toBe(true);
-  });
-
-  it('sendTestEmail posts to /notifications/test-email', async () => {
-    vi.mocked(apiClient.post).mockResolvedValue({ data: { message: 'sent' } });
-    const result = await userSettingsApi.sendTestEmail();
-    expect(apiClient.post).toHaveBeenCalledWith('/notifications/test-email');
-    expect(result.message).toBe('sent');
   });
 });

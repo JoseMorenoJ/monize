@@ -21,7 +21,7 @@ import {
   ApiResponse,
   ApiQuery,
 } from "@nestjs/swagger";
-import { AuthGuard } from "@nestjs/passport";
+import { SessionGuard } from "../common/guards/session.guard";
 import { PayeesService } from "./payees.service";
 import { CreatePayeeDto } from "./dto/create-payee.dto";
 import { UpdatePayeeDto } from "./dto/update-payee.dto";
@@ -31,7 +31,7 @@ import { Payee } from "./entities/payee.entity";
 
 @ApiTags("Payees")
 @ApiBearerAuth()
-@UseGuards(AuthGuard("jwt"))
+@UseGuards(SessionGuard)
 @Controller("payees")
 export class PayeesController {
   constructor(private readonly payeesService: PayeesService) {}

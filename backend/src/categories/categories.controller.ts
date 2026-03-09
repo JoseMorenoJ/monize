@@ -20,7 +20,7 @@ import {
   ApiParam,
   ApiQuery,
 } from "@nestjs/swagger";
-import { AuthGuard } from "@nestjs/passport";
+import { SessionGuard } from "../common/guards/session.guard";
 import { CategoriesService } from "./categories.service";
 import { CreateCategoryDto } from "./dto/create-category.dto";
 import { UpdateCategoryDto } from "./dto/update-category.dto";
@@ -28,7 +28,7 @@ import { ReassignTransactionsDto } from "./dto/reassign-transactions.dto";
 
 @ApiTags("Categories")
 @Controller("categories")
-@UseGuards(AuthGuard("jwt"))
+@UseGuards(SessionGuard)
 @ApiBearerAuth()
 export class CategoriesController {
   constructor(private readonly categoriesService: CategoriesService) {}

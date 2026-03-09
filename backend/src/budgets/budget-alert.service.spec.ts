@@ -141,7 +141,6 @@ describe("BudgetAlertService", () => {
     usersRepository = {
       findOne: jest.fn().mockResolvedValue({
         id: "user-1",
-        email: "user@test.com",
         firstName: "Test",
       }),
     };
@@ -149,7 +148,6 @@ describe("BudgetAlertService", () => {
     preferencesRepository = {
       findOne: jest.fn().mockResolvedValue({
         userId: "user-1",
-        notificationEmail: true,
         budgetDigestEnabled: true,
         budgetDigestDay: "MONDAY",
       }),
@@ -955,7 +953,7 @@ describe("BudgetAlertService", () => {
       expect(savedAlert.alertType).toBe(AlertType.OVER_BUDGET);
     });
 
-    it("sends immediate email for critical alerts", async () => {
+    it("does not send email for critical alerts (profiles have no email)", async () => {
       const budget = makeBudget({
         categories: [
           makeCategory({
@@ -968,52 +966,6 @@ describe("BudgetAlertService", () => {
             } as any,
             amount: 500,
             alertCriticalPercent: 95,
-          }),
-        ],
-      });
-
-      const qb = {
-        select: jest.fn().mockReturnThis(),
-        addSelect: jest.fn().mockReturnThis(),
-        where: jest.fn().mockReturnThis(),
-        andWhere: jest.fn().mockReturnThis(),
-        innerJoin: jest.fn().mockReturnThis(),
-        groupBy: jest.fn().mockReturnThis(),
-        getRawMany: jest
-          .fn()
-          .mockResolvedValue([{ categoryId: "cat-1", total: "600" }]),
-      };
-
-      transactionsRepository.createQueryBuilder.mockReturnValue(qb);
-      splitsRepository.createQueryBuilder.mockReturnValue({
-        ...qb,
-        getRawMany: jest.fn().mockResolvedValue([]),
-      });
-      alertsRepository.find.mockResolvedValue([]);
-
-      const result = await service.processAlerts(budget);
-
-      expect(result.emailsSent).toBe(1);
-      expect(emailService.sendMail).toHaveBeenCalled();
-    });
-
-    it("does not send email when user has notifications disabled", async () => {
-      preferencesRepository.findOne.mockResolvedValue({
-        userId: "user-1",
-        notificationEmail: false,
-      });
-
-      const budget = makeBudget({
-        categories: [
-          makeCategory({
-            id: "bc-1",
-            categoryId: "cat-1",
-            category: {
-              id: "cat-1",
-              name: "Groceries",
-              isIncome: false,
-            } as any,
-            amount: 500,
           }),
         ],
       });
@@ -1231,46 +1183,12 @@ describe("BudgetAlertService", () => {
       expect(emailService.sendMail).not.toHaveBeenCalled();
     });
 
-    it("skips users with budget digest disabled", async () => {
+    it("does not send digest emails (profiles have no email addresses)", async () => {
       budgetsRepository.find.mockResolvedValue([makeBudget()]);
-      preferencesRepository.findOne.mockResolvedValue({
-        userId: "user-1",
-        notificationEmail: true,
-        budgetDigestEnabled: false,
-      });
 
       await service.sendWeeklyDigest();
 
       expect(emailService.sendMail).not.toHaveBeenCalled();
-    });
-
-    it("skips users with email notifications disabled", async () => {
-      budgetsRepository.find.mockResolvedValue([makeBudget()]);
-      preferencesRepository.findOne.mockResolvedValue({
-        userId: "user-1",
-        notificationEmail: false,
-        budgetDigestEnabled: true,
-      });
-
-      await service.sendWeeklyDigest();
-
-      expect(emailService.sendMail).not.toHaveBeenCalled();
-    });
-
-    it("sends digest email when alerts exist", async () => {
-      budgetsRepository.find.mockResolvedValue([makeBudget()]);
-
-      alertsRepository.find.mockResolvedValue([
-        makeAlert({ alertType: AlertType.THRESHOLD_WARNING }),
-      ]);
-
-      await service.sendWeeklyDigest();
-
-      expect(emailService.sendMail).toHaveBeenCalledWith(
-        "user@test.com",
-        "Monize: Your weekly budget summary",
-        expect.any(String),
-      );
     });
 
     it("skips users with no recent alerts", async () => {

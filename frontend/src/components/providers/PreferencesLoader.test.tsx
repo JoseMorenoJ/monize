@@ -16,11 +16,11 @@ vi.mock('@/contexts/ThemeContext', () => ({
   }),
 }));
 
-// Mock auth store
-vi.mock('@/store/authStore', () => ({
-  useAuthStore: (selector: any) => {
+// Mock profile store
+vi.mock('@/store/profileStore', () => ({
+  useProfileStore: (selector: any) => {
     const state = {
-      isAuthenticated: true,
+      isSelected: true,
       _hasHydrated: true,
     };
     return selector ? selector(state) : state;
@@ -55,7 +55,7 @@ describe('PreferencesLoader', () => {
     expect(screen.getByTestId('child')).toBeInTheDocument();
   });
 
-  it('calls loadPreferences when authenticated and not yet loaded', () => {
+  it('calls loadPreferences when profile selected and not yet loaded', () => {
     render(
       <PreferencesLoader>
         <div>Child</div>

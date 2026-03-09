@@ -1,20 +1,19 @@
 import apiClient from './api';
 import {
-  User,
+  Profile,
   UserPreferences,
   UpdateProfileData,
   UpdatePreferencesData,
-  ChangePasswordData,
 } from '@/types/auth';
 
 export const userSettingsApi = {
-  getProfile: async (): Promise<User> => {
-    const response = await apiClient.get<User>('/users/me');
+  getProfile: async (): Promise<Profile> => {
+    const response = await apiClient.get<Profile>('/users/me');
     return response.data;
   },
 
-  updateProfile: async (data: UpdateProfileData): Promise<User> => {
-    const response = await apiClient.patch<User>('/users/profile', data);
+  updateProfile: async (data: UpdateProfileData): Promise<Profile> => {
+    const response = await apiClient.patch<Profile>('/users/profile', data);
     return response.data;
   },
 
@@ -25,24 +24,6 @@ export const userSettingsApi = {
 
   updatePreferences: async (data: UpdatePreferencesData): Promise<UserPreferences> => {
     const response = await apiClient.patch<UserPreferences>('/users/preferences', data);
-    return response.data;
-  },
-
-  changePassword: async (data: ChangePasswordData): Promise<void> => {
-    await apiClient.post('/users/change-password', data);
-  },
-
-  deleteAccount: async (): Promise<void> => {
-    await apiClient.delete('/users/account');
-  },
-
-  getSmtpStatus: async (): Promise<{ configured: boolean }> => {
-    const response = await apiClient.get<{ configured: boolean }>('/notifications/smtp-status');
-    return response.data;
-  },
-
-  sendTestEmail: async (): Promise<{ message: string }> => {
-    const response = await apiClient.post<{ message: string }>('/notifications/test-email');
     return response.data;
   },
 };

@@ -1,5 +1,5 @@
 import { Controller, Get, Query, UseGuards, Request } from "@nestjs/common";
-import { AuthGuard } from "@nestjs/passport";
+import { SessionGuard } from "../common/guards/session.guard";
 import {
   ApiTags,
   ApiOperation,
@@ -30,7 +30,7 @@ import {
 
 @ApiTags("Built-in Reports")
 @Controller("built-in-reports")
-@UseGuards(AuthGuard("jwt"))
+@UseGuards(SessionGuard)
 @ApiBearerAuth()
 export class BuiltInReportsController {
   constructor(private readonly reportsService: BuiltInReportsService) {}

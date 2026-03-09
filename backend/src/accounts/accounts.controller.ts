@@ -23,7 +23,7 @@ import {
   ApiQuery,
 } from "@nestjs/swagger";
 import { Response } from "express";
-import { AuthGuard } from "@nestjs/passport";
+import { SessionGuard } from "../common/guards/session.guard";
 import { AccountsService } from "./accounts.service";
 import { AccountExportService } from "./account-export.service";
 import { CreateAccountDto } from "./dto/create-account.dto";
@@ -43,7 +43,7 @@ import { formatDateYMD } from "../common/date-utils";
 
 @ApiTags("Accounts")
 @Controller("accounts")
-@UseGuards(AuthGuard("jwt"))
+@UseGuards(SessionGuard)
 @ApiBearerAuth()
 export class AccountsController {
   constructor(

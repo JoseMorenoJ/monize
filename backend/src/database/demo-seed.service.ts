@@ -31,8 +31,8 @@ export class DemoSeedService {
 
     // Get the demo user ID (created by seedService)
     const [demoUser] = await this.dataSource.query(
-      "SELECT id FROM users WHERE email = $1",
-      ["demo@monize.com"],
+      "SELECT id FROM users WHERE first_name = $1 AND last_name = $2",
+      ["Demo", "User"],
     );
 
     if (!demoUser) {
@@ -746,14 +746,11 @@ export class DemoSeedService {
     await this.dataSource.query(
       `INSERT INTO user_preferences (
         user_id, default_currency, date_format, number_format, theme,
-        timezone, notification_email, notification_browser,
-        two_factor_enabled, getting_started_dismissed
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        timezone, getting_started_dismissed
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7)
       ON CONFLICT (user_id) DO UPDATE SET
         default_currency = $2, date_format = $3, number_format = $4,
-        theme = $5, timezone = $6, notification_email = $7,
-        notification_browser = $8, two_factor_enabled = $9,
-        getting_started_dismissed = $10`,
+        theme = $5, timezone = $6, getting_started_dismissed = $7`,
       [
         userId,
         p.defaultCurrency,
@@ -761,9 +758,6 @@ export class DemoSeedService {
         p.numberFormat,
         p.theme,
         p.timezone,
-        p.notificationEmail,
-        p.notificationBrowser,
-        p.twoFactorEnabled,
         p.gettingStartedDismissed,
       ],
     );

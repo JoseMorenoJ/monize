@@ -23,7 +23,7 @@ src/
   contexts/        # React context providers (ThemeContext)
   hooks/           # Custom React hooks
   lib/             # API clients (axios), utilities, helpers
-  store/           # Zustand stores (authStore, preferencesStore, demoStore)
+  store/           # Zustand stores (profileStore, preferencesStore, demoStore)
   types/           # Shared TypeScript interfaces (13 type files)
   test/            # Test utilities (custom render, setup, mocks)
   proxy.ts         # API proxy, CSP nonces, auth redirects, security headers
@@ -43,14 +43,12 @@ src/
 
 **Central client** (`api.ts`): Axios instance with `baseURL: /api/v1`, `withCredentials: true`, 10s timeout.
 
-**Interceptors:**
-- **Request:** Reads `csrf_token` cookie, injects `X-CSRF-Token` header
-- **Response (403 CSRF):** Transparent refresh via `/auth/csrf-refresh`, retries request
-- **Response (401):** Token refresh via `/auth/refresh`, queues concurrent requests during refresh
-- **Fallback:** On refresh failure, logs out and redirects to `/login`
+**Error handling:**
+- **Response (401):** Deselects profile and redirects to `/profiles`
+- **Response (502):** Backend unavailable error
 
 **Feature API modules** (one per feature, typed axios wrappers):
-`accounts.ts`, `admin.ts`, `ai.ts`, `auth.ts`, `budgets.ts`, `built-in-reports.ts`, `categories.ts`, `custom-reports.ts`, `exchange-rates.ts`, `import.ts`, `investments.ts`, `net-worth.ts`, `payees.ts`, `scheduled-transactions.ts`, `transactions.ts`, `user-settings.ts`
+`accounts.ts`, `ai.ts`, `auth.ts` (profile API), `budgets.ts`, `built-in-reports.ts`, `categories.ts`, `custom-reports.ts`, `exchange-rates.ts`, `import.ts`, `investments.ts`, `net-worth.ts`, `payees.ts`, `scheduled-transactions.ts`, `transactions.ts`, `user-settings.ts`
 
 **Utility modules:**
 - `format.ts` -- currency, date, percentage formatting
@@ -73,9 +71,9 @@ This is Next.js middleware (NOT the deprecated middleware pattern from this proj
 
 - **API routing:** `/api/*` proxied to `INTERNAL_API_URL` (default `http://localhost:3001`)
 - **CSP nonce:** Per-request nonce generated in `x-nonce` header, used by Next.js for inline scripts
-- **Auth redirects:** Unauthenticated requests to protected routes redirect to `/login`
+- **Session redirects:** Requests without `profile_session` cookie redirect to `/profiles`
 - **Security headers:** CSP with `strict-dynamic`, nonce-based script-src
-- **Public paths:** `/login`, `/register`, `/auth/callback`, `/forgot-password`, `/reset-password` (no auth required)
+- **Public paths:** `/profiles` (profile picker -- no session required)
 
 ## Component Patterns
 
@@ -87,9 +85,9 @@ const Chart = dynamic(() => import('./Chart'), { ssr: false });
 ```
 
 **Feature component directories** (in `components/`):
-accounts, admin, ai, auth, bills, budgets, categories, currencies, dashboard, import, insights, investments, layout, payees, providers, reports, scheduled-transactions, securities, settings, transactions, ui
+accounts, ai, auth, bills, budgets, categories, currencies, dashboard, import, insights, investments, layout, payees, providers, reports, scheduled-transactions, securities, settings, transactions, ui
 
-**`ProtectedRoute` wrapper** (`components/auth/ProtectedRoute.tsx`): Wraps authenticated pages.
+**`ProtectedRoute` wrapper** (`components/auth/ProtectedRoute.tsx`): Wraps pages requiring an active profile session. Checks `profileStore.isSelected` and redirects to `/profiles` if no profile is selected.
 
 ## UI Component Library (`components/ui/`)
 
@@ -179,6 +177,6 @@ accounts, admin, ai, auth, bills, budgets, categories, currencies, dashboard, im
 ## Security Notes
 
 - **Zod:** Configured with `jitless: true` (`zodConfig.ts`) for CSP compliance -- no `new Function()`
-- **Auth tokens:** Stored in httpOnly cookies (backend-managed), never in JS-accessible storage
+- **Profile session:** Signed httpOnly cookie (`profile_session`), managed by backend
 - **CSP:** Per-request nonce generated in proxy, `strict-dynamic` for script-src
 - **ESLint:** `no-new-func: error` enforced to prevent CSP violations

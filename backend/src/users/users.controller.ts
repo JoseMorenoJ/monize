@@ -7,89 +7,112 @@ import {
   Body,
   UseGuards,
   Request,
+  Res,
+  Param,
   HttpCode,
   HttpStatus,
+  NotFoundException,
 } from "@nestjs/common";
-import { AuthGuard } from "@nestjs/passport";
-import {
-  ApiTags,
-  ApiOperation,
-  ApiBearerAuth,
-  ApiResponse,
-} from "@nestjs/swagger";
+import { Response } from "express";
+import { ParseUUIDPipe } from "@nestjs/common";
+import { ApiTags, ApiOperation, ApiResponse } from "@nestjs/swagger";
+import { SessionGuard } from "../common/guards/session.guard";
 import { UsersService } from "./users.service";
+import { CreateProfileDto } from "./dto/create-profile.dto";
 import { UpdateProfileDto } from "./dto/update-profile.dto";
 import { UpdatePreferencesDto } from "./dto/update-preferences.dto";
-import { ChangePasswordDto } from "./dto/change-password.dto";
-import { SkipPasswordCheck } from "../auth/decorators/skip-password-check.decorator";
 import { DemoRestricted } from "../common/decorators/demo-restricted.decorator";
 
 @ApiTags("Users")
 @Controller("users")
-@UseGuards(AuthGuard("jwt"))
-@ApiBearerAuth()
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
+  // --- Public endpoints (no session required) ---
+
+  @Get()
+  @ApiOperation({ summary: "List all profiles" })
+  findAll() {
+    return this.usersService.findAll();
+  }
+
+  @Post()
+  @DemoRestricted()
+  @ApiOperation({ summary: "Create a new profile" })
+  @ApiResponse({ status: 201, description: "Profile created successfully" })
+  create(@Body() dto: CreateProfileDto) {
+    return this.usersService.create(dto);
+  }
+
+  @Post(":id/select")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Select a profile (sets session cookie)" })
+  async selectProfile(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const profile = await this.usersService.findById(id);
+    if (!profile) {
+      throw new NotFoundException("Profile not found");
+    }
+    res.cookie("profile_session", id, {
+      httpOnly: true,
+      signed: true,
+      sameSite: "strict",
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+    });
+    return profile;
+  }
+
+  @Post("deselect")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Deselect current profile (clears session cookie)" })
+  deselect(@Res({ passthrough: true }) res: Response) {
+    res.clearCookie("profile_session");
+    return { ok: true };
+  }
+
+  // --- Protected endpoints (session required) ---
+
   @Get("me")
-  @SkipPasswordCheck()
-  @ApiOperation({ summary: "Get current user profile" })
-  async getProfile(@Request() req) {
-    const user = await this.usersService.findById(req.user.id);
-    if (!user) return null;
-    const {
-      passwordHash,
-      resetToken,
-      resetTokenExpiry,
-      twoFactorSecret,
-      ...rest
-    } = user as any;
-    return { ...rest, hasPassword: !!passwordHash };
+  @UseGuards(SessionGuard)
+  @ApiOperation({ summary: "Get current profile" })
+  getProfile(@Request() req) {
+    return this.usersService.findById(req.user.id);
   }
 
   @Patch("profile")
+  @UseGuards(SessionGuard)
   @DemoRestricted()
-  @ApiOperation({ summary: "Update current user profile" })
+  @ApiOperation({ summary: "Update current profile" })
   @ApiResponse({ status: 200, description: "Profile updated successfully" })
   updateProfile(@Request() req, @Body() dto: UpdateProfileDto) {
     return this.usersService.updateProfile(req.user.id, dto);
   }
 
+  @Delete(":id")
+  @UseGuards(SessionGuard)
+  @DemoRestricted()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Delete a profile" })
+  @ApiResponse({ status: 200, description: "Profile deleted successfully" })
+  async deleteProfile(@Param("id", ParseUUIDPipe) id: string) {
+    await this.usersService.deleteProfile(id);
+    return { message: "Profile deleted successfully" };
+  }
+
   @Get("preferences")
-  @ApiOperation({ summary: "Get current user preferences" })
+  @UseGuards(SessionGuard)
+  @ApiOperation({ summary: "Get current profile preferences" })
   getPreferences(@Request() req) {
     return this.usersService.getPreferences(req.user.id);
   }
 
   @Patch("preferences")
-  @ApiOperation({ summary: "Update current user preferences" })
+  @UseGuards(SessionGuard)
+  @ApiOperation({ summary: "Update current profile preferences" })
   @ApiResponse({ status: 200, description: "Preferences updated successfully" })
   updatePreferences(@Request() req, @Body() dto: UpdatePreferencesDto) {
     return this.usersService.updatePreferences(req.user.id, dto);
-  }
-
-  @Post("change-password")
-  @SkipPasswordCheck()
-  @DemoRestricted()
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: "Change current user password" })
-  @ApiResponse({ status: 200, description: "Password changed successfully" })
-  @ApiResponse({
-    status: 400,
-    description: "Invalid current password or validation error",
-  })
-  async changePassword(@Request() req, @Body() dto: ChangePasswordDto) {
-    await this.usersService.changePassword(req.user.id, dto);
-    return { message: "Password changed successfully" };
-  }
-
-  @Delete("account")
-  @DemoRestricted()
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: "Delete current user account" })
-  @ApiResponse({ status: 200, description: "Account deleted successfully" })
-  async deleteAccount(@Request() req) {
-    await this.usersService.deleteAccount(req.user.id);
-    return { message: "Account deleted successfully" };
   }
 }

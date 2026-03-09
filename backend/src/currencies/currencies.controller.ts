@@ -19,11 +19,9 @@ import {
   ApiResponse,
   ApiQuery,
 } from "@nestjs/swagger";
-import { AuthGuard } from "@nestjs/passport";
+import { SessionGuard } from "../common/guards/session.guard";
 import { Throttle } from "@nestjs/throttler";
 import { ParseCurrencyCodePipe } from "../common/pipes/parse-currency-code.pipe";
-import { RolesGuard } from "../auth/guards/roles.guard";
-import { Roles } from "../auth/decorators/roles.decorator";
 import {
   ExchangeRateService,
   RateRefreshSummary,
@@ -41,7 +39,7 @@ import { UpdateCurrencyDto } from "./dto/update-currency.dto";
 
 @ApiTags("Currencies")
 @ApiBearerAuth()
-@UseGuards(AuthGuard("jwt"))
+@UseGuards(SessionGuard)
 @Controller("currencies")
 export class CurrenciesController {
   constructor(
@@ -133,8 +131,6 @@ export class CurrenciesController {
   }
 
   @Post("exchange-rates/refresh")
-  @UseGuards(RolesGuard)
-  @Roles("admin")
   @ApiOperation({
     summary: "Manually trigger exchange rate refresh (admin only)",
   })
@@ -144,8 +140,6 @@ export class CurrenciesController {
   }
 
   @Post("exchange-rates/backfill")
-  @UseGuards(RolesGuard)
-  @Roles("admin")
   @ApiOperation({
     summary: "Manually trigger historical exchange rate backfill (admin only)",
   })

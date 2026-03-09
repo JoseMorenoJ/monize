@@ -1,5 +1,5 @@
 import { Controller, Post, Body, Request, UseGuards } from "@nestjs/common";
-import { AuthGuard } from "@nestjs/passport";
+import { SessionGuard } from "../../common/guards/session.guard";
 import { Throttle } from "@nestjs/throttler";
 import { ApiTags, ApiBearerAuth, ApiOperation } from "@nestjs/swagger";
 import { AiForecastService } from "./ai-forecast.service";
@@ -7,7 +7,7 @@ import { ForecastRequestDto } from "./dto/ai-forecast.dto";
 
 @ApiTags("AI Forecast")
 @Controller("ai/forecast")
-@UseGuards(AuthGuard("jwt"))
+@UseGuards(SessionGuard)
 @ApiBearerAuth()
 export class AiForecastController {
   constructor(private readonly forecastService: AiForecastService) {}

@@ -1,91 +1,24 @@
-export interface User {
+export interface Profile {
   id: string;
-  email: string;
-  firstName?: string;
-  lastName?: string;
-  authProvider: 'local' | 'oidc';
-  hasPassword: boolean;
-  role: 'admin' | 'user';
-  isActive: boolean;
-  mustChangePassword: boolean;
+  firstName: string;
+  lastName?: string | null;
+  avatarColor: string;
   createdAt: string;
   updatedAt: string;
-  lastLogin?: string;
 }
 
-export interface AdminUser {
-  id: string;
-  email: string | null;
-  firstName: string | null;
-  lastName: string | null;
-  authProvider: 'local' | 'oidc';
-  hasPassword: boolean;
-  role: 'admin' | 'user';
-  isActive: boolean;
-  mustChangePassword: boolean;
-  createdAt: string;
-  updatedAt: string;
-  lastLogin: string | null;
-}
-
-export interface LoginCredentials {
-  email: string;
-  password: string;
-}
-
-export interface RegisterData {
-  email: string;
-  password: string;
-  firstName?: string;
-  lastName?: string;
-}
-
-export interface AuthResponse {
-  user?: User;
-  requires2FA?: boolean;
-  tempToken?: string;
-}
-
-export interface TwoFactorSetupResponse {
-  secret: string;
-  qrCodeDataUrl: string;
-  otpauthUrl: string;
-}
-
-export interface BackupCodesResponse {
-  codes: string[];
-}
-
-export interface TrustedDevice {
-  id: string;
-  deviceName: string;
-  ipAddress: string | null;
-  lastUsedAt: string;
-  expiresAt: string;
-  createdAt: string;
-  isCurrent?: boolean;
-}
-
-export interface AuthState {
-  user: User | null;
-  token: string | null;
-  isAuthenticated: boolean;
-  isLoading: boolean;
-  error: string | null;
-}
+// Backwards compat alias
+export type User = Profile;
 
 export interface UserPreferences {
   userId: string;
   defaultCurrency: string;
-  dateFormat: string; // 'browser' = use browser locale
-  numberFormat: string; // 'browser' = use browser locale
+  dateFormat: string;
+  numberFormat: string;
   theme: 'light' | 'dark' | 'system';
-  timezone: string; // 'browser' = use browser timezone
-  notificationEmail: boolean;
-  notificationBrowser: boolean;
-  twoFactorEnabled: boolean;
+  timezone: string;
   gettingStartedDismissed: boolean;
-  weekStartsOn: number; // 0=Sunday, 1=Monday, ..., 6=Saturday
+  weekStartsOn: number;
   budgetDigestEnabled: boolean;
   budgetDigestDay: 'MONDAY' | 'FRIDAY';
   createdAt: string;
@@ -95,8 +28,7 @@ export interface UserPreferences {
 export interface UpdateProfileData {
   firstName?: string;
   lastName?: string;
-  email?: string;
-  currentPassword?: string;
+  avatarColor?: string;
 }
 
 export interface UpdatePreferencesData {
@@ -105,36 +37,8 @@ export interface UpdatePreferencesData {
   numberFormat?: string;
   theme?: 'light' | 'dark' | 'system';
   timezone?: string;
-  notificationEmail?: boolean;
-  notificationBrowser?: boolean;
   gettingStartedDismissed?: boolean;
   weekStartsOn?: number;
   budgetDigestEnabled?: boolean;
   budgetDigestDay?: 'MONDAY' | 'FRIDAY';
-}
-
-export interface ChangePasswordData {
-  currentPassword: string;
-  newPassword: string;
-}
-
-export interface PersonalAccessToken {
-  id: string;
-  name: string;
-  tokenPrefix: string;
-  scopes: string;
-  lastUsedAt: string | null;
-  expiresAt: string | null;
-  isRevoked: boolean;
-  createdAt: string;
-}
-
-export interface CreatePatData {
-  name: string;
-  scopes?: string;
-  expiresAt?: string;
-}
-
-export interface CreatePatResponse extends PersonalAccessToken {
-  token: string;
 }

@@ -1,5 +1,5 @@
 import { Module, forwardRef } from "@nestjs/common";
-import { AuthModule } from "../auth/auth.module";
+import { UsersModule } from "../users/users.module";
 import { AccountsModule } from "../accounts/accounts.module";
 import { TransactionsModule } from "../transactions/transactions.module";
 import { CategoriesModule } from "../categories/categories.module";
@@ -33,7 +33,7 @@ import { McpSpendingAnalysisPrompt } from "./prompts/spending-analysis.prompt";
 
 @Module({
   imports: [
-    AuthModule,
+    UsersModule,
     forwardRef(() => AccountsModule),
     forwardRef(() => TransactionsModule),
     forwardRef(() => CategoriesModule),

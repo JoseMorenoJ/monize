@@ -10,7 +10,7 @@ import {
   Request,
   ParseUUIDPipe,
 } from "@nestjs/common";
-import { AuthGuard } from "@nestjs/passport";
+import { SessionGuard } from "../common/guards/session.guard";
 import {
   ApiTags,
   ApiOperation,
@@ -26,7 +26,7 @@ import { CustomReport } from "./entities/custom-report.entity";
 
 @ApiTags("Custom Reports")
 @Controller("reports/custom")
-@UseGuards(AuthGuard("jwt"))
+@UseGuards(SessionGuard)
 @ApiBearerAuth()
 export class ReportsController {
   constructor(private readonly reportsService: ReportsService) {}

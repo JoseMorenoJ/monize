@@ -1,21 +1,11 @@
-import {
-  Injectable,
-  BadRequestException,
-  NotFoundException,
-  ConflictException,
-  ForbiddenException,
-} from "@nestjs/common";
+import { Injectable, NotFoundException } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
-import * as bcrypt from "bcryptjs";
 import { User } from "./entities/user.entity";
 import { UserPreference } from "./entities/user-preference.entity";
-import { RefreshToken } from "../auth/entities/refresh-token.entity";
-import { PersonalAccessToken } from "../auth/entities/personal-access-token.entity";
 import { UpdateProfileDto } from "./dto/update-profile.dto";
 import { UpdatePreferencesDto } from "./dto/update-preferences.dto";
-import { ChangePasswordDto } from "./dto/change-password.dto";
-import { PasswordBreachService } from "../auth/password-breach.service";
+import { CreateProfileDto } from "./dto/create-profile.dto";
 
 @Injectable()
 export class UsersService {
@@ -24,76 +14,48 @@ export class UsersService {
     private usersRepository: Repository<User>,
     @InjectRepository(UserPreference)
     private preferencesRepository: Repository<UserPreference>,
-    @InjectRepository(RefreshToken)
-    private refreshTokensRepository: Repository<RefreshToken>,
-    @InjectRepository(PersonalAccessToken)
-    private patRepository: Repository<PersonalAccessToken>,
-    private passwordBreachService: PasswordBreachService,
   ) {}
 
   async findById(id: string): Promise<User | null> {
     return this.usersRepository.findOne({ where: { id } });
   }
 
-  async findByEmail(email: string): Promise<User | null> {
-    return this.usersRepository.findOne({ where: { email } });
-  }
-
   async findAll(): Promise<User[]> {
-    return this.usersRepository.find();
+    return this.usersRepository.find({ order: { createdAt: "ASC" } });
   }
 
-  async updateProfile(userId: string, dto: UpdateProfileDto) {
+  async create(dto: CreateProfileDto): Promise<User> {
+    const user = this.usersRepository.create({
+      firstName: dto.firstName,
+      lastName: dto.lastName ?? null,
+      avatarColor: dto.avatarColor ?? "#6366f1",
+    });
+    return this.usersRepository.save(user);
+  }
+
+  async updateProfile(userId: string, dto: UpdateProfileDto): Promise<User> {
     const user = await this.usersRepository.findOne({ where: { id: userId } });
     if (!user) {
-      throw new NotFoundException("User not found");
+      throw new NotFoundException("Profile not found");
     }
-
-    // SECURITY: Require password confirmation when changing email to prevent
-    // account takeover via compromised session
-    if (dto.email && dto.email !== user.email) {
-      if (!dto.currentPassword) {
-        throw new BadRequestException(
-          "Current password is required to change email address",
-        );
-      }
-      if (!user.passwordHash) {
-        throw new BadRequestException(
-          "Cannot change email for accounts without a local password",
-        );
-      }
-      const isPasswordValid = await bcrypt.compare(
-        dto.currentPassword,
-        user.passwordHash,
-      );
-      if (!isPasswordValid) {
-        throw new BadRequestException("Current password is incorrect");
-      }
-      const existingUser = await this.usersRepository.findOne({
-        where: { email: dto.email },
-      });
-      if (existingUser) {
-        throw new ConflictException("Email already in use");
-      }
-      user.email = dto.email;
-    }
-
     if (dto.firstName !== undefined) {
       user.firstName = dto.firstName;
     }
     if (dto.lastName !== undefined) {
-      user.lastName = dto.lastName;
+      user.lastName = dto.lastName ?? null;
     }
+    if (dto.avatarColor !== undefined) {
+      user.avatarColor = dto.avatarColor;
+    }
+    return this.usersRepository.save(user);
+  }
 
-    const saved = await this.usersRepository.save(user);
-    const {
-      passwordHash,
-      resetToken,
-      resetTokenExpiry,
-      twoFactorSecret,
-      ...rest
-    } = saved;
-    return { ...rest, hasPassword: !!passwordHash };
+  async deleteProfile(userId: string): Promise<void> {
+    const user = await this.usersRepository.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException("Profile not found");
+    }
+    await this.usersRepository.remove(user);
   }
 
   async getPreferences(userId: string): Promise<UserPreference> {
@@ -101,10 +63,7 @@ export class UsersService {
       where: { userId },
     });
 
-    // Create default preferences if they don't exist
-    // Default to 'browser' for locale-dependent settings
     if (!preferences) {
-      // Use direct instantiation to ensure primary key is set
       preferences = new UserPreference();
       preferences.userId = userId;
       preferences.defaultCurrency = "USD";
@@ -112,9 +71,6 @@ export class UsersService {
       preferences.numberFormat = "browser";
       preferences.theme = "system";
       preferences.timezone = "browser";
-      preferences.notificationEmail = true;
-      preferences.notificationBrowser = true;
-      preferences.twoFactorEnabled = false;
       preferences.gettingStartedDismissed = false;
       await this.preferencesRepository.save(preferences);
     }
@@ -131,11 +87,9 @@ export class UsersService {
     });
 
     if (!preferences) {
-      // Create with defaults first
       preferences = await this.getPreferences(userId);
     }
 
-    // Update only provided fields
     if (dto.defaultCurrency !== undefined) {
       preferences.defaultCurrency = dto.defaultCurrency;
     }
@@ -151,100 +105,19 @@ export class UsersService {
     if (dto.timezone !== undefined) {
       preferences.timezone = dto.timezone;
     }
-    if (dto.notificationEmail !== undefined) {
-      preferences.notificationEmail = dto.notificationEmail;
-    }
-    if (dto.notificationBrowser !== undefined) {
-      preferences.notificationBrowser = dto.notificationBrowser;
-    }
     if (dto.gettingStartedDismissed !== undefined) {
       preferences.gettingStartedDismissed = dto.gettingStartedDismissed;
     }
+    if (dto.weekStartsOn !== undefined) {
+      preferences.weekStartsOn = dto.weekStartsOn;
+    }
+    if (dto.budgetDigestEnabled !== undefined) {
+      preferences.budgetDigestEnabled = dto.budgetDigestEnabled;
+    }
+    if (dto.budgetDigestDay !== undefined) {
+      preferences.budgetDigestDay = dto.budgetDigestDay;
+    }
 
     return this.preferencesRepository.save(preferences);
-  }
-
-  async changePassword(userId: string, dto: ChangePasswordDto): Promise<void> {
-    const user = await this.usersRepository.findOne({ where: { id: userId } });
-    if (!user) {
-      throw new NotFoundException("User not found");
-    }
-
-    if (!user.passwordHash) {
-      throw new BadRequestException("No password set for this account");
-    }
-
-    // Verify current password
-    const isPasswordValid = await bcrypt.compare(
-      dto.currentPassword,
-      user.passwordHash,
-    );
-    if (!isPasswordValid) {
-      throw new BadRequestException("Current password is incorrect");
-    }
-
-    // Check for breached password
-    const isBreached = await this.passwordBreachService.isBreached(
-      dto.newPassword,
-    );
-    if (isBreached) {
-      throw new BadRequestException(
-        "This password has been found in a data breach. Please choose a different password.",
-      );
-    }
-
-    // Hash and save new password
-    const saltRounds = 12;
-    user.passwordHash = await bcrypt.hash(dto.newPassword, saltRounds);
-    user.mustChangePassword = false;
-    await this.usersRepository.save(user);
-
-    // SECURITY: Revoke all refresh tokens to force re-login on all devices
-    await this.refreshTokensRepository.update(
-      { userId, isRevoked: false },
-      { isRevoked: true },
-    );
-
-    // SECURITY: Revoke all PATs — credential change invalidates API access
-    await this.patRepository.update(
-      { userId, isRevoked: false },
-      { isRevoked: true },
-    );
-  }
-
-  async deleteAccount(userId: string): Promise<void> {
-    const user = await this.usersRepository.findOne({ where: { id: userId } });
-    if (!user) {
-      throw new NotFoundException("User not found");
-    }
-
-    // SECURITY: Prevent the last admin from self-deleting, which would leave
-    // the system with no administrator
-    if (user.role === "admin") {
-      const adminCount = await this.usersRepository.count({
-        where: { role: "admin" },
-      });
-      if (adminCount <= 1) {
-        throw new ForbiddenException(
-          "Cannot delete the last admin account. Promote another user first.",
-        );
-      }
-    }
-
-    // Delete preferences first (due to FK constraint)
-    await this.preferencesRepository.delete({ userId });
-
-    // Revoke all refresh tokens and PATs before deletion
-    await this.refreshTokensRepository.update(
-      { userId, isRevoked: false },
-      { isRevoked: true },
-    );
-    await this.patRepository.update(
-      { userId, isRevoked: false },
-      { isRevoked: true },
-    );
-
-    // Delete the user
-    await this.usersRepository.remove(user);
   }
 }

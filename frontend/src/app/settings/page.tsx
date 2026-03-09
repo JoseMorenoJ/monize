@@ -7,13 +7,9 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { ProfileSection } from '@/components/settings/ProfileSection';
 import { PreferencesSection } from '@/components/settings/PreferencesSection';
-import { NotificationsSection } from '@/components/settings/NotificationsSection';
-import { SecuritySection } from '@/components/settings/SecuritySection';
 import { DangerZoneSection } from '@/components/settings/DangerZoneSection';
-import { ApiAccessSection } from '@/components/settings/ApiAccessSection';
 import { userSettingsApi } from '@/lib/user-settings';
-import { authApi } from '@/lib/auth';
-import { User, UserPreferences } from '@/types/auth';
+import { Profile, UserPreferences } from '@/types/auth';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { useDemoStore } from '@/store/demoStore';
 import { createLogger } from '@/lib/logger';
@@ -32,10 +28,8 @@ export default function SettingsPage() {
 
 function SettingsContent() {
   const [isLoading, setIsLoading] = useState(true);
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<Profile | null>(null);
   const [preferences, setPreferences] = useState<UserPreferences | null>(null);
-  const [smtpConfigured, setSmtpConfigured] = useState(false);
-  const [force2fa, setForce2fa] = useState(false);
   const isDemoMode = useDemoStore((s) => s.isDemoMode);
 
   useEffect(() => {
@@ -45,17 +39,12 @@ function SettingsContent() {
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [userData, prefsData, smtpStatus, authMethods] = await Promise.all([
+      const [userData, prefsData] = await Promise.all([
         userSettingsApi.getProfile(),
         userSettingsApi.getPreferences(),
-        userSettingsApi.getSmtpStatus().catch(() => ({ configured: false })),
-        authApi.getAuthMethods().catch(() => ({ local: true, oidc: false, registration: true, smtp: false, force2fa: false, demo: false })),
       ]);
       setUser(userData);
       setPreferences(prefsData);
-      setSmtpConfigured(smtpStatus.configured);
-      setForce2fa(authMethods.force2fa);
-      useDemoStore.getState().setDemoMode(authMethods.demo ?? false);
     } catch (error) {
       toast.error(getErrorMessage(error, 'Failed to load settings'));
       logger.error(error);
@@ -78,7 +67,6 @@ function SettingsContent() {
 
   return (
     <PageLayout>
-
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-12 pt-6 pb-8">
         <PageHeader title="Settings" />
 
@@ -88,7 +76,7 @@ function SettingsContent() {
               Restricted in Demo Mode
             </h2>
             <p className="text-sm text-amber-700 dark:text-amber-300">
-              Profile editing, password changes, two-factor authentication, and account deletion are disabled in demo mode.
+              Profile editing and profile deletion are disabled in demo mode.
             </p>
           </div>
         )}
@@ -106,26 +94,6 @@ function SettingsContent() {
             onPreferencesUpdated={setPreferences}
           />
         )}
-
-        {preferences && (
-          <NotificationsSection
-            initialNotificationEmail={preferences.notificationEmail}
-            smtpConfigured={smtpConfigured}
-            preferences={preferences}
-            onPreferencesUpdated={setPreferences}
-          />
-        )}
-
-        {user && preferences && !isDemoMode && (
-          <SecuritySection
-            user={user}
-            preferences={preferences}
-            force2fa={force2fa}
-            onPreferencesUpdated={setPreferences}
-          />
-        )}
-
-        {!isDemoMode && <ApiAccessSection />}
 
         {!isDemoMode && (
           <Link

@@ -13,19 +13,12 @@ import { Request, Response } from "express";
 import { randomUUID } from "crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { SkipCsrf } from "../common/decorators/skip-csrf.decorator";
-import { SetMetadata } from "@nestjs/common";
-import { SKIP_PASSWORD_CHECK_KEY } from "../auth/guards/must-change-password.guard";
 import { McpServerService } from "./mcp-server.service";
-import { PatService } from "../auth/pat.service";
+import { UsersService } from "../users/users.service";
 import { McpUserContext } from "./mcp-context";
-
-const SkipPasswordCheck = () => SetMetadata(SKIP_PASSWORD_CHECK_KEY, true);
 
 @ApiExcludeController()
 @ApiTags("MCP")
-@SkipCsrf()
-@SkipPasswordCheck()
 @Controller("mcp")
 export class McpHttpController implements OnModuleDestroy {
   private static readonly SESSION_TTL_MS = 3_600_000; // 1 hour
@@ -40,7 +33,7 @@ export class McpHttpController implements OnModuleDestroy {
 
   constructor(
     private readonly mcpServerService: McpServerService,
-    private readonly patService: PatService,
+    private readonly usersService: UsersService,
   ) {
     this.cleanupTimer = setInterval(
       () => this.cleanupExpiredSessions(),
@@ -90,7 +83,7 @@ export class McpHttpController implements OnModuleDestroy {
   @Post()
   @Throttle({ default: { ttl: 60000, limit: 30 } })
   async handlePost(@Req() req: Request, @Res() res: Response) {
-    const authResult = await this.validatePat(req);
+    const authResult = await this.validateSession(req);
     if (!authResult) {
       res.status(401).json({
         jsonrpc: "2.0",
@@ -183,7 +176,7 @@ export class McpHttpController implements OnModuleDestroy {
   @Get()
   @Throttle({ default: { ttl: 60000, limit: 30 } })
   async handleGet(@Req() req: Request, @Res() res: Response) {
-    const authResult = await this.validatePat(req);
+    const authResult = await this.validateSession(req);
     if (!authResult) {
       res.status(401).json({
         jsonrpc: "2.0",
@@ -239,7 +232,7 @@ export class McpHttpController implements OnModuleDestroy {
   @Delete()
   @Throttle({ default: { ttl: 60000, limit: 30 } })
   async handleDelete(@Req() req: Request, @Res() res: Response) {
-    const authResult = await this.validatePat(req);
+    const authResult = await this.validateSession(req);
     if (!authResult) {
       res.status(401).json({
         jsonrpc: "2.0",
@@ -302,16 +295,16 @@ export class McpHttpController implements OnModuleDestroy {
     this.sessionCreatedAt.delete(sessionId);
   }
 
-  private async validatePat(req: Request): Promise<McpUserContext | null> {
-    const auth = req.headers.authorization;
-    if (!auth || !auth.startsWith("Bearer pat_")) {
+  private async validateSession(req: Request): Promise<McpUserContext | null> {
+    const profileId: string | undefined = (req as any).signedCookies
+      ?.profile_session;
+    if (!profileId) {
       return null;
     }
-
     try {
-      const token = auth.substring(7);
-      const result = await this.patService.validateToken(token);
-      return { userId: result.userId, scopes: result.scopes };
+      const profile = await this.usersService.findById(profileId);
+      if (!profile) return null;
+      return { userId: profileId, scopes: "read,write,reports" };
     } catch {
       return null;
     }

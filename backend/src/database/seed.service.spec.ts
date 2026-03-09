@@ -4,9 +4,6 @@ import { DataSource } from "typeorm";
 import { SeedService } from "./seed.service";
 import { User } from "../users/entities/user.entity";
 
-jest.mock("bcryptjs", () => ({
-  hash: jest.fn().mockResolvedValue("$2a$10$hashedpassword"),
-}));
 
 describe("SeedService", () => {
   let service: SeedService;
@@ -154,7 +151,7 @@ describe("SeedService", () => {
       expect(currencyCodes).toContain("JPY");
     });
 
-    it("creates demo user with correct email and hashed password", async () => {
+    it("creates demo profile with correct name", async () => {
       await service.seedAll();
 
       const userInsertCall = dataSource.query.mock.calls.find(
@@ -164,16 +161,10 @@ describe("SeedService", () => {
       );
 
       expect(userInsertCall).toBeDefined();
-      // email
-      expect(userInsertCall[1][0]).toBe("demo@monize.com");
-      // hashed password
-      expect(userInsertCall[1][1]).toBe("$2a$10$hashedpassword");
       // first name
-      expect(userInsertCall[1][2]).toBe("Demo");
+      expect(userInsertCall[1][0]).toBe("Demo");
       // last name
-      expect(userInsertCall[1][3]).toBe("User");
-      // auth provider
-      expect(userInsertCall[1][4]).toBe("local");
+      expect(userInsertCall[1][1]).toBe("User");
     });
 
     it("seeds income and expense categories with subcategories", async () => {

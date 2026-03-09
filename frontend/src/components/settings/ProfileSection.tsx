@@ -8,30 +8,24 @@ import { z } from 'zod';
 import toast from 'react-hot-toast';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { userSettingsApi } from '@/lib/user-settings';
-import { useAuthStore } from '@/store/authStore';
-import { User, UpdateProfileData } from '@/types/auth';
+import { profileApi } from '@/lib/auth';
+import { useProfileStore } from '@/store/profileStore';
+import { Profile, UpdateProfileData } from '@/types/auth';
 import { getErrorMessage } from '@/lib/errors';
+
+const AVATAR_COLORS = [
+  '#6366f1', '#8b5cf6', '#ec4899', '#ef4444', '#f97316',
+  '#eab308', '#22c55e', '#14b8a6', '#3b82f6', '#06b6d4',
+];
 
 const profileSchema = z.object({
   firstName: z
     .string()
-    .max(100, 'First name must be 100 characters or less')
-    .optional()
-    .or(z.literal('')),
+    .min(1, 'First name is required')
+    .max(100, 'First name must be 100 characters or less'),
   lastName: z
     .string()
     .max(100, 'Last name must be 100 characters or less')
-    .optional()
-    .or(z.literal('')),
-  email: z
-    .string()
-    .min(1, 'Email is required')
-    .email('Please enter a valid email address')
-    .max(254, 'Email must be 254 characters or less'),
-  currentPassword: z
-    .string()
-    .max(128, 'Password must be 128 characters or less')
     .optional()
     .or(z.literal('')),
 });
@@ -39,57 +33,46 @@ const profileSchema = z.object({
 type ProfileFormData = z.infer<typeof profileSchema>;
 
 interface ProfileSectionProps {
-  user: User;
-  onUserUpdated: (user: User) => void;
+  user: Profile;
+  onUserUpdated: (user: Profile) => void;
 }
 
 export function ProfileSection({ user, onUserUpdated }: ProfileSectionProps) {
-  const { setUser } = useAuthStore();
+  const { setProfile } = useProfileStore();
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
+  const [avatarColor, setAvatarColor] = useState(user.avatarColor ?? '#6366f1');
 
   const {
     register,
     handleSubmit,
     watch,
-    setValue,
     formState: { errors },
   } = useForm<ProfileFormData>({
     resolver: zodResolver(profileSchema),
     defaultValues: {
       firstName: user.firstName || '',
       lastName: user.lastName || '',
-      email: user.email,
-      currentPassword: '',
     },
   });
 
-  const watchedEmail = watch('email');
-  const isEmailChanged = watchedEmail !== user.email;
+  const watchedFirstName = watch('firstName');
 
   const onSubmit = async (formData: ProfileFormData) => {
     setIsUpdatingProfile(true);
     try {
       const data: UpdateProfileData = {};
       if (formData.firstName !== (user.firstName || '')) data.firstName = formData.firstName;
-      if (formData.lastName !== (user.lastName || '')) data.lastName = formData.lastName;
-      if (isEmailChanged) {
-        if (!formData.currentPassword) {
-          toast.error('Current password is required to change email');
-          return;
-        }
-        data.email = formData.email;
-        data.currentPassword = formData.currentPassword;
-      }
+      if (formData.lastName !== (user.lastName || '')) data.lastName = formData.lastName || undefined;
+      if (avatarColor !== user.avatarColor) data.avatarColor = avatarColor;
 
       if (Object.keys(data).length === 0) {
         toast.error('No changes to save');
         return;
       }
 
-      const updatedUser = await userSettingsApi.updateProfile(data);
+      const updatedUser = await profileApi.updateProfile(data);
       onUserUpdated(updatedUser);
-      setUser(updatedUser);
-      setValue('currentPassword', '');
+      setProfile(updatedUser);
       toast.success('Profile updated successfully');
     } catch (error) {
       toast.error(getErrorMessage(error, 'Failed to update profile'));
@@ -102,6 +85,16 @@ export function ProfileSection({ user, onUserUpdated }: ProfileSectionProps) {
     <div className="bg-white dark:bg-gray-800 shadow dark:shadow-gray-700/50 rounded-lg p-6 mb-6">
       <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Profile</h2>
       <form onSubmit={handleSubmit(onSubmit)}>
+        {/* Avatar preview */}
+        <div className="flex justify-center mb-6">
+          <div
+            className="w-20 h-20 rounded-full flex items-center justify-center text-white text-2xl font-bold"
+            style={{ backgroundColor: avatarColor }}
+          >
+            {(watchedFirstName || user.firstName).charAt(0).toUpperCase()}
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Input
             label="First Name"
@@ -116,29 +109,28 @@ export function ProfileSection({ user, onUserUpdated }: ProfileSectionProps) {
             placeholder="Enter your last name"
           />
         </div>
+
         <div className="mt-4">
-          <Input
-            label="Email"
-            type="email"
-            {...register('email')}
-            error={errors.email?.message}
-            placeholder="Enter your email"
-          />
-        </div>
-        {isEmailChanged && (
-          <div className="mt-4">
-            <Input
-              label="Current Password"
-              type="password"
-              {...register('currentPassword')}
-              error={errors.currentPassword?.message}
-              placeholder="Required to change email"
-            />
-            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              Password confirmation is required when changing your email address.
-            </p>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Avatar Color
+          </label>
+          <div className="flex flex-wrap gap-2">
+            {AVATAR_COLORS.map((color) => (
+              <button
+                key={color}
+                type="button"
+                onClick={() => setAvatarColor(color)}
+                className={`w-8 h-8 rounded-full transition-transform ${
+                  avatarColor === color
+                    ? 'ring-2 ring-blue-500 ring-offset-2 scale-110'
+                    : 'hover:scale-105'
+                }`}
+                style={{ backgroundColor: color }}
+              />
+            ))}
           </div>
-        )}
+        </div>
+
         <div className="mt-4 flex justify-end">
           <Button type="submit" disabled={isUpdatingProfile}>
             {isUpdatingProfile ? 'Saving...' : 'Save Profile'}

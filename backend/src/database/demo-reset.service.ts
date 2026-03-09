@@ -1,7 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { Cron } from "@nestjs/schedule";
 import { DataSource } from "typeorm";
-import * as bcrypt from "bcryptjs";
 
 import { DemoModeService } from "../common/demo-mode.service";
 import { DemoSeedService } from "./demo-seed.service";
@@ -30,7 +29,7 @@ export class DemoResetService {
     try {
       // 1. Get demo user ID
       const [demoUser] = await queryRunner.query(
-        "SELECT id FROM users WHERE email = 'demo@monize.com'",
+        "SELECT id FROM users WHERE first_name = 'Demo' AND last_name = 'User'",
       );
 
       if (!demoUser) {
@@ -97,32 +96,18 @@ export class DemoResetService {
       await queryRunner.query("DELETE FROM categories WHERE user_id = $1", [
         userId,
       ]);
-      await queryRunner.query("DELETE FROM refresh_tokens WHERE user_id = $1", [
-        userId,
-      ]);
-      await queryRunner.query(
-        "DELETE FROM trusted_devices WHERE user_id = $1",
-        [userId],
-      );
       await queryRunner.query(
         "DELETE FROM user_preferences WHERE user_id = $1",
         [userId],
       );
 
       // 3. Reset user record
-      const hashedPassword = await bcrypt.hash("Demo123!", 10);
       await queryRunner.query(
         `UPDATE users SET
-          password_hash = $1,
           first_name = 'Demo',
-          last_name = 'User',
-          must_change_password = false,
-          two_factor_secret = NULL,
-          reset_token = NULL,
-          reset_token_expiry = NULL,
-          role = 'user'
-        WHERE id = $2`,
-        [hashedPassword, userId],
+          last_name = 'User'
+        WHERE id = $1`,
+        [userId],
       );
 
       await queryRunner.commitTransaction();
@@ -179,7 +164,7 @@ export class DemoResetService {
 
     try {
       const [demoUser] = await this.dataSource.query(
-        "SELECT id FROM users WHERE email = 'demo@monize.com'",
+        "SELECT id FROM users WHERE first_name = 'Demo' AND last_name = 'User'",
       );
       if (!demoUser) return;
 

@@ -20,7 +20,7 @@ import {
   ApiParam,
   ApiQuery,
 } from "@nestjs/swagger";
-import { AuthGuard } from "@nestjs/passport";
+import { SessionGuard } from "../common/guards/session.guard";
 import { Throttle } from "@nestjs/throttler";
 import { BudgetsService } from "./budgets.service";
 import { BudgetPeriodService } from "./budget-period.service";
@@ -38,7 +38,7 @@ import { CategoryBudgetStatusDto } from "./dto/category-budget-status.dto";
 
 @ApiTags("Budgets")
 @Controller("budgets")
-@UseGuards(AuthGuard("jwt"))
+@UseGuards(SessionGuard)
 @ApiBearerAuth()
 export class BudgetsController {
   constructor(

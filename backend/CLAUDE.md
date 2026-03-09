@@ -17,31 +17,29 @@ npm run test:e2e           # E2E tests (test/**/*.spec.ts, 30s timeout, sequenti
 
 ## Feature Modules
 
-21 modules in `src/`, each following the standard structure:
+19 modules in `src/`, each following the standard structure:
 
 | Module | Description |
 |--------|-------------|
 | accounts | Financial accounts (chequing, savings, credit, loan, mortgage, investment, asset) |
-| admin | User management (roles, status, password reset) |
 | ai | AI providers, query engine, insights, usage tracking |
-| auth | JWT, OIDC, 2FA/TOTP, PATs, refresh tokens, local strategy |
 | budgets | Budget CRUD, period management, alerts |
 | built-in-reports | Pre-built reports (spending, income, trends, anomalies, tax) |
 | categories | Transaction categories (hierarchical tree via `parent_id`) |
 | common | Shared guards, filters, decorators, pipes, validators, utilities |
 | currencies | Currency management, exchange rate fetching |
 | database | DB init, migrations, seeding, demo reset |
-| health | Health check (no auth) |
+| health | Health check (no session required) |
 | import | QIF/OFX file import and transaction processing |
 | mcp | Model Context Protocol server integration |
 | net-worth | Net worth calculations and snapshots |
-| notifications | Email service, bill reminders, mortgage reminders |
+| notifications | Email service (currently disabled -- profiles have no email) |
 | payees | Payee management with default categories |
 | reports | Custom report builder |
 | scheduled-transactions | Recurring transactions, loan transactions |
 | securities | Stocks/ETFs, holdings, investment transactions, price updates |
 | transactions | Core transaction CRUD, splits, transfers, reconciliation, analytics |
-| users | User profiles, preferences, trusted devices |
+| users | Profiles, preferences, profile selection (global module) |
 
 ## Module File Naming
 
@@ -72,11 +70,10 @@ Registered globally via `APP_FILTER`, `APP_GUARD`, `APP_INTERCEPTOR`:
 |----------|---------|
 | `GlobalExceptionFilter` | Catches all exceptions; handles HttpException and TypeORM QueryFailedError |
 | `ThrottlerGuard` | Rate limiting (100 requests/minute) |
-| `CsrfGuard` | CSRF double-submit cookie validation |
-| `MustChangePasswordGuard` | Blocks access until password change (admin-reset users) |
 | `DemoModeGuard` | Restricts write operations in demo mode |
-| `CsrfRefreshInterceptor` | Refreshes CSRF token cookie on responses |
 | `ClassSerializerInterceptor` | Applies `@Exclude()` / `@Expose()` from class-transformer |
+
+`SessionGuard` (`common/guards/session.guard.ts`) is used per-controller via `@UseGuards(SessionGuard)`. It reads `profile_session` signed cookie, verifies the profile exists, and sets `req.user = { id: profileId }`. `UsersModule` is `@Global()` so `UsersService` is available in all modules.
 
 Also configured: `ConfigModule` (global), `TypeOrmModule` (async, PostgreSQL), `ThrottlerModule`, `ScheduleModule`.
 
@@ -88,7 +85,7 @@ Also configured: `ConfigModule` (global), `TypeOrmModule` (async, PostgreSQL), `
 - **DATE column parser:** `pg.types.setTypeParser(1082, val => val)` -- returns DATE columns as strings to prevent timezone-related date shifting
 - **Validation pipe:** Global with `whitelist: true`, `forbidNonWhitelisted: true`, `transform: true`
 - **Security:** Helmet (CSP, HSTS, frame-deny), CORS (credentials, configurable origins)
-- **Cookie parser:** Required for OIDC state/nonce and auth tokens
+- **Cookie parser:** Receives `COOKIE_SECRET` for signed profile session cookies
 - **Trust proxy:** Level 1 (Docker/nginx real client IP)
 
 ## Common Utilities (`src/common/`)
@@ -97,20 +94,16 @@ Also configured: `ConfigModule` (global), `TypeOrmModule` (async, PostgreSQL), `
 common/
   date-utils.ts              # formatDateYMD, todayYMD, getMonthEndYMD, isTransactionInFuture
   query-param-utils.ts       # parseIds, parseUuids, parseCategoryIds, validateDateParam, UUID_REGEX
-  csrf.util.ts               # CSRF token utilities
   category-tree.util.ts      # Category hierarchy utilities
   demo-mode.module.ts        # DemoModeService (global)
   decorators/
     sanitize-html.decorator  # @SanitizeHtml() -- strips < and > to prevent stored XSS
-    skip-csrf.decorator      # @SkipCsrf() -- skip CSRF for non-cookie auth (PAT bearer)
     demo-restricted.decorator # @DemoRestricted() -- block operation in demo mode
   filters/
     http-exception.filter    # GlobalExceptionFilter
   guards/
-    csrf.guard               # CSRF double-submit cookie validation
+    session.guard            # SessionGuard -- validates profile_session signed cookie
     demo-mode.guard           # Demo mode write restriction
-  interceptors/
-    csrf-refresh.interceptor # Refreshes CSRF cookie on response
   pipes/
     parse-currency-code.pipe # Validates currency codes
     parse-symbol.pipe        # Validates security symbols
@@ -170,7 +163,6 @@ const mockRepo = {
 **Test module setup** uses `Test.createTestingModule` with providers injecting mocks via `getRepositoryToken()`.
 
 **E2E tests** live in `test/` with helpers:
-- `test/helpers/auth-helper.ts` -- auth test utilities
 - `test/helpers/test-database.ts` -- database setup
 - `test/helpers/test-factories.ts` -- test data factories
 
@@ -183,7 +175,6 @@ Cron jobs use the `@Cron()` decorator from `@nestjs/schedule`. They run in a sep
 | `demo-reset.service` | Daily 4 AM, every 3 hours | Demo database reset |
 | `ai-usage.service` | Daily 4 AM | AI usage cleanup |
 | `ai-insights.service` | Daily 6 AM | Generate AI insights |
-| `auth.service` | Daily 3 AM | Expired token cleanup |
 | `scheduled-transactions.service` | Every 5 min past hour | Post due recurring transactions |
 | `exchange-rate.service` | 5 PM ET weekdays | Fetch exchange rates |
 | `accounts.service` | Midnight daily | Account maintenance |

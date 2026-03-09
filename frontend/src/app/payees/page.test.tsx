@@ -42,6 +42,33 @@ vi.mock('@/store/authStore', () => ({
   ),
 }));
 
+// Mock profile store
+vi.mock('@/store/profileStore', () => ({
+  useProfileStore: Object.assign(
+    (selector?: any) => {
+      const state = {
+        profile: { id: 'test-user-id', firstName: 'Test', lastName: 'User', avatarColor: '#6366f1', createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' },
+        isSelected: true,
+        _hasHydrated: true,
+        deselectProfile: vi.fn(),
+        setProfile: vi.fn(),
+      };
+      return selector ? selector(state) : state;
+    },
+    {
+      getState: vi.fn(() => ({
+        profile: { id: 'test-user-id', firstName: 'Test', lastName: 'User', avatarColor: '#6366f1' },
+        isSelected: true,
+        _hasHydrated: true,
+        deselectProfile: vi.fn(),
+        setProfile: vi.fn(),
+      })),
+      setState: vi.fn(),
+      subscribe: vi.fn(),
+    },
+  ),
+}));
+
 vi.mock('@/store/preferencesStore', () => ({
   usePreferencesStore: (selector?: any) => {
     const state = {

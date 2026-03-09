@@ -1,17 +1,17 @@
 'use client';
 
 import { useEffect } from 'react';
-import { useAuthStore } from '@/store/authStore';
+import { useProfileStore } from '@/store/profileStore';
 import { usePreferencesStore } from '@/store/preferencesStore';
 import { useTheme } from '@/contexts/ThemeContext';
 
 /**
- * Component that loads user preferences when authenticated.
+ * Component that loads user preferences when a profile session is active.
  * Should be placed inside the app layout.
  */
 export function PreferencesLoader({ children }: { children: React.ReactNode }) {
-  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
-  const authHydrated = useAuthStore((state) => state._hasHydrated);
+  const isSelected = useProfileStore((state) => state.isSelected);
+  const profileHydrated = useProfileStore((state) => state._hasHydrated);
   const loadPreferences = usePreferencesStore((state) => state.loadPreferences);
   const clearPreferences = usePreferencesStore((state) => state.clearPreferences);
   const preferences = usePreferencesStore((state) => state.preferences);
@@ -21,14 +21,14 @@ export function PreferencesLoader({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     // Wait for both stores to hydrate
-    if (!authHydrated || !prefsHydrated) return;
+    if (!profileHydrated || !prefsHydrated) return;
 
-    if (isAuthenticated && !isLoaded) {
+    if (isSelected && !isLoaded) {
       loadPreferences();
-    } else if (!isAuthenticated) {
+    } else if (!isSelected) {
       clearPreferences();
     }
-  }, [isAuthenticated, authHydrated, prefsHydrated, isLoaded, loadPreferences, clearPreferences]);
+  }, [isSelected, profileHydrated, prefsHydrated, isLoaded, loadPreferences, clearPreferences]);
 
   // Sync theme when preferences change
   useEffect(() => {

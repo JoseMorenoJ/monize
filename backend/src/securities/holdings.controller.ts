@@ -16,13 +16,13 @@ import {
   ApiResponse,
   ApiQuery,
 } from "@nestjs/swagger";
-import { AuthGuard } from "@nestjs/passport";
+import { SessionGuard } from "../common/guards/session.guard";
 import { HoldingsService } from "./holdings.service";
 import { Holding } from "./entities/holding.entity";
 
 @ApiTags("Holdings")
 @ApiBearerAuth()
-@UseGuards(AuthGuard("jwt"))
+@UseGuards(SessionGuard)
 @Controller("holdings")
 export class HoldingsController {
   constructor(private readonly holdingsService: HoldingsService) {}

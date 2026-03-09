@@ -1,14 +1,13 @@
-import { ApiPropertyOptional } from "@nestjs/swagger";
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { IsString, IsOptional, MaxLength, Matches } from "class-validator";
 import { SanitizeHtml } from "../../common/decorators/sanitize-html.decorator";
 
-export class UpdateProfileDto {
-  @ApiPropertyOptional({ description: "Profile display name" })
-  @IsOptional()
+export class CreateProfileDto {
+  @ApiProperty({ description: "Profile display name" })
   @IsString()
   @MaxLength(100)
   @SanitizeHtml()
-  firstName?: string;
+  firstName: string;
 
   @ApiPropertyOptional({ description: "Optional last name / subtitle" })
   @IsOptional()

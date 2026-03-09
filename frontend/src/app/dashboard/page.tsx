@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { subDays, subMonths, format } from 'date-fns';
 import dynamic from 'next/dynamic';
-import { useAuthStore } from '@/store/authStore';
+import { useProfileStore } from '@/store/profileStore';
 import { FavouriteAccounts } from '@/components/dashboard/FavouriteAccounts';
 import { UpcomingBills } from '@/components/dashboard/UpcomingBills';
 import { GettingStarted } from '@/components/dashboard/GettingStarted';
@@ -42,7 +42,7 @@ export default function DashboardPage() {
 }
 
 function DashboardContent() {
-  const { user } = useAuthStore();
+  const { profile: user } = useProfileStore();
 
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);

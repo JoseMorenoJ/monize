@@ -11,7 +11,7 @@ import {
   UseGuards,
   ParseUUIDPipe,
 } from "@nestjs/common";
-import { AuthGuard } from "@nestjs/passport";
+import { SessionGuard } from "../common/guards/session.guard";
 import { Throttle } from "@nestjs/throttler";
 import {
   ApiTags,
@@ -25,7 +25,7 @@ import { CreateAiConfigDto, UpdateAiConfigDto } from "./dto/ai-config.dto";
 
 @ApiTags("AI")
 @Controller("ai")
-@UseGuards(AuthGuard("jwt"))
+@UseGuards(SessionGuard)
 @ApiBearerAuth()
 export class AiController {
   constructor(private readonly aiService: AiService) {}

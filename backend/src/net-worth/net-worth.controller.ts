@@ -7,7 +7,7 @@ import {
   Request,
   BadRequestException,
 } from "@nestjs/common";
-import { AuthGuard } from "@nestjs/passport";
+import { SessionGuard } from "../common/guards/session.guard";
 import {
   ApiTags,
   ApiOperation,
@@ -19,7 +19,7 @@ import { NetWorthService } from "./net-worth.service";
 
 @ApiTags("Net Worth")
 @Controller("net-worth")
-@UseGuards(AuthGuard("jwt"))
+@UseGuards(SessionGuard)
 @ApiBearerAuth()
 export class NetWorthController {
   constructor(private readonly netWorthService: NetWorthService) {}

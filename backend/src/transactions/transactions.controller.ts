@@ -22,7 +22,7 @@ import {
   ApiParam,
   ApiQuery,
 } from "@nestjs/swagger";
-import { AuthGuard } from "@nestjs/passport";
+import { SessionGuard } from "../common/guards/session.guard";
 import { TransactionsService } from "./transactions.service";
 import { CreateTransactionDto } from "./dto/create-transaction.dto";
 import { UpdateTransactionDto } from "./dto/update-transaction.dto";
@@ -45,7 +45,7 @@ import {
 
 @ApiTags("Transactions")
 @Controller("transactions")
-@UseGuards(AuthGuard("jwt"))
+@UseGuards(SessionGuard)
 @ApiBearerAuth()
 export class TransactionsController {
   constructor(private readonly transactionsService: TransactionsService) {}

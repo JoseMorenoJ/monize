@@ -11,36 +11,15 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
     applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Users and Authentication
+-- Profiles (formerly Users - simplified from full auth system)
 CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    email VARCHAR(255) UNIQUE, -- NULL allowed for OIDC users without email
-    password_hash VARCHAR(255), -- NULL for OIDC-only users
-    first_name VARCHAR(100),
+    first_name VARCHAR(100) NOT NULL,
     last_name VARCHAR(100),
-    auth_provider VARCHAR(50) DEFAULT 'local', -- 'local', 'oidc'
-    oidc_subject VARCHAR(255) UNIQUE,
-    is_active BOOLEAN DEFAULT true,
+    avatar_color VARCHAR(7) NOT NULL DEFAULT '#6366f1',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    last_login TIMESTAMP,
-    reset_token VARCHAR(255),
-    reset_token_expiry TIMESTAMP,
-    role VARCHAR(20) NOT NULL DEFAULT 'user', -- 'admin', 'user'
-    must_change_password BOOLEAN NOT NULL DEFAULT false,
-    two_factor_secret VARCHAR(255), -- encrypted TOTP secret for 2FA
-    pending_two_factor_secret VARCHAR(255), -- staged secret during 2FA setup
-    failed_login_attempts INTEGER NOT NULL DEFAULT 0,
-    locked_until TIMESTAMP,
-    backup_codes TEXT,
-    oidc_link_pending BOOLEAN NOT NULL DEFAULT false,
-    oidc_link_token VARCHAR(255),
-    oidc_link_expires_at TIMESTAMP,
-    pending_oidc_subject VARCHAR(255)
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-
-CREATE INDEX IF NOT EXISTS idx_users_reset_token ON users(reset_token) WHERE reset_token IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_users_oidc_link_token ON users(oidc_link_token) WHERE oidc_link_token IS NOT NULL;
 
 -- Currencies
 CREATE TABLE currencies (
@@ -416,9 +395,6 @@ CREATE TABLE user_preferences (
     number_format VARCHAR(20) DEFAULT 'en-US',
     theme VARCHAR(20) DEFAULT 'light',
     timezone VARCHAR(50) DEFAULT 'UTC',
-    notification_email BOOLEAN DEFAULT true,
-    notification_browser BOOLEAN DEFAULT true,
-    two_factor_enabled BOOLEAN DEFAULT false,
     getting_started_dismissed BOOLEAN DEFAULT false,
     week_starts_on SMALLINT DEFAULT 1,
     budget_digest_enabled BOOLEAN DEFAULT true,
@@ -426,39 +402,6 @@ CREATE TABLE user_preferences (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-
--- Trusted Devices (for 2FA "remember this device" feature)
-CREATE TABLE trusted_devices (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    token_hash VARCHAR(64) NOT NULL,
-    device_name VARCHAR(255) NOT NULL,
-    ip_address INET,
-    last_used_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    expires_at TIMESTAMP NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX idx_trusted_devices_user ON trusted_devices(user_id);
-CREATE UNIQUE INDEX idx_trusted_devices_token ON trusted_devices(token_hash);
-
--- Refresh Tokens (for JWT refresh token rotation with family-based replay detection)
-CREATE TABLE refresh_tokens (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    token_hash VARCHAR(64) NOT NULL,
-    family_id UUID NOT NULL,
-    is_revoked BOOLEAN NOT NULL DEFAULT false,
-    expires_at TIMESTAMP NOT NULL,
-    replaced_by_hash VARCHAR(64),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE UNIQUE INDEX idx_refresh_tokens_token_hash ON refresh_tokens(token_hash);
-CREATE INDEX idx_refresh_tokens_family ON refresh_tokens(family_id);
-CREATE INDEX idx_refresh_tokens_expires ON refresh_tokens(expires_at);
 
 -- Custom Reports (user-defined configurable reports)
 -- view_type: TABLE, LINE_CHART, BAR_CHART, PIE_CHART
@@ -515,8 +458,6 @@ CREATE TRIGGER update_securities_updated_at BEFORE UPDATE ON securities FOR EACH
 CREATE TRIGGER update_holdings_updated_at BEFORE UPDATE ON holdings FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_investment_transactions_updated_at BEFORE UPDATE ON investment_transactions FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_user_preferences_updated_at BEFORE UPDATE ON user_preferences FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER update_trusted_devices_updated_at BEFORE UPDATE ON trusted_devices FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER update_refresh_tokens_updated_at BEFORE UPDATE ON refresh_tokens FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_custom_reports_updated_at BEFORE UPDATE ON custom_reports FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- NOTE: Account balances (current_balance) are managed by application code
@@ -623,30 +564,6 @@ CREATE INDEX idx_ai_insights_user ON ai_insights(user_id);
 CREATE INDEX idx_ai_insights_user_dismissed ON ai_insights(user_id, is_dismissed);
 CREATE INDEX idx_ai_insights_expires ON ai_insights(expires_at);
 CREATE INDEX idx_ai_insights_user_type ON ai_insights(user_id, type);
-
--- Personal Access Tokens (for MCP server and API access)
-CREATE TABLE personal_access_tokens (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    name VARCHAR(100) NOT NULL,
-    token_prefix VARCHAR(8) NOT NULL,     -- First 8 chars (e.g., "pat_xxxx") for display identification
-    token_hash VARCHAR(64) NOT NULL,      -- SHA-256 hash of the full token
-    scopes VARCHAR(500) NOT NULL DEFAULT 'read', -- Comma-separated: 'read', 'write', 'reports'
-    last_used_at TIMESTAMP,
-    expires_at TIMESTAMP,                 -- NULL = never expires
-    is_revoked BOOLEAN DEFAULT false,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX idx_pat_user ON personal_access_tokens(user_id);
-CREATE UNIQUE INDEX idx_pat_token_hash ON personal_access_tokens(token_hash);
-CREATE INDEX idx_pat_user_active ON personal_access_tokens(user_id, is_revoked)
-    WHERE is_revoked = false;
-
-CREATE TRIGGER update_personal_access_tokens_updated_at
-    BEFORE UPDATE ON personal_access_tokens
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- Budget Planner Tables
 

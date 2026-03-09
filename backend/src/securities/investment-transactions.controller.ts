@@ -19,7 +19,7 @@ import {
   ApiResponse,
   ApiQuery,
 } from "@nestjs/swagger";
-import { AuthGuard } from "@nestjs/passport";
+import { SessionGuard } from "../common/guards/session.guard";
 import { InvestmentTransactionsService } from "./investment-transactions.service";
 import { CreateInvestmentTransactionDto } from "./dto/create-investment-transaction.dto";
 import { UpdateInvestmentTransactionDto } from "./dto/update-investment-transaction.dto";
@@ -30,7 +30,7 @@ import {
 
 @ApiTags("Investment Transactions")
 @ApiBearerAuth()
-@UseGuards(AuthGuard("jwt"))
+@UseGuards(SessionGuard)
 @Controller("investment-transactions")
 export class InvestmentTransactionsController {
   constructor(

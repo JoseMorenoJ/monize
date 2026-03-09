@@ -2,7 +2,6 @@ import "reflect-metadata";
 import { plainToInstance } from "class-transformer";
 import { CreateCustomReportDto } from "../../reports/dto/create-custom-report.dto";
 import { CreateCurrencyDto } from "../../currencies/dto/create-currency.dto";
-import { CreatePatDto } from "../../auth/dto/create-pat.dto";
 import { CreateSecurityDto } from "../../securities/dto/create-security.dto";
 import {
   OverrideSplitDto,
@@ -58,15 +57,6 @@ describe("SanitizeHtml coverage on newly protected DTOs", () => {
         symbol: "<b>$</b>",
       });
       expect(dto.symbol).toBe("b$/b");
-    });
-  });
-
-  describe("CreatePatDto", () => {
-    it("strips HTML from name", () => {
-      const dto = plainToInstance(CreatePatDto, {
-        name: "<img src=x>My Token",
-      });
-      expect(dto.name).toBe("img src=xMy Token");
     });
   });
 

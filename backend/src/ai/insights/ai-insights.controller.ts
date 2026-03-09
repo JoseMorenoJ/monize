@@ -12,7 +12,7 @@ import {
   HttpStatus,
   Logger,
 } from "@nestjs/common";
-import { AuthGuard } from "@nestjs/passport";
+import { SessionGuard } from "../../common/guards/session.guard";
 import { Throttle } from "@nestjs/throttler";
 import {
   ApiTags,
@@ -27,7 +27,7 @@ import { InsightType } from "../entities/ai-insight.entity";
 
 @ApiTags("AI Insights")
 @Controller("ai/insights")
-@UseGuards(AuthGuard("jwt"))
+@UseGuards(SessionGuard)
 @ApiBearerAuth()
 export class AiInsightsController {
   private readonly logger = new Logger(AiInsightsController.name);

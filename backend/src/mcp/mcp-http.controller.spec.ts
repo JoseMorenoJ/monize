@@ -1,16 +1,16 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import { McpHttpController } from "./mcp-http.controller";
 import { McpServerService } from "./mcp-server.service";
-import { PatService } from "../auth/pat.service";
+import { UsersService } from "../users/users.service";
 
 describe("McpHttpController", () => {
   let controller: McpHttpController;
-  let patService: Record<string, jest.Mock>;
+  let usersService: Record<string, jest.Mock>;
   let mcpServerService: Record<string, jest.Mock>;
 
   beforeEach(async () => {
-    patService = {
-      validateToken: jest.fn(),
+    usersService = {
+      findById: jest.fn(),
     };
 
     mcpServerService = {
@@ -23,7 +23,7 @@ describe("McpHttpController", () => {
       controllers: [McpHttpController],
       providers: [
         { provide: McpServerService, useValue: mcpServerService },
-        { provide: PatService, useValue: patService },
+        { provide: UsersService, useValue: usersService },
       ],
     }).compile();
 
@@ -60,10 +60,10 @@ describe("McpHttpController", () => {
     });
 
     it("should reject requests with invalid PAT", async () => {
-      patService.validateToken.mockRejectedValue(new Error("Invalid"));
+      usersService.findById.mockResolvedValue(null);
 
       const req = {
-        headers: { authorization: "Bearer pat_invalid" },
+        signedCookies: {}, headers: {},
         body: {},
       } as any;
       const res = {
@@ -78,7 +78,7 @@ describe("McpHttpController", () => {
 
     it("should reject non-PAT bearer tokens", async () => {
       const req = {
-        headers: { authorization: "Bearer jwt_token_here" },
+        signedCookies: {}, headers: {},
         body: {},
       } as any;
       const res = {
@@ -92,10 +92,7 @@ describe("McpHttpController", () => {
     });
 
     it("should return 404 for an expired session", async () => {
-      patService.validateToken.mockResolvedValue({
-        userId: "user-1",
-        scopes: "read",
-      });
+      usersService.findById.mockResolvedValue({ id: "user-1" });
 
       const sessionId = "expired-post-session";
       const mockTransport = {
@@ -109,7 +106,7 @@ describe("McpHttpController", () => {
       (controller as any).servers.set(sessionId, {});
       (controller as any).sessionUsers.set(sessionId, {
         userId: "user-1",
-        scopes: "read",
+        scopes: "read,write,reports",
       });
       (controller as any).sessionCreatedAt.set(
         sessionId,
@@ -117,10 +114,7 @@ describe("McpHttpController", () => {
       );
 
       const req = {
-        headers: {
-          authorization: "Bearer pat_test",
-          "mcp-session-id": sessionId,
-        },
+        signedCookies: { profile_session: "user-1" }, headers: { "mcp-session-id": sessionId, },
         body: {},
       } as any;
       const res = {
@@ -139,10 +133,7 @@ describe("McpHttpController", () => {
     });
 
     it("should return 429 when per-user session limit is reached", async () => {
-      patService.validateToken.mockResolvedValue({
-        userId: "user-flood",
-        scopes: "read",
-      });
+      usersService.findById.mockResolvedValue({ id: "user-1" });
 
       // Populate 10 active sessions for the same user
       for (let i = 0; i < 10; i++) {
@@ -157,14 +148,14 @@ describe("McpHttpController", () => {
         (controller as any).servers.set(sid, {});
         (controller as any).sessionUsers.set(sid, {
           userId: "user-flood",
-          scopes: "read",
+          scopes: "read,write,reports",
         });
         (controller as any).sessionCreatedAt.set(sid, Date.now());
       }
 
       // Attempt to create an 11th session (POST without mcp-session-id)
       const req = {
-        headers: { authorization: "Bearer pat_test" },
+        signedCookies: { profile_session: "user-1" }, headers: {},
         body: {},
       } as any;
       const res = {
@@ -204,13 +195,10 @@ describe("McpHttpController", () => {
     });
 
     it("should reject requests without session ID", async () => {
-      patService.validateToken.mockResolvedValue({
-        userId: "user-1",
-        scopes: "read",
-      });
+      usersService.findById.mockResolvedValue({ id: "user-1" });
 
       const req = {
-        headers: { authorization: "Bearer pat_test" },
+        signedCookies: { profile_session: "user-1" }, headers: {},
       } as any;
       const res = {
         status: jest.fn().mockReturnThis(),
@@ -223,16 +211,10 @@ describe("McpHttpController", () => {
     });
 
     it("should reject requests with unknown session ID", async () => {
-      patService.validateToken.mockResolvedValue({
-        userId: "user-1",
-        scopes: "read",
-      });
+      usersService.findById.mockResolvedValue({ id: "user-1" });
 
       const req = {
-        headers: {
-          authorization: "Bearer pat_test",
-          "mcp-session-id": "unknown-session",
-        },
+        signedCookies: { profile_session: "user-1" }, headers: { "mcp-session-id": "unknown-session", },
       } as any;
       const res = {
         status: jest.fn().mockReturnThis(),
@@ -245,10 +227,7 @@ describe("McpHttpController", () => {
     });
 
     it("should return 404 for an expired session", async () => {
-      patService.validateToken.mockResolvedValue({
-        userId: "user-1",
-        scopes: "read",
-      });
+      usersService.findById.mockResolvedValue({ id: "user-1" });
 
       const sessionId = "expired-get-session";
       const mockTransport = {
@@ -262,7 +241,7 @@ describe("McpHttpController", () => {
       (controller as any).servers.set(sessionId, {});
       (controller as any).sessionUsers.set(sessionId, {
         userId: "user-1",
-        scopes: "read",
+        scopes: "read,write,reports",
       });
       (controller as any).sessionCreatedAt.set(
         sessionId,
@@ -270,10 +249,7 @@ describe("McpHttpController", () => {
       );
 
       const req = {
-        headers: {
-          authorization: "Bearer pat_test",
-          "mcp-session-id": sessionId,
-        },
+        signedCookies: { profile_session: "user-1" }, headers: { "mcp-session-id": sessionId, },
       } as any;
       const res = {
         status: jest.fn().mockReturnThis(),
@@ -292,10 +268,7 @@ describe("McpHttpController", () => {
 
     it("should reject when session user does not match authenticated user", async () => {
       // First, set up a session by calling handlePost with user-1
-      patService.validateToken.mockResolvedValue({
-        userId: "user-1",
-        scopes: "read",
-      });
+      usersService.findById.mockResolvedValue({ id: "user-1" });
 
       const sessionId = "test-session-id";
       const mockTransport = {
@@ -310,21 +283,15 @@ describe("McpHttpController", () => {
       (controller as any).servers.set(sessionId, {});
       (controller as any).sessionUsers.set(sessionId, {
         userId: "user-1",
-        scopes: "read",
+        scopes: "read,write,reports",
       });
       (controller as any).sessionCreatedAt.set(sessionId, Date.now());
 
       // Now try GET with a different user
-      patService.validateToken.mockResolvedValue({
-        userId: "user-2",
-        scopes: "read",
-      });
+      usersService.findById.mockResolvedValue({ id: "user-1" });
 
       const req = {
-        headers: {
-          authorization: "Bearer pat_test",
-          "mcp-session-id": sessionId,
-        },
+        signedCookies: { profile_session: "user-1" }, headers: { "mcp-session-id": sessionId, },
       } as any;
       const res = {
         status: jest.fn().mockReturnThis(),
@@ -361,13 +328,10 @@ describe("McpHttpController", () => {
     });
 
     it("should reject requests without session ID", async () => {
-      patService.validateToken.mockResolvedValue({
-        userId: "user-1",
-        scopes: "read",
-      });
+      usersService.findById.mockResolvedValue({ id: "user-1" });
 
       const req = {
-        headers: { authorization: "Bearer pat_test" },
+        signedCookies: { profile_session: "user-1" }, headers: {},
       } as any;
       const res = {
         status: jest.fn().mockReturnThis(),
@@ -380,10 +344,7 @@ describe("McpHttpController", () => {
     });
 
     it("should return 404 for an expired session", async () => {
-      patService.validateToken.mockResolvedValue({
-        userId: "user-1",
-        scopes: "read",
-      });
+      usersService.findById.mockResolvedValue({ id: "user-1" });
 
       const sessionId = "expired-delete-session";
       const mockTransport = {
@@ -397,7 +358,7 @@ describe("McpHttpController", () => {
       (controller as any).servers.set(sessionId, {});
       (controller as any).sessionUsers.set(sessionId, {
         userId: "user-1",
-        scopes: "read",
+        scopes: "read,write,reports",
       });
       (controller as any).sessionCreatedAt.set(
         sessionId,
@@ -405,10 +366,7 @@ describe("McpHttpController", () => {
       );
 
       const req = {
-        headers: {
-          authorization: "Bearer pat_test",
-          "mcp-session-id": sessionId,
-        },
+        signedCookies: { profile_session: "user-1" }, headers: { "mcp-session-id": sessionId, },
       } as any;
       const res = {
         status: jest.fn().mockReturnThis(),
@@ -426,10 +384,7 @@ describe("McpHttpController", () => {
     });
 
     it("should reject when session user does not match authenticated user", async () => {
-      patService.validateToken.mockResolvedValue({
-        userId: "user-1",
-        scopes: "read",
-      });
+      usersService.findById.mockResolvedValue({ id: "user-1" });
 
       const sessionId = "delete-session-id";
       const mockTransport = {
@@ -444,21 +399,15 @@ describe("McpHttpController", () => {
       (controller as any).servers.set(sessionId, {});
       (controller as any).sessionUsers.set(sessionId, {
         userId: "user-1",
-        scopes: "read",
+        scopes: "read,write,reports",
       });
       (controller as any).sessionCreatedAt.set(sessionId, Date.now());
 
       // Now try DELETE with a different user
-      patService.validateToken.mockResolvedValue({
-        userId: "user-2",
-        scopes: "read",
-      });
+      usersService.findById.mockResolvedValue({ id: "user-1" });
 
       const req = {
-        headers: {
-          authorization: "Bearer pat_test",
-          "mcp-session-id": sessionId,
-        },
+        signedCookies: { profile_session: "user-1" }, headers: { "mcp-session-id": sessionId, },
       } as any;
       const res = {
         status: jest.fn().mockReturnThis(),

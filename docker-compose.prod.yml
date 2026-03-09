@@ -20,7 +20,10 @@ services:
 
   # Backend API (NestJS)
   backend:
-    image: ghcr.io/kenlasko/monize-backend:latest
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      target: production
     container_name: monize-backend
     restart: unless-stopped
     read_only: true
@@ -41,28 +44,11 @@ services:
       DATABASE_NAME: ${POSTGRES_DB}
       DATABASE_USER: ${POSTGRES_USER}
       DATABASE_PASSWORD: ${POSTGRES_PASSWORD}
-      JWT_SECRET: ${JWT_SECRET}
-      JWT_EXPIRATION: ${JWT_EXPIRATION:-15m}
+      COOKIE_SECRET: ${COOKIE_SECRET:?COOKIE_SECRET must be set in .env}
       PUBLIC_APP_URL: ${PUBLIC_APP_URL}
       CORS_ORIGIN: ${CORS_ORIGIN:-${PUBLIC_APP_URL}}
-      # Authentication
-      LOCAL_AUTH_ENABLED: ${LOCAL_AUTH_ENABLED:-true}
-      REGISTRATION_ENABLED: ${REGISTRATION_ENABLED:-true}
-      FORCE_2FA: ${FORCE_2FA:-false}
       # Demo mode (optional)
       DEMO_MODE: ${DEMO_MODE:-false}
-      # OIDC (optional)
-      OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-}
-      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
-      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
-      OIDC_CALLBACK_URL: ${OIDC_CALLBACK_URL:-}
-      # SMTP (optional)
-      SMTP_HOST: ${SMTP_HOST:-}
-      SMTP_PORT: ${SMTP_PORT:-587}
-      SMTP_SECURE: ${SMTP_SECURE:-false}
-      SMTP_USER: ${SMTP_USER:-}
-      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
-      EMAIL_FROM: ${EMAIL_FROM:-}
       # AI Integration (optional)
       AI_ENCRYPTION_KEY: ${AI_ENCRYPTION_KEY:-}
       AI_DEFAULT_PROVIDER: ${AI_DEFAULT_PROVIDER:-}
@@ -80,7 +66,10 @@ services:
 
   # Frontend (Next.js)
   frontend:
-    image: ghcr.io/kenlasko/monize-frontend:latest
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: production
     container_name: monize-frontend
     restart: unless-stopped
     read_only: true

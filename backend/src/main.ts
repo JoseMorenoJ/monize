@@ -40,8 +40,8 @@ async function bootstrap() {
   app.use(express.json({ limit: "10mb" }));
   app.use(express.urlencoded({ limit: "10mb", extended: true }));
 
-  // Cookie parser for OIDC state/nonce and auth tokens
-  app.use(cookieParser());
+  // Cookie parser with secret for signed profile session cookies
+  app.use(cookieParser(process.env.COOKIE_SECRET || "default-dev-secret-change-in-production"));
 
   // Security middleware
   app.use(
@@ -76,10 +76,11 @@ async function bootstrap() {
   const isProduction = process.env.NODE_ENV === "production";
   app.enableCors({
     origin: (origin, callback) => {
-      // Requests with no Origin header (server-to-server, curl, same-origin
-      // navigations): in production, reject to prevent null-origin abuse
-      // (e.g. sandboxed iframes). In dev, allow for convenience.
-      if (!origin) return callback(null, !isProduction);
+      // Requests with no Origin header come from server-to-server calls
+      // (the frontend proxy, health checks, curl). The backend is not publicly
+      // exposed -- it is only reachable through the Docker-internal network --
+      // so no-origin requests are safe to allow.
+      if (!origin) return callback(null, true);
 
       if (allowedOrigins.includes(origin)) {
         callback(null, true);
@@ -93,7 +94,6 @@ async function bootstrap() {
       "Content-Type",
       "Authorization",
       "Accept",
-      "X-CSRF-Token",
       "Mcp-Session-Id",
     ],
     exposedHeaders: ["Mcp-Session-Id"],

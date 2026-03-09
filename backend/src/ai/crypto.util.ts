@@ -8,16 +8,11 @@ function deriveKey(secret: string, salt: Buffer): Buffer {
   return crypto.scryptSync(secret, salt, 32);
 }
 
-/**
- * Legacy key derivation for backward compatibility with existing encrypted TOTP secrets.
- * New encryptions use a random per-encryption salt instead.
- */
 function deriveLegacyKey(secret: string): Buffer {
   return crypto.scryptSync(secret, "totp-encryption-salt", 32);
 }
 
 export function encrypt(text: string, jwtSecret: string): string {
-  // SECURITY: Use a random salt per encryption so each ciphertext has a unique derived key
   const salt = crypto.randomBytes(SALT_LENGTH);
   const key = deriveKey(jwtSecret, salt);
   const iv = crypto.randomBytes(IV_LENGTH);
@@ -27,14 +22,9 @@ export function encrypt(text: string, jwtSecret: string): string {
   encrypted += cipher.final("hex");
 
   const authTag = cipher.getAuthTag();
-
-  // Format: salt:iv:authTag:ciphertext (4 parts = new format)
   return `${salt.toString("hex")}:${iv.toString("hex")}:${authTag.toString("hex")}:${encrypted}`;
 }
 
-/**
- * Returns true if the ciphertext uses the legacy 3-part format (static salt).
- */
 export function isLegacyEncryption(encryptedText: string): boolean {
   return encryptedText.split(":").length === 3;
 }
@@ -48,17 +38,12 @@ export function decrypt(encryptedText: string, jwtSecret: string): string {
   let ciphertext: string;
 
   if (parts.length === 4) {
-    // New format: salt:iv:authTag:ciphertext
     const salt = Buffer.from(parts[0], "hex");
     key = deriveKey(jwtSecret, salt);
     ivHex = parts[1];
     authTagHex = parts[2];
     ciphertext = parts[3];
   } else if (parts.length === 3) {
-    // DEPRECATED: Legacy format with static salt -- retained only for backward
-    // compatibility with existing encrypted TOTP secrets. New encryptions always
-    // use the 4-part format with a random per-encryption salt.
-    // Use migrateFromLegacy() to re-encrypt legacy values.
     key = deriveLegacyKey(jwtSecret);
     ivHex = parts[0];
     authTagHex = parts[1];
@@ -78,10 +63,6 @@ export function decrypt(encryptedText: string, jwtSecret: string): string {
   return decrypted;
 }
 
-/**
- * Re-encrypt a legacy (static salt) ciphertext using the current format
- * with a random per-encryption salt. Returns null if already in new format.
- */
 export function migrateFromLegacy(
   encryptedText: string,
   jwtSecret: string,

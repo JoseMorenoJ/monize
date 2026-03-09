@@ -9,12 +9,13 @@ describe("UsersController", () => {
 
   beforeEach(async () => {
     mockUsersService = {
+      findAll: jest.fn(),
       findById: jest.fn(),
+      create: jest.fn(),
       updateProfile: jest.fn(),
+      deleteProfile: jest.fn(),
       getPreferences: jest.fn(),
       updatePreferences: jest.fn(),
-      changePassword: jest.fn(),
-      deleteAccount: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -31,47 +32,19 @@ describe("UsersController", () => {
   });
 
   describe("getProfile()", () => {
-    it("returns sanitized user profile with hasPassword field", async () => {
-      mockUsersService.findById.mockResolvedValue({
+    it("returns the user profile", async () => {
+      const expected = {
         id: "user-1",
-        email: "test@example.com",
         firstName: "John",
         lastName: "Doe",
-        passwordHash: "$2b$10$hashedsecret",
-        resetToken: "some-token",
-        resetTokenExpiry: new Date(),
-        twoFactorSecret: "secret123",
-      });
+        avatarColor: "#6366f1",
+      };
+      mockUsersService.findById.mockResolvedValue(expected);
 
       const result = await controller.getProfile(mockReq);
 
-      expect(result).toEqual({
-        id: "user-1",
-        email: "test@example.com",
-        firstName: "John",
-        lastName: "Doe",
-        hasPassword: true,
-      });
-      expect(result).not.toHaveProperty("passwordHash");
-      expect(result).not.toHaveProperty("resetToken");
-      expect(result).not.toHaveProperty("resetTokenExpiry");
-      expect(result).not.toHaveProperty("twoFactorSecret");
+      expect(result).toEqual(expected);
       expect(mockUsersService.findById).toHaveBeenCalledWith("user-1");
-    });
-
-    it("sets hasPassword to false when passwordHash is null", async () => {
-      mockUsersService.findById.mockResolvedValue({
-        id: "user-1",
-        email: "test@example.com",
-        passwordHash: null,
-        resetToken: null,
-        resetTokenExpiry: null,
-        twoFactorSecret: null,
-      });
-
-      const result = await controller.getProfile(mockReq);
-
-      expect(result.hasPassword).toBe(false);
     });
 
     it("returns null when user is not found", async () => {
@@ -128,32 +101,6 @@ describe("UsersController", () => {
         "user-1",
         dto,
       );
-    });
-  });
-
-  describe("changePassword()", () => {
-    it("delegates to usersService.changePassword and returns success message", async () => {
-      const dto = { currentPassword: "old123", newPassword: "new456" };
-      mockUsersService.changePassword.mockResolvedValue(undefined);
-
-      const result = await controller.changePassword(mockReq, dto as any);
-
-      expect(result).toEqual({ message: "Password changed successfully" });
-      expect(mockUsersService.changePassword).toHaveBeenCalledWith(
-        "user-1",
-        dto,
-      );
-    });
-  });
-
-  describe("deleteAccount()", () => {
-    it("delegates to usersService.deleteAccount and returns success message", async () => {
-      mockUsersService.deleteAccount.mockResolvedValue(undefined);
-
-      const result = await controller.deleteAccount(mockReq);
-
-      expect(result).toEqual({ message: "Account deleted successfully" });
-      expect(mockUsersService.deleteAccount).toHaveBeenCalledWith("user-1");
     });
   });
 });

@@ -2,8 +2,8 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { useAuthStore } from '@/store/authStore';
-import { authApi } from '@/lib/auth';
+import { useProfileStore } from '@/store/profileStore';
+import { profileApi } from '@/lib/auth';
 import Image from 'next/image';
 import { Button } from '@/components/ui/Button';
 import { BudgetAlertBadge } from '@/components/budgets/BudgetAlertBadge';
@@ -34,7 +34,7 @@ const aiLinks = [
 export function AppHeader() {
   const router = useRouter();
   const pathname = usePathname();
-  const { user, logout } = useAuthStore();
+  const { profile, deselectProfile } = useProfileStore();
   const [toolsOpen, setToolsOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -69,16 +69,15 @@ export function AppHeader() {
   const isToolsActive = toolsLinks.some((link) => pathname === link.href);
   const isAiActive = aiLinks.some((link) => pathname === link.href);
 
-  const handleLogout = async () => {
+  const handleSwitchProfile = async () => {
     try {
-      await authApi.logout();
-      logout();
-      toast.success('Logged out successfully');
-      router.push('/login');
+      await profileApi.deselectProfile();
     } catch {
-      logout();
-      router.push('/login');
+      // Ignore errors — still clear local state
     }
+    deselectProfile();
+    toast.success('Profile switched');
+    router.push('/profiles');
   };
 
   return (
@@ -180,26 +179,6 @@ export function AppHeader() {
                         {link.label}
                       </button>
                     ))}
-
-                    {/* Admin section - only for admins */}
-                    {user?.role === 'admin' && (
-                      <>
-                        <div className="border-t border-gray-200 dark:border-gray-700 my-1" />
-                        <div className="px-4 py-1 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                          Admin
-                        </div>
-                        <button
-                          onClick={() => router.push('/admin/users')}
-                          className={`block w-full text-left px-4 py-2 text-sm transition-colors ${
-                            pathname.startsWith('/admin')
-                              ? 'bg-blue-50 dark:bg-blue-900/50 text-blue-700 dark:text-blue-200'
-                              : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
-                          }`}
-                        >
-                          User Management
-                        </button>
-                      </>
-                    )}
 
                     {/* Divider */}
                     <div className="border-t border-gray-200 dark:border-gray-700 my-1" />
@@ -331,20 +310,6 @@ export function AppHeader() {
                   </div>
                 )}
               </div>
-
-              {/* Admin link - only visible to admins */}
-              {user?.role === 'admin' && (
-                <button
-                  onClick={() => router.push('/admin/users')}
-                  className={`px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                    pathname.startsWith('/admin')
-                      ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-200'
-                      : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700'
-                  }`}
-                >
-                  Admin
-                </button>
-              )}
             </nav>
           </div>
           <div className="flex items-center space-x-1 sm:space-x-4">
@@ -377,14 +342,14 @@ export function AppHeader() {
                   d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"
                 />
               </svg>
-              <span className="hidden sm:inline">{user?.firstName || user?.email}</span>
+              <span className="hidden sm:inline">{profile?.firstName}</span>
             </button>
             <Button
               variant="outline"
               size="sm"
-              onClick={handleLogout}
+              onClick={handleSwitchProfile}
             >
-              Logout
+              Switch Profile
             </Button>
           </div>
         </div>

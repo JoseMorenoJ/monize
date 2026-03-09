@@ -22,7 +22,7 @@ import {
   ApiParam,
   ApiQuery,
 } from "@nestjs/swagger";
-import { AuthGuard } from "@nestjs/passport";
+import { SessionGuard } from "../common/guards/session.guard";
 import { ScheduledTransactionsService } from "./scheduled-transactions.service";
 import { CreateScheduledTransactionDto } from "./dto/create-scheduled-transaction.dto";
 import { UpdateScheduledTransactionDto } from "./dto/update-scheduled-transaction.dto";
@@ -34,7 +34,7 @@ import {
 
 @ApiTags("Scheduled Transactions")
 @Controller("scheduled-transactions")
-@UseGuards(AuthGuard("jwt"))
+@UseGuards(SessionGuard)
 @ApiBearerAuth()
 export class ScheduledTransactionsController {
   constructor(

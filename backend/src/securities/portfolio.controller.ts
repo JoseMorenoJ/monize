@@ -13,13 +13,13 @@ import {
   ApiResponse,
   ApiQuery,
 } from "@nestjs/swagger";
-import { AuthGuard } from "@nestjs/passport";
+import { SessionGuard } from "../common/guards/session.guard";
 import { PortfolioService } from "./portfolio.service";
 import { SectorWeightingService } from "./sector-weighting.service";
 
 @ApiTags("Portfolio")
 @Controller("portfolio")
-@UseGuards(AuthGuard("jwt"))
+@UseGuards(SessionGuard)
 @ApiBearerAuth()
 export class PortfolioController {
   private static readonly UUID_REGEX =

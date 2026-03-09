@@ -10,7 +10,6 @@ import { UserPreference } from "../users/entities/user-preference.entity";
 import { BudgetPeriodService } from "./budget-period.service";
 import { BudgetReportsService } from "./budget-reports.service";
 import { EmailService } from "../notifications/email.service";
-import { budgetMonthlySummaryTemplate } from "../notifications/email-templates";
 
 interface ClosedPeriodInfo {
   budget: Budget;
@@ -142,114 +141,10 @@ export class BudgetPeriodCronService {
   }
 
   private async sendMonthlySummaryForUser(
-    userId: string,
-    periods: ClosedPeriodInfo[],
+    _userId: string,
+    _periods: ClosedPeriodInfo[],
   ): Promise<boolean> {
-    const prefs = await this.preferencesRepository.findOne({
-      where: { userId },
-    });
-    if (prefs && !prefs.notificationEmail) return false;
-    if (prefs && prefs.budgetDigestEnabled === false) return false;
-
-    const user = await this.usersRepository.findOne({
-      where: { id: userId },
-    });
-    if (!user || !user.email) return false;
-
-    const appUrl = this.configService.get<string>(
-      "PUBLIC_APP_URL",
-      "http://localhost:3000",
-    );
-
-    const summaries = await Promise.all(
-      periods.map(async ({ budget, period }) => {
-        let healthScore: number | null = null;
-        let healthLabel: string | null = null;
-        try {
-          const health = await this.budgetReportsService.getHealthScore(
-            userId,
-            budget.id,
-          );
-          healthScore = health.score;
-          healthLabel = health.label;
-        } catch {
-          // Health score is optional
-        }
-
-        const categories = budget.categories || [];
-        const expenseCategories = categories.filter((c) => !c.isIncome);
-
-        const periodCategories = period.periodCategories || [];
-
-        const categoryData = expenseCategories.map((bc) => {
-          const pc = periodCategories.find((p) => p.budgetCategoryId === bc.id);
-          return {
-            categoryName: bc.category?.name || "Uncategorized",
-            budgeted: Number(pc?.budgetedAmount ?? bc.amount),
-            actual: Number(pc?.actualAmount ?? 0),
-            percentUsed:
-              Number(pc?.budgetedAmount ?? bc.amount) > 0
-                ? Math.round(
-                    (Number(pc?.actualAmount ?? 0) /
-                      Number(pc?.budgetedAmount ?? bc.amount)) *
-                      10000,
-                  ) / 100
-                : 0,
-          };
-        });
-
-        const overBudgetCategories = categoryData.filter(
-          (c) => c.percentUsed > 100,
-        );
-
-        const topCategories = [...categoryData]
-          .sort((a, b) => b.actual - a.actual)
-          .slice(0, 5);
-
-        const totalBudgeted = Number(period.totalBudgeted);
-        const totalSpent = Number(period.actualExpenses);
-        const totalIncome = Number(period.actualIncome);
-        const remaining = totalBudgeted - totalSpent;
-        const percentUsed =
-          totalBudgeted > 0
-            ? Math.round((totalSpent / totalBudgeted) * 10000) / 100
-            : 0;
-
-        const periodDate = new Date(period.periodStart + "T00:00:00");
-        const periodLabel = periodDate.toLocaleDateString("en-US", {
-          year: "numeric",
-          month: "long",
-        });
-
-        return {
-          budgetName: budget.name,
-          currencyCode: budget.currencyCode,
-          periodLabel,
-          totalBudgeted,
-          totalSpent,
-          totalIncome,
-          remaining,
-          percentUsed,
-          healthScore,
-          healthLabel,
-          overBudgetCategories,
-          topCategories,
-        };
-      }),
-    );
-
-    const html = budgetMonthlySummaryTemplate(
-      user.firstName || "",
-      summaries,
-      appUrl,
-    );
-
-    const subject =
-      summaries.length === 1
-        ? `Monize: Monthly budget summary - ${summaries[0].periodLabel}`
-        : `Monize: Monthly budget summary for ${summaries.length} budgets`;
-
-    await this.emailService.sendMail(user.email, subject, html);
-    return true;
+    // Profiles have no email addresses; email sending is disabled
+    return false;
   }
 }

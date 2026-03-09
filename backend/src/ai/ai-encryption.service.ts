@@ -1,6 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { encrypt, decrypt } from "../auth/crypto.util";
+import { encrypt, decrypt } from "./crypto.util";
 
 @Injectable()
 export class AiEncryptionService {
