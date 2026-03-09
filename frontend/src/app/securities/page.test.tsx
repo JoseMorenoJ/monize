@@ -196,8 +196,9 @@ describe('SecuritiesPage', () => {
     render(<SecuritiesPage />);
     await waitFor(() => {
       expect(screen.getByTestId('summary-Total Securities')).toBeInTheDocument();
-      expect(screen.getByTestId('summary-Active')).toBeInTheDocument();
-      expect(screen.getByTestId('summary-Inactive')).toBeInTheDocument();
+      expect(screen.getByTestId('summary-Types')).toBeInTheDocument();
+      expect(screen.getByTestId('summary-Exchanges')).toBeInTheDocument();
+      expect(screen.getByTestId('summary-Currencies')).toBeInTheDocument();
     });
   });
 
@@ -205,8 +206,9 @@ describe('SecuritiesPage', () => {
     render(<SecuritiesPage />);
     await waitFor(() => {
       expect(screen.getByTestId('summary-Total Securities')).toHaveTextContent('3');
-      expect(screen.getByTestId('summary-Active')).toHaveTextContent('2');
-      expect(screen.getByTestId('summary-Inactive')).toHaveTextContent('1');
+      expect(screen.getByTestId('summary-Types')).toHaveTextContent('3');
+      expect(screen.getByTestId('summary-Exchanges')).toHaveTextContent('2');
+      expect(screen.getByTestId('summary-Currencies')).toHaveTextContent('2');
     });
   });
 

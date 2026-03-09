@@ -190,6 +190,10 @@ function SecuritiesContent() {
   const activeCount = allSecurities.filter((s) => s.isActive).length;
   const inactiveCount = allSecurities.filter((s) => !s.isActive).length;
 
+  const distinctTypes = useMemo(() => new Set(allSecurities.map(s => s.securityType).filter(Boolean)).size, [allSecurities]);
+  const distinctExchanges = useMemo(() => new Set(allSecurities.map(s => s.exchange).filter(Boolean)).size, [allSecurities]);
+  const distinctCurrencies = useMemo(() => new Set(allSecurities.map(s => s.currencyCode).filter(Boolean)).size, [allSecurities]);
+
   return (
     <PageLayout>
       <main className="px-4 sm:px-6 lg:px-12 pt-6 pb-8">
@@ -200,10 +204,11 @@ function SecuritiesContent() {
           actions={<Button onClick={handleCreateNew}>+ New Security</Button>}
         />
         {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
           <SummaryCard label="Total Securities" value={allSecurities.length} icon={SummaryIcons.barChart} />
-          <SummaryCard label="Active" value={activeCount} icon={SummaryIcons.checkCircle} valueColor="green" />
-          <SummaryCard label="Inactive" value={inactiveCount} icon={SummaryIcons.ban} />
+          <SummaryCard label="Types" value={distinctTypes} icon={SummaryIcons.tag} />
+          <SummaryCard label="Exchanges" value={distinctExchanges} icon={SummaryIcons.list} />
+          <SummaryCard label="Currencies" value={distinctCurrencies} icon={SummaryIcons.money} />
         </div>
 
         {/* Search and Status Filter */}
