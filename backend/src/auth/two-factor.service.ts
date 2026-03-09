@@ -601,7 +601,12 @@ export class TwoFactorService {
 
     // SECURITY: Verify user-agent fingerprint matches to limit stolen token reuse.
     if (device.userAgentHash && userAgent) {
-      if (device.userAgentHash !== this.hashUserAgent(userAgent)) {
+      const expected = Buffer.from(device.userAgentHash, "utf8");
+      const actual = Buffer.from(this.hashUserAgent(userAgent), "utf8");
+      if (
+        expected.length !== actual.length ||
+        !crypto.timingSafeEqual(expected, actual)
+      ) {
         this.logger.warn(
           `Trusted device token rejected: user-agent mismatch for user ${userId}`,
         );
