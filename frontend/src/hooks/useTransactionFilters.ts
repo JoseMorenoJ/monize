@@ -9,9 +9,6 @@ import { Account } from '@/types/account';
 import { Category } from '@/types/category';
 import { Payee } from '@/types/payee';
 
-export type TransactionSortField = 'transactionDate' | 'amount' | 'payeeName' | 'categoryName' | 'accountName' | 'status';
-export type SortDirection = 'asc' | 'desc';
-
 // LocalStorage keys for filter persistence
 const STORAGE_KEYS = {
   accountIds: 'transactions.filter.accountIds',
@@ -24,8 +21,6 @@ const STORAGE_KEYS = {
   timePeriod: 'transactions.filter.timePeriod',
   amountFrom: 'transactions.filter.amountFrom',
   amountTo: 'transactions.filter.amountTo',
-  sortField: 'transactions.sort.field',
-  sortDirection: 'transactions.sort.direction',
 };
 
 // Helper to get filter values as array
@@ -96,12 +91,6 @@ export function useTransactionFilters({ accounts, categories, payees, weekStarts
   const [filterTimePeriod, setFilterTimePeriod] = useState<string>('');
   const [filterAmountFrom, setFilterAmountFrom] = useState<string>('');
   const [filterAmountTo, setFilterAmountTo] = useState<string>('');
-  const [sortField, setSortField] = useState<TransactionSortField>(() =>
-    getStoredValue<TransactionSortField>(STORAGE_KEYS.sortField, 'transactionDate')
-  );
-  const [sortDirection, setSortDirection] = useState<SortDirection>(() =>
-    getStoredValue<SortDirection>(STORAGE_KEYS.sortDirection, 'desc')
-  );
   const searchDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const [filtersInitialized, setFiltersInitialized] = useState(false);
   const [filtersExpanded, setFiltersExpanded] = useState(true);
@@ -344,22 +333,6 @@ export function useTransactionFilters({ accounts, categories, payees, weekStarts
     setter(value);
   }, []);
 
-  // Sort handler
-  const handleSort = useCallback((field: TransactionSortField) => {
-    if (sortField === field) {
-      const newDir = sortDirection === 'asc' ? 'desc' : 'asc';
-      setSortDirection(newDir);
-      localStorage.setItem(STORAGE_KEYS.sortDirection, JSON.stringify(newDir));
-    } else {
-      const defaultDir = field === 'amount' ? 'desc' : field === 'transactionDate' ? 'desc' : 'asc';
-      setSortField(field);
-      setSortDirection(defaultDir);
-      localStorage.setItem(STORAGE_KEYS.sortField, JSON.stringify(field));
-      localStorage.setItem(STORAGE_KEYS.sortDirection, JSON.stringify(defaultDir));
-    }
-    isFilterChange.current = true;
-  }, [sortField, sortDirection]);
-
   // Debounced search handler
   const handleSearchChange = useCallback((value: string) => {
     setSearchInput(value);
@@ -484,7 +457,6 @@ export function useTransactionFilters({ accounts, categories, payees, weekStarts
     filtersInitialized,
     filtersExpanded, setFiltersExpanded,
     activeFilterCount,
-    sortField, sortDirection, handleSort,
 
     // Derived filter data
     filteredAccounts,

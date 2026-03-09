@@ -75,8 +75,6 @@ export const transactionsApi = {
     targetTransactionId?: string;
     amountFrom?: number;
     amountTo?: number;
-    sortBy?: string;
-    sortDirection?: string;
   }): Promise<PaginatedTransactions> => {
     const apiParams = {
       ...buildFilterParams(params),
@@ -88,8 +86,6 @@ export const transactionsApi = {
       targetTransactionId: params?.targetTransactionId,
       amountFrom: params?.amountFrom,
       amountTo: params?.amountTo,
-      sortBy: params?.sortBy,
-      sortDirection: params?.sortDirection,
     };
 
     const response = await apiClient.get<PaginatedTransactions>('/transactions', {

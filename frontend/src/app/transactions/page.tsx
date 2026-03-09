@@ -158,8 +158,6 @@ function TransactionsContent() {
           targetTransactionId: targetTransactionId || undefined,
           amountFrom: parsedAmountFrom,
           amountTo: parsedAmountTo,
-          sortBy: filters.sortField !== 'transactionDate' ? filters.sortField : undefined,
-          sortDirection: filters.sortDirection !== 'desc' ? filters.sortDirection.toUpperCase() : undefined,
         }),
         chartPromise,
       ]);
@@ -197,7 +195,7 @@ function TransactionsContent() {
     } finally {
       setIsLoading(false);
     }
-  }, [filters.filterAccountIds, filters.filterAccountStatus, filters.filteredAccounts, filters.filterCategoryIds, filters.filterPayeeIds, filters.filterStartDate, filters.filterEndDate, filters.filterSearch, filters.filterAmountFrom, filters.filterAmountTo, filters.sortField, filters.sortDirection]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [filters.filterAccountIds, filters.filterAccountStatus, filters.filteredAccounts, filters.filterCategoryIds, filters.filterPayeeIds, filters.filterStartDate, filters.filterEndDate, filters.filterSearch, filters.filterAmountFrom, filters.filterAmountTo]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadData = useCallback(async (page: number = filters.currentPage) => {
     await loadTransactions(page);
@@ -248,7 +246,7 @@ function TransactionsContent() {
     } else {
       loadTransactions(page);
     }
-  }, [filters.currentPage, filters.filterAccountIds, filters.filterCategoryIds, filters.filterPayeeIds, filters.filterStartDate, filters.filterEndDate, filters.filterSearch, filters.filterAmountFrom, filters.filterAmountTo, filters.sortField, filters.sortDirection, filters.updateUrl, loadTransactions, filters.filtersInitialized]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [filters.currentPage, filters.filterAccountIds, filters.filterCategoryIds, filters.filterPayeeIds, filters.filterStartDate, filters.filterEndDate, filters.filterSearch, filters.filterAmountFrom, filters.filterAmountTo, filters.updateUrl, loadTransactions, filters.filtersInitialized]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Patch popstate handler to skip when modals open
   useEffect(() => {
@@ -543,9 +541,6 @@ function TransactionsContent() {
               onPageChange={filters.goToPage}
               categoryColorMap={filters.categoryColorMap}
               budgetStatusMap={budgetStatusMap}
-              sortField={filters.sortField}
-              sortDirection={filters.sortDirection}
-              onSort={filters.handleSort}
             />
           )}
         </div>

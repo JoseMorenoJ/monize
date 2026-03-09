@@ -8,8 +8,6 @@ import { transactionsApi } from '@/lib/transactions';
 import { getErrorMessage } from '@/lib/errors';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Pagination } from '@/components/ui/Pagination';
-import { SortIcon } from '@/components/ui/SortIcon';
-import { type TransactionSortField, type SortDirection } from '@/hooks/useTransactionFilters';
 import { TransactionRow } from './TransactionRow';
 import { TransactionActionSheet } from './TransactionActionSheet';
 import { useDateFormat } from '@/hooks/useDateFormat';
@@ -45,9 +43,6 @@ interface TransactionListProps {
   categoryColorMap?: Map<string, string | null>;
   budgetStatusMap?: Record<string, CategoryBudgetStatus>;
   showToolbar?: boolean;
-  sortField?: TransactionSortField;
-  sortDirection?: SortDirection;
-  onSort?: (field: TransactionSortField) => void;
 }
 
 export function TransactionList({
@@ -79,9 +74,6 @@ export function TransactionList({
   categoryColorMap,
   budgetStatusMap,
   showToolbar = true,
-  sortField = 'transactionDate',
-  sortDirection = 'desc',
-  onSort,
 }: TransactionListProps) {
   const { formatDate } = useDateFormat();
   const { formatCurrency } = useNumberFormat();
@@ -353,46 +345,16 @@ export function TransactionList({
                   />
                 </th>
               )}
-              <th
-                className={`${headerPadding} text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider ${onSort ? 'cursor-pointer hover:text-gray-700 dark:hover:text-gray-200' : ''}`}
-                onClick={onSort ? () => onSort('transactionDate') : undefined}
-              >
-                Date{onSort && <SortIcon field="transactionDate" sortField={sortField} sortDirection={sortDirection} />}
-              </th>
-              <th
-                className={`${headerPadding} text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden md:table-cell ${onSort ? 'cursor-pointer hover:text-gray-700 dark:hover:text-gray-200' : ''}`}
-                onClick={onSort ? () => onSort('accountName') : undefined}
-              >
-                Account{onSort && <SortIcon field="accountName" sortField={sortField} sortDirection={sortDirection} />}
-              </th>
-              <th
-                className={`${headerPadding} text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider ${onSort ? 'cursor-pointer hover:text-gray-700 dark:hover:text-gray-200' : ''}`}
-                onClick={onSort ? () => onSort('payeeName') : undefined}
-              >
-                Payee{onSort && <SortIcon field="payeeName" sortField={sortField} sortDirection={sortDirection} />}
-              </th>
-              <th
-                className={`${headerPadding} text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden lg:table-cell ${onSort ? 'cursor-pointer hover:text-gray-700 dark:hover:text-gray-200' : ''}`}
-                onClick={onSort ? () => onSort('categoryName') : undefined}
-              >
-                Category{onSort && <SortIcon field="categoryName" sortField={sortField} sortDirection={sortDirection} />}
-              </th>
+              <th className={`${headerPadding} text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider`}>Date</th>
+              <th className={`${headerPadding} text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden md:table-cell`}>Account</th>
+              <th className={`${headerPadding} text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider`}>Payee</th>
+              <th className={`${headerPadding} text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden lg:table-cell`}>Category</th>
               <th className={`${headerPadding} text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden xl:table-cell`}>Description</th>
-              <th
-                className={`${headerPadding} text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider ${onSort ? 'cursor-pointer hover:text-gray-700 dark:hover:text-gray-200' : ''}`}
-                onClick={onSort ? () => onSort('amount') : undefined}
-              >
-                Amount{onSort && <SortIcon field="amount" sortField={sortField} sortDirection={sortDirection} />}
-              </th>
+              <th className={`${headerPadding} text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider`}>Amount</th>
               {isSingleAccountView && (
                 <th className={`${headerPadding} text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider`}>Balance</th>
               )}
-              <th
-                className={`${headerPadding} text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden sm:table-cell ${onSort ? 'cursor-pointer hover:text-gray-700 dark:hover:text-gray-200' : ''}`}
-                onClick={onSort ? () => onSort('status') : undefined}
-              >
-                Status{onSort && <SortIcon field="status" sortField={sortField} sortDirection={sortDirection} />}
-              </th>
+              <th className={`${headerPadding} text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden sm:table-cell`}>Status</th>
               <th className={`${headerPadding} text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden min-[480px]:table-cell`}>Actions</th>
             </tr>
           </thead>

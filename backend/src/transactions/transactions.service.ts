@@ -193,14 +193,6 @@ export class TransactionsService {
     targetTransactionId?: string,
     amountFrom?: number,
     amountTo?: number,
-    sortBy?:
-      | "transactionDate"
-      | "amount"
-      | "payeeName"
-      | "categoryName"
-      | "accountName"
-      | "status",
-    sortDirection?: "ASC" | "DESC",
   ): Promise<PaginatedTransactions> {
     let safePage = Math.max(1, page);
     const safeLimit = Math.min(200, Math.max(1, limit));
@@ -221,26 +213,10 @@ export class TransactionsService {
         "linkedSplits.transferAccount",
         "linkedSplitTransferAccount",
       )
-      .where("transaction.userId = :userId", { userId });
-
-    // Apply sorting
-    const effectiveSortDirection = sortDirection ?? "DESC";
-    const sortColumnMap: Record<string, string> = {
-      transactionDate: "transaction.transactionDate",
-      amount: "transaction.amount",
-      payeeName: "transaction.payeeName",
-      categoryName: "category.name",
-      accountName: "account.name",
-      status: "transaction.status",
-    };
-    const primarySort = sortColumnMap[sortBy ?? "transactionDate"];
-    queryBuilder.orderBy(primarySort, effectiveSortDirection);
-    // Always add secondary sort for deterministic ordering
-    if (sortBy && sortBy !== "transactionDate") {
-      queryBuilder.addOrderBy("transaction.transactionDate", "DESC");
-    }
-    queryBuilder.addOrderBy("transaction.createdAt", "DESC");
-    queryBuilder.addOrderBy("transaction.id", "DESC");
+      .where("transaction.userId = :userId", { userId })
+      .orderBy("transaction.transactionDate", "DESC")
+      .addOrderBy("transaction.createdAt", "DESC")
+      .addOrderBy("transaction.id", "DESC");
 
     if (!includeInvestmentBrokerage) {
       queryBuilder.andWhere(
