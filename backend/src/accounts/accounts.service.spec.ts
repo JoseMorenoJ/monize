@@ -234,6 +234,20 @@ describe("AccountsService", () => {
       expect(createCall.statementDueDay).toBeUndefined();
       expect(createCall.statementSettlementDay).toBeUndefined();
     });
+
+    it("strips statement date fields from non-credit-card accounts", async () => {
+      await service.create("user-1", {
+        name: "My Savings",
+        accountType: AccountType.SAVINGS,
+        currencyCode: "USD",
+        statementDueDay: 15,
+        statementSettlementDay: 25,
+      } as any);
+
+      const createCall = accountsRepository.create.mock.calls[0][0];
+      expect(createCall.statementDueDay).toBeUndefined();
+      expect(createCall.statementSettlementDay).toBeUndefined();
+    });
   });
 
   describe("updateBalance", () => {
@@ -485,6 +499,41 @@ describe("AccountsService", () => {
       const saved = accountsRepository.save.mock.calls[0][0];
       expect(saved.statementDueDay).toBe(5);
       expect(saved.statementSettlementDay).toBe(20);
+    });
+
+    it("ignores statement date fields when updating a non-credit-card account", async () => {
+      accountsRepository.findOne.mockResolvedValue({
+        ...mockAccount,
+        accountType: "SAVINGS",
+        statementDueDay: null,
+        statementSettlementDay: null,
+      });
+
+      await service.update("user-1", "account-1", {
+        statementDueDay: 15,
+        statementSettlementDay: 25,
+      } as any);
+
+      const saved = accountsRepository.save.mock.calls[0][0];
+      expect(saved.statementDueDay).toBeNull();
+      expect(saved.statementSettlementDay).toBeNull();
+    });
+
+    it("clears statement date fields when account type changes away from credit card", async () => {
+      accountsRepository.findOne.mockResolvedValue({
+        ...mockAccount,
+        accountType: "CREDIT_CARD",
+        statementDueDay: 15,
+        statementSettlementDay: 25,
+      });
+
+      await service.update("user-1", "account-1", {
+        accountType: AccountType.CHEQUING,
+      } as any);
+
+      const saved = accountsRepository.save.mock.calls[0][0];
+      expect(saved.statementDueDay).toBeNull();
+      expect(saved.statementSettlementDay).toBeNull();
     });
   });
 
