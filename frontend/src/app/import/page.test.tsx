@@ -101,6 +101,15 @@ vi.mock('@/lib/import', () => ({
   importApi: {
     parseQif: (...args: any[]) => mockParseQif(...args),
     importQif: (...args: any[]) => mockImportQif(...args),
+    parseOfx: (...args: any[]) => mockParseQif(...args),
+    importOfx: (...args: any[]) => mockImportQif(...args),
+    parseCsvHeaders: vi.fn().mockResolvedValue({ headers: [], sampleRows: [], rowCount: 0 }),
+    parseCsv: (...args: any[]) => mockParseQif(...args),
+    importCsv: (...args: any[]) => mockImportQif(...args),
+    getColumnMappings: vi.fn().mockResolvedValue([]),
+    createColumnMapping: vi.fn().mockResolvedValue({}),
+    updateColumnMapping: vi.fn().mockResolvedValue({}),
+    deleteColumnMapping: vi.fn().mockResolvedValue(undefined),
   },
 }));
 
@@ -122,6 +131,16 @@ vi.mock('@/components/import/UploadStep', () => ({
         type="file"
         onChange={onFileSelect}
       />
+    </div>
+  ),
+}));
+
+vi.mock('@/components/import/CsvColumnMappingStep', () => ({
+  CsvColumnMappingStep: ({ setStep, onNext }: any) => (
+    <div data-testid="csv-column-mapping-step">
+      <span>CSV Column Mapping</span>
+      <button data-testid="csv-mapping-next" onClick={onNext}>Next</button>
+      <button data-testid="csv-mapping-back" onClick={() => setStep('upload')}>Back</button>
     </div>
   ),
 }));
@@ -364,7 +383,7 @@ describe('ImportPage', () => {
     it('renders the subtitle', async () => {
       render(<ImportPage />);
       await waitFor(() => {
-        expect(screen.getByText('Import transactions from a QIF file')).toBeInTheDocument();
+        expect(screen.getByText('Import transactions from QIF, OFX/QFX, or CSV files')).toBeInTheDocument();
       });
     });
 
@@ -481,7 +500,7 @@ describe('ImportPage', () => {
       await uploadFile('invalid content', 'test.qif');
 
       await waitFor(() => {
-        expect(toast.error).toHaveBeenCalledWith('Failed to parse QIF file(s)');
+        expect(toast.error).toHaveBeenCalledWith('Failed to parse file(s)');
       });
     });
   });

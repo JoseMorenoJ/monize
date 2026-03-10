@@ -183,6 +183,7 @@ describe('ReviewStep', () => {
       {
         fileName: 'file1.qif',
         fileContent: '',
+        fileType: 'qif' as const,
         parsedData: { ...defaultProps.parsedData, transactionCount: 10 },
         selectedAccountId: 'acc-1',
         matchConfidence: 'exact',
@@ -203,6 +204,7 @@ describe('ReviewStep', () => {
       {
         fileName: 'checking.qif',
         fileContent: '',
+        fileType: 'qif' as const,
         parsedData: { ...defaultProps.parsedData, transactionCount: 10 },
         selectedAccountId: 'acc-1',
         matchConfidence: 'exact',
@@ -210,6 +212,7 @@ describe('ReviewStep', () => {
       {
         fileName: 'savings.qif',
         fileContent: '',
+        fileType: 'qif' as const,
         parsedData: { ...defaultProps.parsedData, transactionCount: 5 },
         selectedAccountId: 'acc-1',
         matchConfidence: 'exact',

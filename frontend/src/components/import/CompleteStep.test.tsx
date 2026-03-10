@@ -98,6 +98,7 @@ describe('CompleteStep', () => {
       {
         fileName: 'portfolio.qif',
         fileContent: '',
+        fileType: 'qif' as const,
         parsedData: {
           transactions: [],
           investmentTransactions: [],

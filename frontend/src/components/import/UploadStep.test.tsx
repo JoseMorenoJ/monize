@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@/test/render';
+import { render } from '@/test/render';
+import { screen, fireEvent } from '@testing-library/react';
 import { UploadStep } from './UploadStep';
 import { Account } from '@/types/account';
 
@@ -55,27 +56,27 @@ describe('UploadStep', () => {
   it('renders the upload heading and instructions', () => {
     render(<UploadStep preselectedAccount={undefined} isLoading={false} onFileSelect={onFileSelect} />);
 
-    expect(screen.getByText('Upload QIF Files')).toBeInTheDocument();
-    expect(screen.getByText(/Select one or more QIF files to import/)).toBeInTheDocument();
+    expect(screen.getByText('Upload Transaction Files')).toBeInTheDocument();
+    expect(screen.getByText(/Select one or more files to import/)).toBeInTheDocument();
   });
 
-  it('shows "Click to select QIF file(s)" when not loading', () => {
+  it('shows "Click to select file(s)" when not loading', () => {
     render(<UploadStep preselectedAccount={undefined} isLoading={false} onFileSelect={onFileSelect} />);
 
-    expect(screen.getByText('Click to select QIF file(s)')).toBeInTheDocument();
+    expect(screen.getByText('Click to select file(s)')).toBeInTheDocument();
   });
 
   it('shows "Processing..." when isLoading is true', () => {
     render(<UploadStep preselectedAccount={undefined} isLoading={true} onFileSelect={onFileSelect} />);
 
     expect(screen.getByText('Processing...')).toBeInTheDocument();
-    expect(screen.queryByText('Click to select QIF file(s)')).not.toBeInTheDocument();
+    expect(screen.queryByText('Click to select file(s)')).not.toBeInTheDocument();
   });
 
   it('disables the file input when isLoading is true', () => {
     render(<UploadStep preselectedAccount={undefined} isLoading={true} onFileSelect={onFileSelect} />);
 
-    const input = document.getElementById('qif-file') as HTMLInputElement;
+    const input = document.getElementById('import-file') as HTMLInputElement;
     expect(input.disabled).toBe(true);
   });
 
@@ -96,7 +97,7 @@ describe('UploadStep', () => {
   it('calls onFileSelect when a file is selected', () => {
     render(<UploadStep preselectedAccount={undefined} isLoading={false} onFileSelect={onFileSelect} />);
 
-    const input = document.getElementById('qif-file') as HTMLInputElement;
+    const input = document.getElementById('import-file') as HTMLInputElement;
     fireEvent.change(input, { target: { files: [new File(['content'], 'test.qif')] } });
     expect(onFileSelect).toHaveBeenCalledTimes(1);
   });
@@ -104,8 +105,8 @@ describe('UploadStep', () => {
   it('renders file input with correct accept attribute', () => {
     render(<UploadStep preselectedAccount={undefined} isLoading={false} onFileSelect={onFileSelect} />);
 
-    const input = document.getElementById('qif-file') as HTMLInputElement;
-    expect(input.accept).toBe('.qif');
+    const input = document.getElementById('import-file') as HTMLInputElement;
+    expect(input.accept).toBe('.qif,.ofx,.qfx,.csv');
     expect(input.multiple).toBe(true);
   });
 });

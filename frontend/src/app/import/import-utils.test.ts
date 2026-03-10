@@ -399,6 +399,7 @@ describe('exported types', () => {
     const data: ImportFileData = {
       fileName: 'test.qif',
       fileContent: 'content',
+      fileType: 'qif',
       parsedData: {} as any,
       selectedAccountId: 'acc-1',
       matchConfidence: 'exact',

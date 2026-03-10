@@ -34,11 +34,43 @@ jest.mock("./qif-parser", () => ({
   validateQifContent: jest.fn(),
 }));
 
+// Mock the ofx-parser module
+jest.mock("./ofx-parser", () => ({
+  parseOfx: jest.fn(),
+  validateOfxContent: jest.fn(),
+}));
+
+// Mock the csv-parser module
+jest.mock("./csv-parser", () => ({
+  parseCsv: jest.fn(),
+  parseCsvHeaders: jest.fn(),
+  validateCsvContent: jest.fn(),
+}));
+
 import { parseQif, validateQifContent } from "./qif-parser";
+import { parseOfx, validateOfxContent } from "./ofx-parser";
+import {
+  parseCsv,
+  parseCsvHeaders as parseCsvHeadersFn,
+  validateCsvContent,
+} from "./csv-parser";
+import { ImportColumnMapping } from "./entities/import-column-mapping.entity";
+import { ConflictException } from "@nestjs/common";
 
 const mockedParseQif = parseQif as jest.MockedFunction<typeof parseQif>;
 const mockedValidateQifContent = validateQifContent as jest.MockedFunction<
   typeof validateQifContent
+>;
+const mockedParseOfx = parseOfx as jest.MockedFunction<typeof parseOfx>;
+const mockedValidateOfxContent = validateOfxContent as jest.MockedFunction<
+  typeof validateOfxContent
+>;
+const mockedParseCsv = parseCsv as jest.MockedFunction<typeof parseCsv>;
+const mockedParseCsvHeaders = parseCsvHeadersFn as jest.MockedFunction<
+  typeof parseCsvHeadersFn
+>;
+const mockedValidateCsvContent = validateCsvContent as jest.MockedFunction<
+  typeof validateCsvContent
 >;
 
 describe("ImportService", () => {
@@ -52,6 +84,7 @@ describe("ImportService", () => {
   let investmentTransactionsRepository: Record<string, jest.Mock>;
   let holdingsRepository: Record<string, jest.Mock>;
   let mockDataSource: Record<string, jest.Mock>;
+  let columnMappingRepository: Record<string, jest.Mock>;
   let mockNetWorthService: Record<string, jest.Mock>;
   let mockSecurityPriceService: Record<string, jest.Mock>;
   let mockExchangeRateService: Record<string, jest.Mock>;
@@ -126,6 +159,11 @@ describe("ImportService", () => {
     // Reset all mocked module functions
     mockedParseQif.mockReset();
     mockedValidateQifContent.mockReset();
+    mockedParseOfx.mockReset();
+    mockedValidateOfxContent.mockReset();
+    mockedParseCsv.mockReset();
+    mockedParseCsvHeaders.mockReset();
+    mockedValidateCsvContent.mockReset();
 
     mockQueryRunner = {
       connect: jest.fn(),
@@ -197,6 +235,16 @@ describe("ImportService", () => {
       save: jest.fn(),
     };
 
+    columnMappingRepository = {
+      find: jest.fn().mockResolvedValue([]),
+      findOne: jest.fn().mockResolvedValue(null),
+      save: jest.fn().mockImplementation((entity) =>
+        Promise.resolve({ ...entity, id: entity.id || "mapping-1" }),
+      ),
+      create: jest.fn().mockImplementation((data) => ({ ...data })),
+      remove: jest.fn().mockResolvedValue(undefined),
+    };
+
     mockDataSource = {
       createQueryRunner: jest.fn().mockReturnValue(mockQueryRunner),
       getRepository: jest.fn().mockReturnValue({
@@ -244,6 +292,10 @@ describe("ImportService", () => {
           useValue: investmentTransactionsRepository,
         },
         { provide: getRepositoryToken(Holding), useValue: holdingsRepository },
+        {
+          provide: getRepositoryToken(ImportColumnMapping),
+          useValue: columnMappingRepository,
+        },
         { provide: NetWorthService, useValue: mockNetWorthService },
         { provide: SecurityPriceService, useValue: mockSecurityPriceService },
         { provide: ExchangeRateService, useValue: mockExchangeRateService },
@@ -2557,6 +2609,583 @@ describe("ImportService", () => {
       const result = await service.getExistingAccounts(userId);
 
       expect(result).toEqual([]);
+    });
+  });
+
+  // --- OFX Tests ---
+
+  describe("parseOfxFile", () => {
+    const validOfxContent = "<OFX><BANKMSGSRSV1>...</BANKMSGSRSV1></OFX>";
+
+    it("returns parsed OFX data with date range and metadata", async () => {
+      mockedValidateOfxContent.mockReturnValue({ valid: true });
+      mockedParseOfx.mockReturnValue({
+        accountType: "CHEQUING",
+        accountName: "",
+        transactions: [
+          {
+            date: "2025-03-01",
+            amount: -100,
+            payee: "Store",
+            memo: "",
+            number: "",
+            cleared: false,
+            reconciled: false,
+            category: "",
+            isTransfer: false,
+            transferAccount: "",
+            splits: [],
+            security: "",
+            action: "",
+            price: 0,
+            quantity: 0,
+            commission: 0,
+          },
+          {
+            date: "2025-03-15",
+            amount: 500,
+            payee: "Employer",
+            memo: "",
+            number: "",
+            cleared: false,
+            reconciled: false,
+            category: "",
+            isTransfer: false,
+            transferAccount: "",
+            splits: [],
+            security: "",
+            action: "",
+            price: 0,
+            quantity: 0,
+            commission: 0,
+          },
+        ],
+        categories: [],
+        transferAccounts: [],
+        securities: [],
+        detectedDateFormat: "YYYY-MM-DD",
+        sampleDates: ["2025-03-01", "2025-03-15"],
+        openingBalance: null,
+        openingBalanceDate: null,
+      });
+
+      const result = await service.parseOfxFile(userId, validOfxContent);
+
+      expect(mockedValidateOfxContent).toHaveBeenCalledWith(validOfxContent);
+      expect(mockedParseOfx).toHaveBeenCalledWith(validOfxContent);
+      expect(result.accountType).toBe("CHEQUING");
+      expect(result.transactionCount).toBe(2);
+      expect(result.dateRange.start).toBe("2025-03-01");
+      expect(result.dateRange.end).toBe("2025-03-15");
+    });
+
+    it("throws BadRequestException for invalid OFX content", async () => {
+      mockedValidateOfxContent.mockReturnValue({
+        valid: false,
+        error: "Invalid OFX format",
+      });
+
+      await expect(
+        service.parseOfxFile(userId, "bad content"),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe("importOfxFile", () => {
+    it("throws BadRequestException for invalid OFX content", async () => {
+      mockedValidateOfxContent.mockReturnValue({
+        valid: false,
+        error: "Invalid OFX format",
+      });
+
+      const dto = {
+        content: "bad",
+        accountId: "acct-1",
+        categoryMappings: [],
+        accountMappings: [],
+      };
+
+      await expect(service.importOfxFile(userId, dto)).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it("parses OFX and imports transactions into the specified account", async () => {
+      mockedValidateOfxContent.mockReturnValue({ valid: true });
+      mockedParseOfx.mockReturnValue({
+        accountType: "CHEQUING",
+        accountName: "",
+        transactions: [
+          {
+            date: "2025-03-01",
+            amount: -50,
+            payee: "Store",
+            memo: "",
+            number: "",
+            cleared: false,
+            reconciled: false,
+            category: "",
+            isTransfer: false,
+            transferAccount: "",
+            splits: [],
+            security: "",
+            action: "",
+            price: 0,
+            quantity: 0,
+            commission: 0,
+          },
+        ],
+        categories: [],
+        transferAccounts: [],
+        securities: [],
+        detectedDateFormat: "YYYY-MM-DD",
+        sampleDates: [],
+        openingBalance: null,
+        openingBalanceDate: null,
+      });
+
+      accountsRepository.findOne.mockResolvedValue(mockChequingAccount);
+
+      const dto = {
+        content: "<OFX>...</OFX>",
+        accountId: "acct-1",
+        categoryMappings: [],
+        accountMappings: [],
+      };
+
+      const result = await service.importOfxFile(userId, dto);
+
+      expect(mockedParseOfx).toHaveBeenCalledWith(dto.content);
+      expect(result).toBeDefined();
+      expect(result.imported).toBeDefined();
+    });
+  });
+
+  // --- CSV Tests ---
+
+  describe("parseCsvHeaders", () => {
+    it("returns headers and sample rows from CSV content", async () => {
+      const csvContent = "Date,Amount,Payee\n2025-01-01,-50,Store\n";
+      mockedValidateCsvContent.mockReturnValue({ valid: true });
+      mockedParseCsvHeaders.mockReturnValue({
+        headers: ["Date", "Amount", "Payee"],
+        sampleRows: [["2025-01-01", "-50", "Store"]],
+        rowCount: 1,
+      });
+
+      const result = await service.parseCsvHeaders(userId, csvContent);
+
+      expect(mockedValidateCsvContent).toHaveBeenCalledWith(csvContent);
+      expect(mockedParseCsvHeaders).toHaveBeenCalledWith(csvContent, undefined);
+      expect(result.headers).toEqual(["Date", "Amount", "Payee"]);
+      expect(result.sampleRows).toHaveLength(1);
+      expect(result.rowCount).toBe(1);
+    });
+
+    it("passes delimiter to the parser when provided", async () => {
+      const csvContent = "Date;Amount;Payee\n2025-01-01;-50;Store\n";
+      mockedValidateCsvContent.mockReturnValue({ valid: true });
+      mockedParseCsvHeaders.mockReturnValue({
+        headers: ["Date", "Amount", "Payee"],
+        sampleRows: [["2025-01-01", "-50", "Store"]],
+        rowCount: 1,
+      });
+
+      await service.parseCsvHeaders(userId, csvContent, ";");
+
+      expect(mockedParseCsvHeaders).toHaveBeenCalledWith(csvContent, ";");
+    });
+
+    it("throws BadRequestException for invalid CSV content", async () => {
+      mockedValidateCsvContent.mockReturnValue({
+        valid: false,
+        error: "File is empty",
+      });
+
+      await expect(
+        service.parseCsvHeaders(userId, ""),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe("parseCsvFile", () => {
+    const columnMapping = {
+      date: 0,
+      amount: 1,
+      payee: 2,
+      dateFormat: "YYYY-MM-DD" as const,
+      hasHeader: true,
+      delimiter: ",",
+    };
+
+    it("returns parsed CSV data with date range and metadata", async () => {
+      const csvContent = "Date,Amount,Payee\n2025-01-01,-50,Store\n";
+      mockedValidateCsvContent.mockReturnValue({ valid: true });
+      mockedParseCsv.mockReturnValue({
+        accountType: "CHEQUING",
+        accountName: "",
+        transactions: [
+          {
+            date: "2025-01-01",
+            amount: -50,
+            payee: "Store",
+            memo: "",
+            number: "",
+            cleared: false,
+            reconciled: false,
+            category: "",
+            isTransfer: false,
+            transferAccount: "",
+            splits: [],
+            security: "",
+            action: "",
+            price: 0,
+            quantity: 0,
+            commission: 0,
+          },
+        ],
+        categories: [],
+        transferAccounts: [],
+        securities: [],
+        detectedDateFormat: "YYYY-MM-DD",
+        sampleDates: [],
+        openingBalance: null,
+        openingBalanceDate: null,
+      });
+
+      const result = await service.parseCsvFile(userId, csvContent, columnMapping);
+
+      expect(mockedValidateCsvContent).toHaveBeenCalledWith(csvContent);
+      expect(mockedParseCsv).toHaveBeenCalledWith(
+        csvContent,
+        columnMapping,
+        undefined,
+      );
+      expect(result.accountType).toBe("CHEQUING");
+      expect(result.transactionCount).toBe(1);
+      expect(result.dateRange.start).toBe("2025-01-01");
+      expect(result.dateRange.end).toBe("2025-01-01");
+    });
+
+    it("passes transfer rules to parseCsv when provided", async () => {
+      const csvContent = "Date,Amount,Payee\n2025-01-01,-50,Transfer\n";
+      const transferRules = [
+        { type: "payee" as const, pattern: "Transfer", accountName: "Savings" },
+      ];
+      mockedValidateCsvContent.mockReturnValue({ valid: true });
+      mockedParseCsv.mockReturnValue({
+        accountType: "CHEQUING",
+        accountName: "",
+        transactions: [],
+        categories: [],
+        transferAccounts: ["Savings"],
+        securities: [],
+        detectedDateFormat: "YYYY-MM-DD",
+        sampleDates: [],
+        openingBalance: null,
+        openingBalanceDate: null,
+      });
+
+      await service.parseCsvFile(userId, csvContent, columnMapping, transferRules);
+
+      expect(mockedParseCsv).toHaveBeenCalledWith(
+        csvContent,
+        columnMapping,
+        transferRules,
+      );
+    });
+
+    it("throws BadRequestException for invalid CSV content", async () => {
+      mockedValidateCsvContent.mockReturnValue({
+        valid: false,
+        error: "File is empty",
+      });
+
+      await expect(
+        service.parseCsvFile(userId, "", columnMapping),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe("importCsvFile", () => {
+    it("throws BadRequestException for invalid CSV content", async () => {
+      mockedValidateCsvContent.mockReturnValue({
+        valid: false,
+        error: "File is empty",
+      });
+
+      const dto = {
+        content: "",
+        accountId: "acct-1",
+        columnMapping: {
+          date: 0,
+          amount: 1,
+          dateFormat: "YYYY-MM-DD",
+          hasHeader: true,
+          delimiter: ",",
+        },
+        categoryMappings: [],
+        accountMappings: [],
+      } as any;
+
+      await expect(service.importCsvFile(userId, dto)).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it("parses CSV and imports transactions into the specified account", async () => {
+      mockedValidateCsvContent.mockReturnValue({ valid: true });
+      mockedParseCsv.mockReturnValue({
+        accountType: "CHEQUING",
+        accountName: "",
+        transactions: [
+          {
+            date: "2025-01-01",
+            amount: -50,
+            payee: "Store",
+            memo: "",
+            number: "",
+            cleared: false,
+            reconciled: false,
+            category: "",
+            isTransfer: false,
+            transferAccount: "",
+            splits: [],
+            security: "",
+            action: "",
+            price: 0,
+            quantity: 0,
+            commission: 0,
+          },
+        ],
+        categories: [],
+        transferAccounts: [],
+        securities: [],
+        detectedDateFormat: "YYYY-MM-DD",
+        sampleDates: [],
+        openingBalance: null,
+        openingBalanceDate: null,
+      });
+
+      accountsRepository.findOne.mockResolvedValue(mockChequingAccount);
+
+      const dto = {
+        content: "Date,Amount,Payee\n2025-01-01,-50,Store\n",
+        accountId: "acct-1",
+        columnMapping: {
+          date: 0,
+          amount: 1,
+          payee: 2,
+          dateFormat: "YYYY-MM-DD",
+          hasHeader: true,
+          delimiter: ",",
+        },
+        categoryMappings: [],
+        accountMappings: [],
+      } as any;
+
+      const result = await service.importCsvFile(userId, dto);
+
+      expect(mockedParseCsv).toHaveBeenCalled();
+      expect(result).toBeDefined();
+      expect(result.imported).toBeDefined();
+    });
+  });
+
+  // --- Column Mapping CRUD Tests ---
+
+  describe("getColumnMappings", () => {
+    it("returns all column mappings for user sorted by name", async () => {
+      const mappings = [
+        {
+          id: "mapping-1",
+          userId,
+          name: "Bank CSV",
+          columnMappings: { date: 0, amount: 1 },
+          transferRules: [],
+          createdAt: new Date("2025-01-01"),
+          updatedAt: new Date("2025-01-01"),
+        },
+        {
+          id: "mapping-2",
+          userId,
+          name: "Credit Card CSV",
+          columnMappings: { date: 0, debit: 1, credit: 2 },
+          transferRules: [],
+          createdAt: new Date("2025-01-02"),
+          updatedAt: new Date("2025-01-02"),
+        },
+      ];
+      columnMappingRepository.find.mockResolvedValue(mappings);
+
+      const result = await service.getColumnMappings(userId);
+
+      expect(columnMappingRepository.find).toHaveBeenCalledWith({
+        where: { userId },
+        order: { name: "ASC" },
+      });
+      expect(result).toHaveLength(2);
+      expect(result[0].id).toBe("mapping-1");
+      expect(result[0].name).toBe("Bank CSV");
+      expect(result[1].id).toBe("mapping-2");
+    });
+
+    it("returns empty array when user has no column mappings", async () => {
+      columnMappingRepository.find.mockResolvedValue([]);
+
+      const result = await service.getColumnMappings(userId);
+
+      expect(result).toEqual([]);
+    });
+  });
+
+  describe("createColumnMapping", () => {
+    const createDto = {
+      name: "My Bank CSV",
+      columnMappings: { date: 0, amount: 1, payee: 2 },
+      transferRules: [],
+    };
+
+    it("creates a new column mapping", async () => {
+      columnMappingRepository.findOne.mockResolvedValue(null);
+      const createdEntity = {
+        id: "mapping-new",
+        userId,
+        name: createDto.name,
+        columnMappings: createDto.columnMappings,
+        transferRules: createDto.transferRules,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      columnMappingRepository.create.mockReturnValue(createdEntity);
+      columnMappingRepository.save.mockResolvedValue(createdEntity);
+
+      const result = await service.createColumnMapping(userId, createDto as any);
+
+      expect(columnMappingRepository.findOne).toHaveBeenCalledWith({
+        where: { userId, name: createDto.name },
+      });
+      expect(columnMappingRepository.create).toHaveBeenCalled();
+      expect(columnMappingRepository.save).toHaveBeenCalled();
+      expect(result.id).toBe("mapping-new");
+      expect(result.name).toBe("My Bank CSV");
+    });
+
+    it("throws ConflictException when name already exists", async () => {
+      columnMappingRepository.findOne.mockResolvedValue({
+        id: "existing-mapping",
+        userId,
+        name: createDto.name,
+      });
+
+      await expect(
+        service.createColumnMapping(userId, createDto as any),
+      ).rejects.toThrow(ConflictException);
+    });
+  });
+
+  describe("updateColumnMapping", () => {
+    const existingMapping = {
+      id: "mapping-1",
+      userId,
+      name: "Old Name",
+      columnMappings: { date: 0, amount: 1 },
+      transferRules: [],
+      createdAt: new Date("2025-01-01"),
+      updatedAt: new Date("2025-01-01"),
+    };
+
+    it("updates the name of an existing column mapping", async () => {
+      columnMappingRepository.findOne
+        .mockResolvedValueOnce({ ...existingMapping })
+        .mockResolvedValueOnce(null); // no duplicate name
+      const savedMapping = {
+        ...existingMapping,
+        name: "New Name",
+        updatedAt: new Date(),
+      };
+      columnMappingRepository.save.mockResolvedValue(savedMapping);
+
+      const result = await service.updateColumnMapping(userId, "mapping-1", {
+        name: "New Name",
+      });
+
+      expect(result.name).toBe("New Name");
+    });
+
+    it("updates columnMappings without changing name", async () => {
+      columnMappingRepository.findOne.mockResolvedValueOnce({
+        ...existingMapping,
+      });
+      const newMappings = { date: 0, amount: 1, payee: 3 };
+      const savedMapping = {
+        ...existingMapping,
+        columnMappings: newMappings,
+        updatedAt: new Date(),
+      };
+      columnMappingRepository.save.mockResolvedValue(savedMapping);
+
+      const result = await service.updateColumnMapping(userId, "mapping-1", {
+        columnMappings: newMappings as any,
+      });
+
+      expect(result.columnMappings).toEqual(newMappings);
+    });
+
+    it("throws NotFoundException when mapping does not exist", async () => {
+      columnMappingRepository.findOne.mockResolvedValue(null);
+
+      await expect(
+        service.updateColumnMapping(userId, "nonexistent-id", {
+          name: "New Name",
+        }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it("throws ConflictException when renaming to an existing name", async () => {
+      columnMappingRepository.findOne
+        .mockResolvedValueOnce({ ...existingMapping })
+        .mockResolvedValueOnce({
+          id: "mapping-2",
+          userId,
+          name: "Duplicate Name",
+        });
+
+      await expect(
+        service.updateColumnMapping(userId, "mapping-1", {
+          name: "Duplicate Name",
+        }),
+      ).rejects.toThrow(ConflictException);
+    });
+  });
+
+  describe("deleteColumnMapping", () => {
+    it("deletes an existing column mapping", async () => {
+      const existingMapping = {
+        id: "mapping-1",
+        userId,
+        name: "My Mapping",
+        columnMappings: { date: 0, amount: 1 },
+        transferRules: [],
+      };
+      columnMappingRepository.findOne.mockResolvedValue(existingMapping);
+
+      await service.deleteColumnMapping(userId, "mapping-1");
+
+      expect(columnMappingRepository.findOne).toHaveBeenCalledWith({
+        where: { id: "mapping-1", userId },
+      });
+      expect(columnMappingRepository.remove).toHaveBeenCalledWith(
+        existingMapping,
+      );
+    });
+
+    it("throws NotFoundException when mapping does not exist", async () => {
+      columnMappingRepository.findOne.mockResolvedValue(null);
+
+      await expect(
+        service.deleteColumnMapping(userId, "nonexistent-id"),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 });
