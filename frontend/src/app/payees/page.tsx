@@ -13,6 +13,7 @@ import { UnsavedChangesDialog } from '@/components/ui/UnsavedChangesDialog';
 import { payeesApi } from '@/lib/payees';
 import { categoriesApi } from '@/lib/categories';
 import { buildCategoryColorMap } from '@/lib/categoryUtils';
+import { MergePayeeDialog } from '@/components/payees/MergePayeeDialog';
 import { Payee, PayeeStatusFilter } from '@/types/payee';
 import { Category } from '@/types/category';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
@@ -48,6 +49,7 @@ function PayeesContent() {
   const [listDensity, setListDensity] = useLocalStorage<DensityLevel>('monize-payees-density', 'normal');
   const [sortField, setSortField] = useState<SortField>('name');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+  const [mergePayee, setMergePayee] = useState<Payee | null>(null);
   const { showForm, editingItem, openCreate, openEdit, close, isEditing, modalProps, setFormDirty, unsavedChangesDialog, formSubmitRef } = useFormModal<Payee>();
 
   const loadData = async () => {
@@ -133,6 +135,10 @@ function PayeesContent() {
         comparison = catA.localeCompare(catB, undefined, { sensitivity: 'base' });
       } else if (sortField === 'count') {
         comparison = (a.transactionCount ?? 0) - (b.transactionCount ?? 0);
+      } else if (sortField === 'aliases') {
+        comparison = (a.aliasCount ?? 0) - (b.aliasCount ?? 0);
+      } else if (sortField === 'createdAt') {
+        comparison = (a.createdAt || '').localeCompare(b.createdAt || '');
       }
       return sortDirection === 'asc' ? comparison : -comparison;
     });
@@ -149,7 +155,7 @@ function PayeesContent() {
       setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
     } else {
       setSortField(field);
-      setSortDirection(field === 'count' ? 'desc' : 'asc');
+      setSortDirection(field === 'count' || field === 'aliases' || field === 'createdAt' ? 'desc' : 'asc');
     }
     setCurrentPage(1);
   }, [sortField]);
@@ -277,6 +283,7 @@ function PayeesContent() {
               onRefresh={loadData}
               onDelete={(deletedId) => setPayees(prev => prev.filter(p => p.id !== deletedId))}
               onReactivate={handleReactivate}
+              onMerge={setMergePayee}
               showStatusColumn={statusFilter === 'all' || statusFilter === 'inactive'}
               density={listDensity}
               onDensityChange={setListDensity}
@@ -314,6 +321,15 @@ function PayeesContent() {
       <CategoryAutoAssignDialog
         isOpen={showAutoAssign}
         onClose={() => setShowAutoAssign(false)}
+        onSuccess={loadData}
+      />
+
+      {/* Merge Payee Dialog */}
+      <MergePayeeDialog
+        isOpen={mergePayee !== null}
+        sourcePayee={mergePayee}
+        allPayees={payees}
+        onClose={() => setMergePayee(null)}
         onSuccess={loadData}
       />
 

@@ -11,6 +11,16 @@ export interface Payee {
   createdAt: string;
   transactionCount?: number;
   lastUsedDate?: string | null;
+  aliasCount?: number;
+}
+
+export interface PayeeAlias {
+  id: string;
+  payeeId: string;
+  userId: string;
+  alias: string;
+  createdAt: string;
+  payee?: Payee;
 }
 
 export interface CreatePayeeData {
@@ -21,6 +31,23 @@ export interface CreatePayeeData {
 
 export interface UpdatePayeeData extends Partial<CreatePayeeData> {
   isActive?: boolean;
+}
+
+export interface CreatePayeeAliasData {
+  payeeId: string;
+  alias: string;
+}
+
+export interface MergePayeeData {
+  targetPayeeId: string;
+  sourcePayeeId: string;
+  addAsAlias?: boolean;
+}
+
+export interface MergePayeeResult {
+  transactionsMigrated: number;
+  aliasAdded: boolean;
+  sourcePayeeDeleted: boolean;
 }
 
 export interface PayeeSummary {

@@ -6,6 +6,7 @@ import {
 } from "../transactions/entities/transaction.entity";
 import { TransactionSplit } from "../transactions/entities/transaction-split.entity";
 import { Payee } from "../payees/entities/payee.entity";
+import { PayeeAlias } from "../payees/entities/payee-alias.entity";
 import { ImportContext, updateAccountBalance } from "./import-context";
 
 @Injectable()
@@ -25,8 +26,8 @@ export class ImportRegularProcessorService {
       return;
     }
 
-    // Get or create payee
-    const payeeId = await this.resolvePayee(ctx, qifTx);
+    // Get or create payee (with alias matching)
+    const resolvedPayee = await this.resolvePayee(ctx, qifTx);
 
     // Check if this is a split transaction
     const isSplit = qifTx.splits && qifTx.splits.length > 0;
@@ -34,6 +35,11 @@ export class ImportRegularProcessorService {
     // Determine category and transfer account
     const { categoryId, isLoanPaymentTx, transferAccountId } =
       this.resolveTransactionTarget(ctx, qifTx, isSplit);
+
+    // If payee has a default category and no category was resolved from the import, use the payee's default
+    const effectiveCategoryId = isSplit
+      ? null
+      : categoryId || resolvedPayee.defaultCategoryId || null;
 
     // Generate unique createdAt timestamp
     const counter = ctx.dateCounters.get(qifTx.date) || 0;
@@ -48,18 +54,18 @@ export class ImportRegularProcessorService {
         ? TransactionStatus.CLEARED
         : TransactionStatus.UNRECONCILED;
 
-    // Create transaction
+    // Create transaction (use canonical payee name if alias-matched)
     const isTransfer = !isSplit && (qifTx.isTransfer || isLoanPaymentTx);
     const transaction = ctx.queryRunner.manager.create(Transaction, {
       userId: ctx.userId,
       accountId: ctx.accountId,
       transactionDate: qifTx.date,
       amount: qifTx.amount,
-      payeeName: qifTx.payee,
-      payeeId,
+      payeeName: resolvedPayee.payeeName,
+      payeeId: resolvedPayee.payeeId,
       description: qifTx.memo,
       referenceNumber: qifTx.number,
-      categoryId: isSplit ? null : categoryId,
+      categoryId: effectiveCategoryId,
       status,
       currencyCode: ctx.account.currencyCode,
       isSplit,
@@ -209,23 +215,67 @@ export class ImportRegularProcessorService {
   private async resolvePayee(
     ctx: ImportContext,
     qifTx: any,
-  ): Promise<string | null> {
-    if (!qifTx.payee) return null;
+  ): Promise<{
+    payeeId: string | null;
+    payeeName: string | null;
+    defaultCategoryId: string | null;
+  }> {
+    if (!qifTx.payee)
+      return { payeeId: null, payeeName: null, defaultCategoryId: null };
 
+    // 1. Check for exact name match
     const existingPayee = await ctx.queryRunner.manager.findOne(Payee, {
       where: { userId: ctx.userId, name: qifTx.payee },
     });
     if (existingPayee) {
-      return existingPayee.id;
+      return {
+        payeeId: existingPayee.id,
+        payeeName: existingPayee.name,
+        defaultCategoryId: existingPayee.defaultCategoryId,
+      };
     }
 
+    // 2. Check for alias match (case-insensitive, supports wildcards)
+    const aliases = await ctx.queryRunner.manager.find(PayeeAlias, {
+      where: { userId: ctx.userId },
+      relations: ["payee"],
+    });
+
+    for (const alias of aliases) {
+      if (this.matchesAliasPattern(qifTx.payee, alias.alias) && alias.payee) {
+        this.logger.debug(
+          `Alias match: "${qifTx.payee}" matched alias "${alias.alias}" -> payee "${alias.payee.name}"`,
+        );
+        return {
+          payeeId: alias.payee.id,
+          payeeName: alias.payee.name,
+          defaultCategoryId: alias.payee.defaultCategoryId,
+        };
+      }
+    }
+
+    // 3. No match found - create new payee
     const newPayee = ctx.queryRunner.manager.create(Payee, {
       userId: ctx.userId,
       name: qifTx.payee,
     });
     const savedPayee = await ctx.queryRunner.manager.save(newPayee);
     ctx.importResult.payeesCreated++;
-    return savedPayee.id;
+    return {
+      payeeId: savedPayee.id,
+      payeeName: savedPayee.name,
+      defaultCategoryId: null,
+    };
+  }
+
+  /**
+   * Check if a name matches a wildcard alias pattern (case-insensitive).
+   * Alias patterns support * as wildcard.
+   */
+  private matchesAliasPattern(name: string, aliasPattern: string): boolean {
+    const escaped = aliasPattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&");
+    const regexStr = "^" + escaped.replace(/\*/g, ".*") + "$";
+    return new RegExp(regexStr, "i").test(name);
   }
 
   private resolveTransactionTarget(

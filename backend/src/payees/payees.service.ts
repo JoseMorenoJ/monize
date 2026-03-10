@@ -3,31 +3,51 @@ import {
   NotFoundException,
   ConflictException,
   BadRequestException,
+  Logger,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository, Like, In, Not, IsNull } from "typeorm";
+import { DataSource, Repository, Like, In, Not, IsNull } from "typeorm";
 import { Payee } from "./entities/payee.entity";
+import { PayeeAlias } from "./entities/payee-alias.entity";
 import { Transaction } from "../transactions/entities/transaction.entity";
 import { ScheduledTransaction } from "../scheduled-transactions/entities/scheduled-transaction.entity";
 import { Category } from "../categories/entities/category.entity";
 import { CreatePayeeDto } from "./dto/create-payee.dto";
 import { UpdatePayeeDto } from "./dto/update-payee.dto";
+import { CreatePayeeAliasDto } from "./dto/create-payee-alias.dto";
+import { MergePayeeDto } from "./dto/merge-payee.dto";
 
 function escapeLikeWildcards(value: string): string {
   return value.replace(/[%_]/g, "\\$&");
 }
 
+/**
+ * Check if a name matches a wildcard alias pattern (case-insensitive).
+ * Used in JavaScript (not SQL) for conflict detection.
+ */
+function matchesAliasPattern(name: string, aliasPattern: string): boolean {
+  // Convert alias pattern to regex: escape regex chars, then convert * to .*
+  const escaped = aliasPattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&");
+  const regexStr = "^" + escaped.replace(/\*/g, ".*") + "$";
+  return new RegExp(regexStr, "i").test(name);
+}
+
 @Injectable()
 export class PayeesService {
+  private readonly logger = new Logger(PayeesService.name);
+
   constructor(
     @InjectRepository(Payee)
     private payeesRepository: Repository<Payee>,
+    @InjectRepository(PayeeAlias)
+    private aliasRepository: Repository<PayeeAlias>,
     @InjectRepository(Transaction)
     private transactionsRepository: Repository<Transaction>,
     @InjectRepository(ScheduledTransaction)
     private scheduledTransactionsRepository: Repository<ScheduledTransaction>,
     @InjectRepository(Category)
     private categoriesRepository: Repository<Category>,
+    private dataSource: DataSource,
   ) {}
 
   async create(userId: string, createPayeeDto: CreatePayeeDto): Promise<Payee> {
@@ -57,7 +77,11 @@ export class PayeesService {
     userId: string,
     status?: "active" | "inactive" | "all",
   ): Promise<
-    (Payee & { transactionCount: number; lastUsedDate: string | null })[]
+    (Payee & {
+      transactionCount: number;
+      lastUsedDate: string | null;
+      aliasCount: number;
+    })[]
   > {
     // Build where clause based on status filter
     const where: any = { userId };
@@ -97,6 +121,14 @@ export class PayeesService {
       ])
       .getRawMany();
 
+    // Get alias counts for all payees in one query
+    const aliasCounts = await this.aliasRepository
+      .createQueryBuilder("alias")
+      .where("alias.user_id = :userId", { userId })
+      .groupBy("alias.payee_id")
+      .select(["alias.payee_id as payee_id", "COUNT(alias.id) as alias_count"])
+      .getRawMany();
+
     // Create maps for counts and last used dates
     const countMap = new Map<string, number>();
     const lastUsedMap = new Map<string, string | null>();
@@ -105,11 +137,17 @@ export class PayeesService {
       lastUsedMap.set(row.id, row.last_used_date || null);
     }
 
+    const aliasCountMap = new Map<string, number>();
+    for (const row of aliasCounts) {
+      aliasCountMap.set(row.payee_id, parseInt(row.alias_count || "0", 10));
+    }
+
     // Merge stats with payees
     return payees.map((payee) => ({
       ...payee,
       transactionCount: countMap.get(payee.id) || 0,
       lastUsedDate: lastUsedMap.get(payee.id) || null,
+      aliasCount: aliasCountMap.get(payee.id) || 0,
     }));
   }
 
@@ -654,5 +692,225 @@ export class PayeesService {
     }
 
     return { updated: toSave.length };
+  }
+
+  // ===== Alias Methods =====
+
+  /**
+   * Get all aliases for a specific payee.
+   */
+  async getAliases(userId: string, payeeId: string): Promise<PayeeAlias[]> {
+    await this.findOne(userId, payeeId);
+    return this.aliasRepository.find({
+      where: { payeeId, userId },
+      order: { alias: "ASC" },
+    });
+  }
+
+  /**
+   * Get all aliases for the user (across all payees).
+   */
+  async getAllAliases(userId: string): Promise<PayeeAlias[]> {
+    return this.aliasRepository.find({
+      where: { userId },
+      relations: ["payee"],
+      order: { alias: "ASC" },
+    });
+  }
+
+  /**
+   * Create a new alias for a payee.
+   * Validates that the alias doesn't conflict with existing aliases.
+   */
+  async createAlias(
+    userId: string,
+    dto: CreatePayeeAliasDto,
+  ): Promise<PayeeAlias> {
+    // Verify the payee exists and belongs to the user
+    await this.findOne(userId, dto.payeeId);
+
+    const trimmedAlias = dto.alias.trim();
+    if (!trimmedAlias) {
+      throw new BadRequestException("Alias cannot be empty");
+    }
+
+    // Check for exact duplicate alias (case-insensitive)
+    const existingExact = await this.aliasRepository
+      .createQueryBuilder("alias")
+      .where("alias.user_id = :userId", { userId })
+      .andWhere("LOWER(alias.alias) = LOWER(:alias)", { alias: trimmedAlias })
+      .leftJoinAndSelect("alias.payee", "payee")
+      .getOne();
+
+    if (existingExact) {
+      throw new ConflictException(
+        `Alias "${trimmedAlias}" is already assigned to payee "${existingExact.payee?.name || "unknown"}"`,
+      );
+    }
+
+    // Check for overlapping wildcard patterns
+    const allAliases = await this.aliasRepository.find({
+      where: { userId },
+      relations: ["payee"],
+    });
+
+    for (const existing of allAliases) {
+      // Check if the new alias would match any existing alias patterns
+      if (matchesAliasPattern(trimmedAlias, existing.alias)) {
+        throw new ConflictException(
+          `Alias "${trimmedAlias}" overlaps with existing alias "${existing.alias}" on payee "${existing.payee?.name || "unknown"}". Consider modifying one of them.`,
+        );
+      }
+      // Check if any existing alias pattern would match the new one
+      if (matchesAliasPattern(existing.alias, trimmedAlias)) {
+        throw new ConflictException(
+          `Alias "${trimmedAlias}" overlaps with existing alias "${existing.alias}" on payee "${existing.payee?.name || "unknown"}". Consider modifying one of them.`,
+        );
+      }
+    }
+
+    const alias = this.aliasRepository.create({
+      payeeId: dto.payeeId,
+      userId,
+      alias: trimmedAlias,
+    });
+
+    return this.aliasRepository.save(alias);
+  }
+
+  /**
+   * Delete an alias by ID.
+   */
+  async removeAlias(userId: string, aliasId: string): Promise<void> {
+    const alias = await this.aliasRepository.findOne({
+      where: { id: aliasId, userId },
+    });
+
+    if (!alias) {
+      throw new NotFoundException(`Alias with ID ${aliasId} not found`);
+    }
+
+    await this.aliasRepository.remove(alias);
+  }
+
+  /**
+   * Find a payee by matching an imported name against aliases.
+   * Returns the payee if a matching alias is found, null otherwise.
+   * Case-insensitive, supports * wildcards in alias patterns.
+   */
+  async findPayeeByAlias(
+    userId: string,
+    importedName: string,
+    queryRunner?: any,
+  ): Promise<Payee | null> {
+    const manager = queryRunner?.manager ?? this.aliasRepository.manager;
+
+    // Load all aliases for this user and check for matches
+    const aliases = await manager.find(PayeeAlias, {
+      where: { userId },
+      relations: ["payee", "payee.defaultCategory"],
+    });
+
+    for (const alias of aliases) {
+      if (matchesAliasPattern(importedName, alias.alias)) {
+        return alias.payee ?? null;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Merge one payee into another:
+   * 1. Reassign all transactions from source to target payee
+   * 2. Optionally add the source payee name as an alias on the target
+   * 3. Delete the source payee
+   *
+   * Uses a QueryRunner transaction for atomicity.
+   */
+  async mergePayees(
+    userId: string,
+    dto: MergePayeeDto,
+  ): Promise<{
+    transactionsMigrated: number;
+    aliasAdded: boolean;
+    sourcePayeeDeleted: boolean;
+  }> {
+    const { targetPayeeId, sourcePayeeId, addAsAlias = true } = dto;
+
+    if (targetPayeeId === sourcePayeeId) {
+      throw new BadRequestException("Cannot merge a payee into itself");
+    }
+
+    // Verify both payees exist and belong to the user
+    const targetPayee = await this.findOne(userId, targetPayeeId);
+    const sourcePayee = await this.findOne(userId, sourcePayeeId);
+
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      // 1. Reassign transactions from source to target
+      const txResult = await queryRunner.manager.update(
+        Transaction,
+        { payeeId: sourcePayeeId, userId },
+        { payeeId: targetPayeeId, payeeName: targetPayee.name },
+      );
+      const transactionsMigrated = txResult.affected || 0;
+
+      // Also reassign scheduled transactions
+      await queryRunner.manager.update(
+        ScheduledTransaction,
+        { payeeId: sourcePayeeId, userId },
+        { payeeId: targetPayeeId, payeeName: targetPayee.name },
+      );
+
+      // 2. Optionally add source payee name as alias on target
+      let aliasAdded = false;
+      if (addAsAlias) {
+        // Check if the alias already exists
+        const existingAlias = await queryRunner.manager
+          .createQueryBuilder(PayeeAlias, "alias")
+          .where("alias.user_id = :userId", { userId })
+          .andWhere("LOWER(alias.alias) = LOWER(:alias)", {
+            alias: sourcePayee.name,
+          })
+          .getOne();
+
+        if (!existingAlias) {
+          const newAlias = queryRunner.manager.create(PayeeAlias, {
+            payeeId: targetPayeeId,
+            userId,
+            alias: sourcePayee.name,
+          });
+          await queryRunner.manager.save(newAlias);
+          aliasAdded = true;
+        }
+      }
+
+      // 3. Move any aliases from source payee to target payee
+      await queryRunner.manager.update(
+        PayeeAlias,
+        { payeeId: sourcePayeeId, userId },
+        { payeeId: targetPayeeId },
+      );
+
+      // 4. Delete the source payee
+      await queryRunner.manager.remove(Payee, sourcePayee);
+
+      await queryRunner.commitTransaction();
+
+      return {
+        transactionsMigrated,
+        aliasAdded,
+        sourcePayeeDeleted: true,
+      };
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
   }
 }

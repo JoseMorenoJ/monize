@@ -13,6 +13,7 @@ import { buildCategoryTree } from '@/lib/categoryUtils';
 import { useFormSubmitRef } from '@/hooks/useFormSubmitRef';
 import { useFormDirtyNotify } from '@/hooks/useFormDirtyNotify';
 import { FormActions } from '@/components/ui/FormActions';
+import { PayeeAliasManager } from './PayeeAliasManager';
 
 const payeeSchema = z.object({
   name: z.string().min(1, 'Payee name is required').max(255),
@@ -106,6 +107,10 @@ export function PayeeForm({ payee, categories, onSubmit, onCancel, onDirtyChange
         error={errors.notes?.message}
         {...register('notes')}
       />
+
+      {payee && (
+        <PayeeAliasManager payeeId={payee.id} />
+      )}
 
       <FormActions onCancel={onCancel} submitLabel={payee ? 'Update Payee' : 'Create Payee'} isSubmitting={isSubmitting} />
     </form>

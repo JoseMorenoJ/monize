@@ -16,6 +16,11 @@ describe("PayeesController", () => {
       getMostUsed: jest.fn(),
       getRecentlyUsed: jest.fn(),
       getSummary: jest.fn(),
+      getAllAliases: jest.fn(),
+      createAlias: jest.fn(),
+      removeAlias: jest.fn(),
+      getAliases: jest.fn(),
+      mergePayees: jest.fn(),
       calculateCategorySuggestions: jest.fn(),
       applyCategorySuggestions: jest.fn(),
       previewDeactivation: jest.fn(),
@@ -323,6 +328,85 @@ describe("PayeesController", () => {
         "user-1",
         "payee-1",
       );
+    });
+  });
+
+  // ─── Alias endpoints ─────────────────────────────────────────────
+
+  describe("getAllAliases()", () => {
+    it("delegates to payeesService.getAllAliases with userId", async () => {
+      const expected = [{ id: "a1", alias: "STARBUCKS*" }];
+      mockPayeesService.getAllAliases.mockResolvedValue(expected);
+
+      const result = await controller.getAllAliases(mockReq);
+
+      expect(result).toEqual(expected);
+      expect(mockPayeesService.getAllAliases).toHaveBeenCalledWith("user-1");
+    });
+  });
+
+  describe("createAlias()", () => {
+    it("delegates to payeesService.createAlias with userId and dto", async () => {
+      const dto = { payeeId: "payee-1", alias: "STARBUCKS*" };
+      const expected = { id: "a1", ...dto };
+      mockPayeesService.createAlias.mockResolvedValue(expected);
+
+      const result = await controller.createAlias(mockReq, dto as any);
+
+      expect(result).toEqual(expected);
+      expect(mockPayeesService.createAlias).toHaveBeenCalledWith("user-1", dto);
+    });
+  });
+
+  describe("removeAlias()", () => {
+    it("delegates to payeesService.removeAlias with userId and aliasId", async () => {
+      mockPayeesService.removeAlias.mockResolvedValue(undefined);
+
+      const result = await controller.removeAlias(mockReq, "alias-1");
+
+      expect(result).toBeUndefined();
+      expect(mockPayeesService.removeAlias).toHaveBeenCalledWith(
+        "user-1",
+        "alias-1",
+      );
+    });
+  });
+
+  describe("getAliases()", () => {
+    it("delegates to payeesService.getAliases with userId and payeeId", async () => {
+      const expected = [{ id: "a1", alias: "TEST" }];
+      mockPayeesService.getAliases.mockResolvedValue(expected);
+
+      const result = await controller.getAliases(mockReq, "payee-1");
+
+      expect(result).toEqual(expected);
+      expect(mockPayeesService.getAliases).toHaveBeenCalledWith(
+        "user-1",
+        "payee-1",
+      );
+    });
+  });
+
+  // ─── Merge endpoint ────────────────────────────────────────────────
+
+  describe("mergePayees()", () => {
+    it("delegates to payeesService.mergePayees with userId and dto", async () => {
+      const dto = {
+        targetPayeeId: "payee-1",
+        sourcePayeeId: "payee-2",
+        addAsAlias: true,
+      };
+      const expected = {
+        transactionsMigrated: 5,
+        aliasAdded: true,
+        sourcePayeeDeleted: true,
+      };
+      mockPayeesService.mergePayees.mockResolvedValue(expected);
+
+      const result = await controller.mergePayees(mockReq, dto as any);
+
+      expect(result).toEqual(expected);
+      expect(mockPayeesService.mergePayees).toHaveBeenCalledWith("user-1", dto);
     });
   });
 

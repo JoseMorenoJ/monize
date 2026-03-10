@@ -182,6 +182,19 @@ CREATE TABLE payees (
 CREATE INDEX idx_payees_user ON payees(user_id);
 CREATE INDEX idx_payees_user_active ON payees(user_id, is_active);
 
+-- Payee Aliases (for mapping imported payee names to canonical payees)
+CREATE TABLE payee_aliases (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    payee_id UUID NOT NULL REFERENCES payees(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    alias VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_payee_aliases_payee ON payee_aliases(payee_id);
+CREATE INDEX idx_payee_aliases_user ON payee_aliases(user_id);
+CREATE UNIQUE INDEX idx_payee_aliases_user_alias ON payee_aliases(user_id, LOWER(alias));
+
 -- Transactions
 CREATE TABLE transactions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
