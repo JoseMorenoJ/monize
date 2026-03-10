@@ -31,6 +31,7 @@ function renderStep(overrides: Record<string, unknown> = {}) {
     onColumnMappingChange: vi.fn(),
     transferRules: [],
     onTransferRulesChange: vi.fn(),
+    accounts: [],
     savedMappings: [],
     onSaveMapping: vi.fn(),
     onLoadMapping: vi.fn(),

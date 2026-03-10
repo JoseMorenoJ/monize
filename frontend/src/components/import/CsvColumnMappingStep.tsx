@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/Button';
 import { CsvTransferRules } from './CsvTransferRules';
 import { ImportStep } from '@/app/import/import-utils';
 import { CsvColumnMappingConfig, CsvTransferRule, SavedColumnMapping, DateFormat } from '@/lib/import';
+import { Account } from '@/types/account';
 
 interface CsvColumnMappingStepProps {
   headers: string[];
@@ -13,6 +14,7 @@ interface CsvColumnMappingStepProps {
   onColumnMappingChange: (mapping: CsvColumnMappingConfig) => void;
   transferRules: CsvTransferRule[];
   onTransferRulesChange: (rules: CsvTransferRule[]) => void;
+  accounts: Account[];
   savedMappings: SavedColumnMapping[];
   onSaveMapping: (name: string) => void;
   onLoadMapping: (mapping: SavedColumnMapping) => void;
@@ -46,6 +48,7 @@ export function CsvColumnMappingStep({
   onColumnMappingChange,
   transferRules,
   onTransferRulesChange,
+  accounts,
   savedMappings,
   onSaveMapping,
   onLoadMapping,
@@ -355,7 +358,7 @@ export function CsvColumnMappingStep({
 
         {/* Transfer Rules */}
         <div className="mb-6">
-          <CsvTransferRules rules={transferRules} onChange={onTransferRulesChange} />
+          <CsvTransferRules rules={transferRules} onChange={onTransferRulesChange} accounts={accounts} />
         </div>
 
         {/* Validation Error */}
