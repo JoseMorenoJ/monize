@@ -270,15 +270,27 @@ export class ImportRegularProcessorService {
 
   /**
    * Check if a name matches a wildcard alias pattern (case-insensitive).
-   * Alias patterns support * as wildcard.
+   * Uses iterative glob matching instead of regex to avoid ReDoS risks.
    */
   private matchesAliasPattern(name: string, aliasPattern: string): boolean {
-    // Collapse consecutive wildcards and limit input lengths to prevent ReDoS
-    const normalized = aliasPattern.replace(/\*{2,}/g, "*");
-    if (normalized.length > 500 || name.length > 500) return false;
-    const escaped = normalized.replace(/[.+?^${}()|[\]\\]/g, "\\$&");
-    const regexStr = "^" + escaped.replace(/\*/g, ".*") + "$";
-    return new RegExp(regexStr, "i").test(name);
+    if (aliasPattern.length > 500 || name.length > 500) return false;
+    const pattern = aliasPattern.replace(/\*{2,}/g, "*").toLowerCase();
+    const text = name.toLowerCase();
+    const parts = pattern.split("*");
+    if (parts.length === 1) return text === pattern;
+    if (!text.startsWith(parts[0])) return false;
+    if (!text.endsWith(parts[parts.length - 1])) return false;
+    let pos = parts[0].length;
+    for (let i = 1; i < parts.length - 1; i++) {
+      const idx = text.indexOf(parts[i], pos);
+      if (idx === -1) return false;
+      pos = idx + parts[i].length;
+    }
+    if (parts.length > 2) {
+      const suffixStart = text.length - parts[parts.length - 1].length;
+      if (pos > suffixStart) return false;
+    }
+    return true;
   }
 
   private resolveTransactionTarget(

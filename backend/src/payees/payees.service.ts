@@ -23,16 +23,32 @@ function escapeLikeWildcards(value: string): string {
 
 /**
  * Check if a name matches a wildcard alias pattern (case-insensitive).
- * Used in JavaScript (not SQL) for conflict detection.
+ * Uses iterative glob matching instead of regex to avoid ReDoS risks.
  */
 function matchesAliasPattern(name: string, aliasPattern: string): boolean {
-  // Collapse consecutive wildcards and limit input lengths to prevent ReDoS
-  const normalized = aliasPattern.replace(/\*{2,}/g, "*");
-  if (normalized.length > 500 || name.length > 500) return false;
-  // Convert alias pattern to regex: escape regex chars, then convert * to .*
-  const escaped = normalized.replace(/[.+?^${}()|[\]\\]/g, "\\$&");
-  const regexStr = "^" + escaped.replace(/\*/g, ".*") + "$";
-  return new RegExp(regexStr, "i").test(name);
+  if (aliasPattern.length > 500 || name.length > 500) return false;
+  const pattern = aliasPattern.replace(/\*{2,}/g, "*").toLowerCase();
+  const text = name.toLowerCase();
+  const parts = pattern.split("*");
+  // No wildcards: exact match
+  if (parts.length === 1) return text === pattern;
+  // Check prefix (before first *)
+  if (!text.startsWith(parts[0])) return false;
+  // Check suffix (after last *)
+  if (!text.endsWith(parts[parts.length - 1])) return false;
+  // Check inner segments appear in order
+  let pos = parts[0].length;
+  for (let i = 1; i < parts.length - 1; i++) {
+    const idx = text.indexOf(parts[i], pos);
+    if (idx === -1) return false;
+    pos = idx + parts[i].length;
+  }
+  // Ensure inner segments don't overlap with the suffix
+  if (parts.length > 2) {
+    const suffixStart = text.length - parts[parts.length - 1].length;
+    if (pos > suffixStart) return false;
+  }
+  return true;
 }
 
 @Injectable()
