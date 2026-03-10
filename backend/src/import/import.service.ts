@@ -220,9 +220,7 @@ export class ImportService {
 
   // --- Column Mapping CRUD ---
 
-  async getColumnMappings(
-    userId: string,
-  ): Promise<ColumnMappingResponseDto[]> {
+  async getColumnMappings(userId: string): Promise<ColumnMappingResponseDto[]> {
     const mappings = await this.columnMappingRepository.find({
       where: { userId },
       order: { name: "ASC" },
@@ -245,8 +243,10 @@ export class ImportService {
       where: { userId, name: dto.name },
     });
     if (existing) {
-      existing.columnMappings =
-        dto.columnMappings as unknown as Record<string, unknown>;
+      existing.columnMappings = dto.columnMappings as unknown as Record<
+        string,
+        unknown
+      >;
       existing.transferRules = (dto.transferRules || []) as unknown as Record<
         string,
         unknown
@@ -307,8 +307,10 @@ export class ImportService {
     }
 
     if (dto.columnMappings !== undefined) {
-      mapping.columnMappings =
-        dto.columnMappings as unknown as Record<string, unknown>;
+      mapping.columnMappings = dto.columnMappings as unknown as Record<
+        string,
+        unknown
+      >;
     }
     if (dto.transferRules !== undefined) {
       mapping.transferRules = dto.transferRules as unknown as Record<
@@ -547,11 +549,7 @@ export class ImportService {
     }
 
     // Post-import processing
-    await this.postImportProcessing(
-      userId,
-      isInvestment,
-      affectedAccountIds,
-    );
+    await this.postImportProcessing(userId, isInvestment, affectedAccountIds);
 
     return importResult;
   }

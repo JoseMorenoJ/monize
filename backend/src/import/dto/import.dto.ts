@@ -229,7 +229,10 @@ export class ImportQifDto {
   })
   @IsOptional()
   @IsString()
-  @Matches(/^[YDMW/\-.]+$/, { message: 'dateFormat must contain only date pattern characters (Y, M, D) and separators (/, -, .)' })
+  @Matches(/^[YDMW/\-.]+$/, {
+    message:
+      "dateFormat must contain only date pattern characters (Y, M, D) and separators (/, -, .)",
+  })
   @MaxLength(20)
   dateFormat?: string;
 }
@@ -354,7 +357,10 @@ export class ImportOfxDto {
   })
   @IsOptional()
   @IsString()
-  @Matches(/^[YDMW/\-.]+$/, { message: 'dateFormat must contain only date pattern characters (Y, M, D) and separators (/, -, .)' })
+  @Matches(/^[YDMW/\-.]+$/, {
+    message:
+      "dateFormat must contain only date pattern characters (Y, M, D) and separators (/, -, .)",
+  })
   @MaxLength(20)
   dateFormat?: string;
 }
@@ -425,12 +431,16 @@ export class CsvColumnMappingConfigDto {
 
   @ApiProperty({ description: "Date format for parsing" })
   @IsString()
-  @Matches(/^[YDMW/\-.]+$/, { message: 'dateFormat must contain only date pattern characters (Y, M, D) and separators (/, -, .)' })
+  @Matches(/^[YDMW/\-.]+$/, {
+    message:
+      "dateFormat must contain only date pattern characters (Y, M, D) and separators (/, -, .)",
+  })
   @MaxLength(20)
   dateFormat: string;
 
   @ApiPropertyOptional({
-    description: "Reverse the sign of single-amount values (for credit card CSVs where debits are positive)",
+    description:
+      "Reverse the sign of single-amount values (for credit card CSVs where debits are positive)",
   })
   @IsOptional()
   @IsBoolean()
@@ -471,7 +481,9 @@ export class ParseCsvHeadersDto {
   @MaxLength(10_000_000)
   content: string;
 
-  @ApiPropertyOptional({ description: "CSV delimiter (auto-detected if omitted)" })
+  @ApiPropertyOptional({
+    description: "CSV delimiter (auto-detected if omitted)",
+  })
   @IsOptional()
   @IsString()
   @MaxLength(1)
@@ -557,7 +569,10 @@ export class ImportCsvDto {
   })
   @IsOptional()
   @IsString()
-  @Matches(/^[YDMW/\-.]+$/, { message: 'dateFormat must contain only date pattern characters (Y, M, D) and separators (/, -, .)' })
+  @Matches(/^[YDMW/\-.]+$/, {
+    message:
+      "dateFormat must contain only date pattern characters (Y, M, D) and separators (/, -, .)",
+  })
   @MaxLength(20)
   dateFormat?: string;
 }

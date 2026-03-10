@@ -8,11 +8,7 @@
  * embedded delimiters, newlines, and escaped double-quotes.
  */
 
-import type {
-  QifTransaction,
-  QifParseResult,
-  DateFormat,
-} from "./qif-parser";
+import type { QifTransaction, QifParseResult, DateFormat } from "./qif-parser";
 
 export interface CsvHeadersResult {
   headers: string[];
@@ -76,9 +72,7 @@ function isAllCaps(value: string): boolean {
  * each word, lowercase the rest). Preserves non-letter characters.
  */
 function toProperCase(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/\b[a-z]/g, (char) => char.toUpperCase());
+  return value.toLowerCase().replace(/\b[a-z]/g, (char) => char.toUpperCase());
 }
 
 /**
@@ -435,14 +429,13 @@ export function validateCsvContent(content: string): {
     return { valid: false, error: "File is empty" };
   }
 
-  const lines = content
-    .split(/\r?\n/)
-    .filter((line) => line.trim().length > 0);
+  const lines = content.split(/\r?\n/).filter((line) => line.trim().length > 0);
 
   if (lines.length < 2) {
     return {
       valid: false,
-      error: "CSV file must have at least 2 rows (header and data, or 2 data rows)",
+      error:
+        "CSV file must have at least 2 rows (header and data, or 2 data rows)",
     };
   }
 
@@ -532,18 +525,15 @@ export function parseCsv(
       if (config.reverseSign) {
         amount = -amount;
       }
-    } else if (
-      config.debit !== undefined ||
-      config.credit !== undefined
-    ) {
+    } else if (config.debit !== undefined || config.credit !== undefined) {
       const creditVal =
         config.credit !== undefined
-          ? parseCsvAmount(getField(row, config.credit)) ?? 0
+          ? (parseCsvAmount(getField(row, config.credit)) ?? 0)
           : 0;
 
       let debitVal =
         config.debit !== undefined
-          ? parseCsvAmount(getField(row, config.debit)) ?? 0
+          ? (parseCsvAmount(getField(row, config.debit)) ?? 0)
           : 0;
 
       // Strip sign from debit and negate -- debit is always an outflow
@@ -570,8 +560,7 @@ export function parseCsv(
     let transferAccount = "";
 
     for (const rule of rules) {
-      const fieldValue =
-        rule.type === "payee" ? payee : category;
+      const fieldValue = rule.type === "payee" ? payee : category;
       if (
         fieldValue &&
         fieldValue.toLowerCase().includes(rule.pattern.toLowerCase())
