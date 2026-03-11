@@ -62,13 +62,13 @@ describe('PayeeForm', () => {
     expect(screen.getByText('Aliases')).toBeInTheDocument();
   });
 
-  it('includes None option in category dropdown', async () => {
+  it('shows category options in dropdown', async () => {
     Element.prototype.scrollIntoView = vi.fn();
     render(<PayeeForm categories={categories} onSubmit={onSubmit} onCancel={onCancel} />);
     const categoryInput = screen.getByPlaceholderText('Select category...');
     await act(async () => {
       fireEvent.focus(categoryInput);
     });
-    expect(screen.getByText('None')).toBeInTheDocument();
+    expect(screen.getByText('Food')).toBeInTheDocument();
   });
 });

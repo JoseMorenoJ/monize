@@ -80,7 +80,7 @@ export function PayeeForm({ payee, categories, onSubmit, onCancel, onDirtyChange
         label: parentCategory ? `${parentCategory.name}: ${category.name}` : category.name,
       };
     });
-    return [{ value: '', label: 'None' }, ...treeOptions];
+    return treeOptions;
   }, [categories]);
 
   const handleCategoryChange = (categoryId: string) => {
