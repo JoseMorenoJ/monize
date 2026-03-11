@@ -504,7 +504,7 @@ describe("PayeesService", () => {
     });
 
     it("should clear defaultCategoryId when set to null", async () => {
-      const existingPayee = { ...mockPayee };
+      const existingPayee = { ...mockPayee, defaultCategory: { id: "cat-1", name: "Food" } };
       const refreshedPayee = { ...mockPayee, defaultCategoryId: null, defaultCategory: null };
       payeesRepository.findOne
         .mockResolvedValueOnce(existingPayee)
@@ -513,7 +513,11 @@ describe("PayeesService", () => {
       const result = await service.update(userId, "payee-1", { defaultCategoryId: null });
 
       expect(result.defaultCategoryId).toBeNull();
-      expect(payeesRepository.save).toHaveBeenCalled();
+      // Verify the relation object is also nulled so TypeORM save() doesn't
+      // re-derive the FK from the stale loaded relation entity
+      const savedPayee = payeesRepository.save.mock.calls[0][0];
+      expect(savedPayee.defaultCategoryId).toBeNull();
+      expect(savedPayee.defaultCategory).toBeNull();
     });
   });
 

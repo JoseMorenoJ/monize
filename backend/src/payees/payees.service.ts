@@ -284,8 +284,14 @@ export class PayeesService {
     const nameChanged =
       updatePayeeDto.name !== undefined && updatePayeeDto.name !== payee.name;
     if (updatePayeeDto.name !== undefined) payee.name = updatePayeeDto.name;
-    if (updatePayeeDto.defaultCategoryId !== undefined)
+    if (updatePayeeDto.defaultCategoryId !== undefined) {
       payee.defaultCategoryId = updatePayeeDto.defaultCategoryId;
+      // Must also clear the loaded relation object, otherwise TypeORM's save()
+      // re-derives the FK from the stale relation entity and ignores the null.
+      if (updatePayeeDto.defaultCategoryId === null) {
+        payee.defaultCategory = null as any;
+      }
+    }
     if (updatePayeeDto.notes !== undefined) payee.notes = updatePayeeDto.notes;
     if (updatePayeeDto.isActive !== undefined)
       payee.isActive = updatePayeeDto.isActive;
