@@ -169,7 +169,7 @@ function TagsContent() {
         </div>
 
         {/* Form Modal */}
-        <Modal isOpen={showForm} onClose={close} {...modalProps} maxWidth="lg" className="p-6">
+        <Modal isOpen={showForm} onClose={close} {...modalProps} maxWidth="lg" allowOverflow className="p-6">
           <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-4">
             {isEditing ? 'Edit Tag' : 'New Tag'}
           </h2>

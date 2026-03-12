@@ -12,6 +12,8 @@ import { NormalTransactionFields } from './NormalTransactionFields';
 import { SplitTransactionFields } from './SplitTransactionFields';
 import { TransferTransactionFields } from './TransferTransactionFields';
 import { MultiSelect } from '@/components/ui/MultiSelect';
+import { Modal } from '@/components/ui/Modal';
+import { TagForm } from '@/components/tags/TagForm';
 import { transactionsApi } from '@/lib/transactions';
 import { getLocalDateString } from '@/lib/utils';
 import { payeesApi } from '@/lib/payees';
@@ -568,6 +570,22 @@ export function TransactionForm({ transaction, defaultAccountId, onSuccess, onCa
     }
   };
 
+  // Tag creation modal state
+  const [showTagForm, setShowTagForm] = useState(false);
+
+  const handleTagCreate = async (data: { name: string; color?: string; icon?: string }) => {
+    const cleanedData = {
+      ...data,
+      color: data.color || null,
+      icon: data.icon || null,
+    };
+    const newTag = await tagsApi.create(cleanedData);
+    setTags(prev => [...prev, newTag]);
+    setSelectedTagIds(prev => [...prev, newTag.id]);
+    toast.success(`Tag "${newTag.name}" created`);
+    setShowTagForm(false);
+  };
+
   const onSubmit = async (data: TransactionFormData) => {
     setIsLoading(true);
     try {
@@ -812,15 +830,26 @@ export function TransactionForm({ transaction, defaultAccountId, onSuccess, onCa
       )}
 
       {/* Tags */}
-      {tagOptions.length > 0 && (
-        <MultiSelect
-          label="Tags"
-          options={tagOptions}
-          value={selectedTagIds}
-          onChange={setSelectedTagIds}
-          placeholder="Select tags..."
+      <MultiSelect
+        label="Tags"
+        options={tagOptions}
+        value={selectedTagIds}
+        onChange={setSelectedTagIds}
+        placeholder="Select tags..."
+        onCreateNew={() => setShowTagForm(true)}
+        createNewLabel="Create new tag..."
+      />
+
+      {/* Tag Creation Modal */}
+      <Modal isOpen={showTagForm} onClose={() => setShowTagForm(false)} maxWidth="lg" allowOverflow className="p-6">
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-4">
+          New Tag
+        </h2>
+        <TagForm
+          onSubmit={handleTagCreate}
+          onCancel={() => setShowTagForm(false)}
         />
-      )}
+      </Modal>
 
       {/* Description - only shown when not in split mode (split mode has it inline with Reference Number) */}
       {!isSplitMode && (

@@ -1086,6 +1086,7 @@ export class TransactionsService {
     search?: string,
     amountFrom?: number,
     amountTo?: number,
+    tagIds?: string[],
   ) {
     return this.analyticsService.getMonthlyTotals(
       userId,
@@ -1097,6 +1098,7 @@ export class TransactionsService {
       search,
       amountFrom,
       amountTo,
+      tagIds,
     );
   }
 

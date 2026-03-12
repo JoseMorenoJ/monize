@@ -394,6 +394,7 @@ export class TransactionsController {
     @Query("search") search?: string,
     @Query("amountFrom") amountFrom?: string,
     @Query("amountTo") amountTo?: string,
+    @Query("tagIds") tagIdsParam?: string,
   ) {
     validateDateParam(startDate, "startDate");
     validateDateParam(endDate, "endDate");
@@ -420,6 +421,7 @@ export class TransactionsController {
       search,
       parsedAmountFrom,
       parsedAmountTo,
+      parseUuids(tagIdsParam),
     );
   }
 

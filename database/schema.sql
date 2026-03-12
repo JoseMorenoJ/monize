@@ -308,6 +308,7 @@ CREATE TABLE scheduled_transactions (
     is_split BOOLEAN DEFAULT false, -- indicates amounts are split across categories
     is_transfer BOOLEAN DEFAULT false, -- indicates this is an account-to-account transfer
     transfer_account_id UUID REFERENCES accounts(id) ON DELETE SET NULL, -- destination account for transfers
+    tag_ids JSONB DEFAULT '[]'::jsonb, -- array of tag UUIDs to apply when posting
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
