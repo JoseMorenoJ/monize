@@ -606,7 +606,7 @@ export function ScheduledTransactionForm({
         onCreateNew={() => setShowTagForm(true)}
         createNewLabel="Create new tag..."
       />
-      <Modal isOpen={showTagForm} onClose={() => setShowTagForm(false)} maxWidth="lg" allowOverflow className="p-6">
+      <Modal isOpen={showTagForm} onClose={() => setShowTagForm(false)} maxWidth="lg" allowOverflow pushHistory className="p-6">
         <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-4">
           New Tag
         </h2>
