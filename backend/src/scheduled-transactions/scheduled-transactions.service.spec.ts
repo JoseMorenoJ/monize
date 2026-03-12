@@ -900,6 +900,152 @@ describe("ScheduledTransactionsService", () => {
       );
     });
 
+    it("should pass tagIds to createTransfer for transfer transactions", async () => {
+      const scheduled = makeScheduled({
+        isTransfer: true,
+        transferAccountId: "acc-2",
+        tagIds: ["tag-1", "tag-2"],
+      });
+      stubFindOne(scheduled);
+      const overrideQb = mockQueryBuilder(null);
+      overrideQb.getOne.mockResolvedValue(null);
+      overridesRepo.createQueryBuilder.mockReturnValue(overrideQb);
+      accountsRepo.findOne.mockResolvedValue(null);
+
+      await service.post(userId, stId);
+
+      expect(transactionsService.createTransfer).toHaveBeenCalledWith(
+        userId,
+        expect.objectContaining({
+          fromAccountId: "acc-1",
+          toAccountId: "acc-2",
+          tagIds: ["tag-1", "tag-2"],
+        }),
+      );
+    });
+
+    it("should not pass tagIds to createTransfer when scheduled transaction has no tags", async () => {
+      const scheduled = makeScheduled({
+        isTransfer: true,
+        transferAccountId: "acc-2",
+        tagIds: [],
+      });
+      stubFindOne(scheduled);
+      const overrideQb = mockQueryBuilder(null);
+      overrideQb.getOne.mockResolvedValue(null);
+      overridesRepo.createQueryBuilder.mockReturnValue(overrideQb);
+      accountsRepo.findOne.mockResolvedValue(null);
+
+      await service.post(userId, stId);
+
+      expect(transactionsService.createTransfer).toHaveBeenCalledWith(
+        userId,
+        expect.objectContaining({
+          tagIds: undefined,
+        }),
+      );
+    });
+
+    it("should apply stored override amount to transfer via Math.abs", async () => {
+      const scheduled = makeScheduled({
+        isTransfer: true,
+        transferAccountId: "acc-2",
+        amount: -1200,
+      });
+      stubFindOne(scheduled);
+      const overrideQb = mockQueryBuilder(null);
+      overrideQb.getOne.mockResolvedValue({
+        amount: -750,
+        description: null,
+        isSplit: null,
+        categoryId: null,
+        splits: null,
+      });
+      overridesRepo.createQueryBuilder.mockReturnValue(overrideQb);
+      accountsRepo.findOne.mockResolvedValue(null);
+
+      await service.post(userId, stId);
+
+      expect(transactionsService.createTransfer).toHaveBeenCalledWith(
+        userId,
+        expect.objectContaining({
+          amount: 750,
+        }),
+      );
+    });
+
+    it("should apply inline amount override to transfer via Math.abs", async () => {
+      const scheduled = makeScheduled({
+        isTransfer: true,
+        transferAccountId: "acc-2",
+        amount: -1200,
+      });
+      stubFindOne(scheduled);
+      const overrideQb = mockQueryBuilder(null);
+      overrideQb.getOne.mockResolvedValue(null);
+      overridesRepo.createQueryBuilder.mockReturnValue(overrideQb);
+      accountsRepo.findOne.mockResolvedValue(null);
+
+      await service.post(userId, stId, { amount: -500 });
+
+      expect(transactionsService.createTransfer).toHaveBeenCalledWith(
+        userId,
+        expect.objectContaining({
+          amount: 500,
+        }),
+      );
+    });
+
+    it("should handle positive scheduled transfer amount correctly", async () => {
+      const scheduled = makeScheduled({
+        isTransfer: true,
+        transferAccountId: "acc-2",
+        amount: 800,
+      });
+      stubFindOne(scheduled);
+      const overrideQb = mockQueryBuilder(null);
+      overrideQb.getOne.mockResolvedValue(null);
+      overridesRepo.createQueryBuilder.mockReturnValue(overrideQb);
+      accountsRepo.findOne.mockResolvedValue(null);
+
+      await service.post(userId, stId);
+
+      expect(transactionsService.createTransfer).toHaveBeenCalledWith(
+        userId,
+        expect.objectContaining({
+          amount: 800,
+        }),
+      );
+    });
+
+    it("should pass override description to createTransfer", async () => {
+      const scheduled = makeScheduled({
+        isTransfer: true,
+        transferAccountId: "acc-2",
+        description: "base desc",
+      });
+      stubFindOne(scheduled);
+      const overrideQb = mockQueryBuilder(null);
+      overrideQb.getOne.mockResolvedValue({
+        amount: null,
+        description: "override desc",
+        isSplit: null,
+        categoryId: null,
+        splits: null,
+      });
+      overridesRepo.createQueryBuilder.mockReturnValue(overrideQb);
+      accountsRepo.findOne.mockResolvedValue(null);
+
+      await service.post(userId, stId);
+
+      expect(transactionsService.createTransfer).toHaveBeenCalledWith(
+        userId,
+        expect.objectContaining({
+          description: "override desc",
+        }),
+      );
+    });
+
     it("should apply inline values with highest priority", async () => {
       const scheduled = makeScheduled({ amount: -1200 });
       stubFindOne(scheduled);
@@ -1505,6 +1651,67 @@ describe("ScheduledTransactionsService", () => {
 
       // Should not throw
       await service.processAutoPostTransactions();
+    });
+
+    it("should auto-post transfer transactions using createTransfer", async () => {
+      const transfer = makeScheduled({
+        id: "st-transfer",
+        autoPost: true,
+        isTransfer: true,
+        transferAccountId: "acc-2",
+        tagIds: ["tag-1"],
+      });
+      scheduledRepo.find.mockResolvedValue([transfer]);
+      scheduledRepo.findOne.mockResolvedValue(transfer);
+      const overrideQb = mockQueryBuilder(null);
+      overrideQb.getOne.mockResolvedValue(null);
+      overridesRepo.createQueryBuilder.mockReturnValue(overrideQb);
+      accountsRepo.findOne.mockResolvedValue(null);
+
+      await service.processAutoPostTransactions();
+
+      expect(transactionsService.createTransfer).toHaveBeenCalledWith(
+        userId,
+        expect.objectContaining({
+          fromAccountId: "acc-1",
+          toAccountId: "acc-2",
+          amount: 1200,
+          tagIds: ["tag-1"],
+        }),
+      );
+      expect(transactionsService.create).not.toHaveBeenCalled();
+    });
+
+    it("should auto-post mixed batch of regular and transfer transactions", async () => {
+      const regular = makeScheduled({
+        id: "st-regular",
+        autoPost: true,
+        isTransfer: false,
+      });
+      const transfer = makeScheduled({
+        id: "st-transfer",
+        autoPost: true,
+        isTransfer: true,
+        transferAccountId: "acc-2",
+      });
+      scheduledRepo.find.mockResolvedValue([regular, transfer]);
+
+      let findOneCall = 0;
+      scheduledRepo.findOne.mockImplementation(() => {
+        findOneCall++;
+        // First two calls for post of regular, last two for post of transfer
+        if (findOneCall <= 2) return Promise.resolve(regular);
+        return Promise.resolve(transfer);
+      });
+      const overrideQb = mockQueryBuilder(null);
+      overrideQb.getOne.mockResolvedValue(null);
+      overridesRepo.createQueryBuilder.mockReturnValue(overrideQb);
+      accountsRepo.findOne.mockResolvedValue(null);
+
+      await service.processAutoPostTransactions();
+
+      expect(transactionsService.create).toHaveBeenCalled();
+      expect(transactionsService.createTransfer).toHaveBeenCalled();
     });
   });
 
