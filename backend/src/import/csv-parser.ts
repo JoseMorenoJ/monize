@@ -23,6 +23,7 @@ export interface CsvColumnMappingConfig {
   credit?: number;
   payee?: number;
   category?: number;
+  subcategory?: number;
   memo?: number;
   referenceNumber?: number;
   dateFormat: string;
@@ -332,8 +333,27 @@ function parseDateCustom(dateStr: string, format: string): string | null {
  * or a custom pattern string using YYYY/YY, MM, DD tokens.
  * Returns null if the date cannot be parsed or is invalid.
  */
+/**
+ * Strip trailing time components from a date string.
+ * Handles formats like "01/15/2026 14:30:00", "2026-01-15T12:00:00Z",
+ * "01/15/2026 2:30 PM", etc.
+ */
+function stripTime(dateStr: string): string {
+  // Remove ISO 8601 time portion (T followed by time)
+  const tIndex = dateStr.indexOf("T");
+  if (tIndex > 0) {
+    return dateStr.substring(0, tIndex);
+  }
+  // Remove time after space (e.g., "01/15/2026 14:30:00" or "01/15/2026 2:30 PM")
+  const spaceMatch = dateStr.match(/^(\S+)\s+\d{1,2}:\d{2}/);
+  if (spaceMatch) {
+    return spaceMatch[1];
+  }
+  return dateStr;
+}
+
 function parseCsvDate(dateStr: string, format: string): string | null {
-  const trimmed = dateStr.trim();
+  const trimmed = stripTime(dateStr.trim());
   if (!trimmed) {
     return null;
   }
@@ -545,10 +565,23 @@ export function parseCsv(
     // Extract text fields with sanitization
     const rawPayee = truncate(getField(row, config.payee), FIELD_LIMITS.PAYEE);
     const payee = isAllCaps(rawPayee) ? toProperCase(rawPayee) : rawPayee;
-    let category = truncate(
+    const categoryPart = truncate(
       getField(row, config.category),
       FIELD_LIMITS.CATEGORY,
     );
+    const subcategoryPart = truncate(
+      getField(row, config.subcategory),
+      FIELD_LIMITS.CATEGORY,
+    );
+    // Combine category and subcategory with colon separator (matching QIF convention)
+    let category =
+      categoryPart && subcategoryPart
+        ? `${categoryPart}:${subcategoryPart}`
+        : categoryPart || subcategoryPart;
+    // Truncate combined value to field limit
+    if (category.length > FIELD_LIMITS.CATEGORY) {
+      category = category.substring(0, FIELD_LIMITS.CATEGORY);
+    }
     const memo = truncate(getField(row, config.memo), FIELD_LIMITS.MEMO);
     const referenceNumber = truncate(
       getField(row, config.referenceNumber),

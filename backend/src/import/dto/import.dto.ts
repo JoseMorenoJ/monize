@@ -413,6 +413,13 @@ export class CsvColumnMappingConfigDto {
   @Max(100)
   category?: number;
 
+  @ApiPropertyOptional({ description: "Column index for subcategory field" })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  subcategory?: number;
+
   @ApiPropertyOptional({ description: "Column index for memo field" })
   @IsOptional()
   @IsInt()

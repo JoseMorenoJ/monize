@@ -554,6 +554,71 @@ describe("CSV Parser", () => {
       });
     });
 
+    describe("dates with time components", () => {
+      it("strips time after space (HH:MM:SS)", () => {
+        const csv =
+          "Date,Amount,Payee\n01/15/2026 14:30:00,-50.00,Store\n";
+        const result = parseCsv(csv, baseConfig());
+
+        expect(result.transactions).toHaveLength(1);
+        expect(result.transactions[0].date).toBe("2026-01-15");
+      });
+
+      it("strips time after space (H:MM AM/PM)", () => {
+        const csv =
+          "Date,Amount,Payee\n01/15/2026 2:30 PM,-50.00,Store\n";
+        const result = parseCsv(csv, baseConfig());
+
+        expect(result.transactions).toHaveLength(1);
+        expect(result.transactions[0].date).toBe("2026-01-15");
+      });
+
+      it("strips ISO 8601 time (T separator)", () => {
+        const csv =
+          "Date,Amount,Payee\n2026-01-15T12:00:00Z,-50.00,Store\n";
+        const result = parseCsv(
+          csv,
+          baseConfig({ dateFormat: "YYYY-MM-DD" }),
+        );
+
+        expect(result.transactions).toHaveLength(1);
+        expect(result.transactions[0].date).toBe("2026-01-15");
+      });
+
+      it("strips time with timezone offset", () => {
+        const csv =
+          "Date,Amount,Payee\n2026-01-15T14:30:00+05:00,-50.00,Store\n";
+        const result = parseCsv(
+          csv,
+          baseConfig({ dateFormat: "YYYY-MM-DD" }),
+        );
+
+        expect(result.transactions).toHaveLength(1);
+        expect(result.transactions[0].date).toBe("2026-01-15");
+      });
+
+      it("handles DD/MM/YYYY with time", () => {
+        const csv =
+          "Date,Amount,Payee\n15/01/2026 09:45,-50.00,Store\n";
+        const result = parseCsv(
+          csv,
+          baseConfig({ dateFormat: "DD/MM/YYYY" }),
+        );
+
+        expect(result.transactions).toHaveLength(1);
+        expect(result.transactions[0].date).toBe("2026-01-15");
+      });
+
+      it("still parses dates without time normally", () => {
+        const csv =
+          "Date,Amount,Payee\n01/15/2026,-50.00,Store\n";
+        const result = parseCsv(csv, baseConfig());
+
+        expect(result.transactions).toHaveLength(1);
+        expect(result.transactions[0].date).toBe("2026-01-15");
+      });
+    });
+
     describe("unparseable dates", () => {
       it("skips rows with unparseable dates", () => {
         const csv =
@@ -746,6 +811,57 @@ describe("CSV Parser", () => {
         const result = parseCsv(csv, config);
 
         expect(result.transactions[0].number).toBe("CHK1234");
+      });
+    });
+
+    describe("subcategory mapping", () => {
+      it("combines category and subcategory with colon separator", () => {
+        const csv =
+          "Date,Amount,Payee,Category,Subcategory\n01/15/2026,-50.00,Store,Food,Groceries\n";
+        const config = baseConfig({ category: 3, subcategory: 4 });
+        const result = parseCsv(csv, config);
+
+        expect(result.transactions[0].category).toBe("Food:Groceries");
+        expect(result.categories).toEqual(["Food:Groceries"]);
+      });
+
+      it("uses only category when subcategory is empty", () => {
+        const csv =
+          "Date,Amount,Payee,Category,Subcategory\n01/15/2026,-50.00,Store,Food,\n";
+        const config = baseConfig({ category: 3, subcategory: 4 });
+        const result = parseCsv(csv, config);
+
+        expect(result.transactions[0].category).toBe("Food");
+      });
+
+      it("uses only subcategory when category is empty", () => {
+        const csv =
+          "Date,Amount,Payee,Category,Subcategory\n01/15/2026,-50.00,Store,,Groceries\n";
+        const config = baseConfig({ category: 3, subcategory: 4 });
+        const result = parseCsv(csv, config);
+
+        expect(result.transactions[0].category).toBe("Groceries");
+      });
+
+      it("uses subcategory column without category column", () => {
+        const csv =
+          "Date,Amount,Payee,Subcategory\n01/15/2026,-50.00,Store,Groceries\n";
+        const config = baseConfig({ subcategory: 3 });
+        const result = parseCsv(csv, config);
+
+        expect(result.transactions[0].category).toBe("Groceries");
+      });
+
+      it("collects combined categories in category list", () => {
+        const csv =
+          "Date,Amount,Payee,Category,Subcategory\n01/15/2026,-50.00,Store,Food,Groceries\n01/16/2026,-30.00,Bus,Transport,Bus Fare\n01/17/2026,-20.00,Market,Food,Groceries\n";
+        const config = baseConfig({ category: 3, subcategory: 4 });
+        const result = parseCsv(csv, config);
+
+        expect(result.categories).toEqual([
+          "Food:Groceries",
+          "Transport:Bus Fare",
+        ]);
       });
     });
   });
