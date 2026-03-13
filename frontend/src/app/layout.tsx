@@ -46,7 +46,8 @@ export default async function RootLayout({
   // Reading headers forces dynamic rendering so the per-request CSP nonce
   // from proxy.ts is available. Next.js automatically applies the nonce
   // to its generated inline scripts.
-  await headers();
+  const headersList = await headers();
+  const httpsHeadersActive = headersList.get('x-https-headers-active') === 'true';
 
   return (
     <html lang="en" suppressHydrationWarning>
@@ -54,7 +55,7 @@ export default async function RootLayout({
         <ServiceWorkerRegistrar />
         <ThemeProvider>
           <PreferencesLoader>
-            <SwipeShell>
+            <SwipeShell httpsHeadersActive={httpsHeadersActive}>
               {children}
             </SwipeShell>
           </PreferencesLoader>

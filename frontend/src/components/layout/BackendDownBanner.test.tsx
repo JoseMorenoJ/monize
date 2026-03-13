@@ -1,18 +1,28 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { render, screen } from '@/test/render';
+import { render, screen, act } from '@/test/render';
 import { BackendDownBanner } from './BackendDownBanner';
 import { useConnectionStore } from '@/store/connectionStore';
 
 describe('BackendDownBanner', () => {
+  const originalLocation = window.location;
+
   beforeEach(() => {
     useConnectionStore.setState({ isBackendDown: false, downSince: null });
     vi.useFakeTimers();
     vi.stubGlobal('fetch', vi.fn());
+    Object.defineProperty(window, 'location', {
+      value: { ...originalLocation, protocol: 'http:', reload: vi.fn() },
+      writable: true,
+    });
   });
 
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
+    Object.defineProperty(window, 'location', {
+      value: originalLocation,
+      writable: true,
+    });
   });
 
   it('renders nothing when backend is up', () => {
@@ -20,32 +30,41 @@ describe('BackendDownBanner', () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it('renders banner when backend is down', () => {
+  it('renders banner when backend is down', async () => {
     useConnectionStore.setState({ isBackendDown: true, downSince: Date.now() });
-    render(<BackendDownBanner />);
+    await act(async () => {
+      render(<BackendDownBanner />);
+    });
     expect(screen.getByText('Connection Lost')).toBeInTheDocument();
   });
 
-  it('displays retry message when down', () => {
+  it('displays retry message when down', async () => {
     useConnectionStore.setState({ isBackendDown: true, downSince: Date.now() });
-    render(<BackendDownBanner />);
+    await act(async () => {
+      render(<BackendDownBanner />);
+    });
     expect(
       screen.getByText(/Unable to reach the server\. Retrying automatically/),
     ).toBeInTheDocument();
   });
 
-  it('renders Connection Lost label in bold', () => {
+  it('renders Connection Lost label in bold', async () => {
     useConnectionStore.setState({ isBackendDown: true, downSince: Date.now() });
-    render(<BackendDownBanner />);
+    await act(async () => {
+      render(<BackendDownBanner />);
+    });
     const label = screen.getByText('Connection Lost');
     expect(label.tagName).toBe('SPAN');
     expect(label.className).toContain('font-semibold');
   });
 
-  it('uses red color scheme', () => {
+  it('uses red color scheme', async () => {
     useConnectionStore.setState({ isBackendDown: true, downSince: Date.now() });
-    const { container } = render(<BackendDownBanner />);
-    const banner = container.firstChild as HTMLElement;
+    let container: HTMLElement;
+    await act(async () => {
+      ({ container } = render(<BackendDownBanner />));
+    });
+    const banner = container!.firstChild as HTMLElement;
     expect(banner.className).toContain('bg-red-50');
     expect(banner.className).toContain('text-red-800');
   });
@@ -126,5 +145,45 @@ describe('BackendDownBanner', () => {
 
     await vi.advanceTimersByTimeAsync(10000);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  // HTTPS mismatch tests
+  it('shows Connection Blocked when httpsHeadersActive and protocol is http', async () => {
+    useConnectionStore.setState({ isBackendDown: true, downSince: Date.now() });
+    await act(async () => {
+      render(<BackendDownBanner httpsHeadersActive={true} />);
+    });
+    expect(screen.getByText('Connection Blocked')).toBeInTheDocument();
+    expect(screen.queryByText('Connection Lost')).not.toBeInTheDocument();
+  });
+
+  it('mentions DISABLE_HTTPS_HEADERS in HTTPS mismatch message', async () => {
+    useConnectionStore.setState({ isBackendDown: true, downSince: Date.now() });
+    await act(async () => {
+      render(<BackendDownBanner httpsHeadersActive={true} />);
+    });
+    expect(screen.getByText('DISABLE_HTTPS_HEADERS=true')).toBeInTheDocument();
+  });
+
+  it('shows Connection Lost when httpsHeadersActive is false', async () => {
+    useConnectionStore.setState({ isBackendDown: true, downSince: Date.now() });
+    await act(async () => {
+      render(<BackendDownBanner httpsHeadersActive={false} />);
+    });
+    expect(screen.getByText('Connection Lost')).toBeInTheDocument();
+    expect(screen.queryByText('Connection Blocked')).not.toBeInTheDocument();
+  });
+
+  it('shows Connection Lost when protocol is https even if httpsHeadersActive', async () => {
+    Object.defineProperty(window, 'location', {
+      value: { ...originalLocation, protocol: 'https:', reload: vi.fn() },
+      writable: true,
+    });
+    useConnectionStore.setState({ isBackendDown: true, downSince: Date.now() });
+    await act(async () => {
+      render(<BackendDownBanner httpsHeadersActive={true} />);
+    });
+    expect(screen.getByText('Connection Lost')).toBeInTheDocument();
+    expect(screen.queryByText('Connection Blocked')).not.toBeInTheDocument();
   });
 });
