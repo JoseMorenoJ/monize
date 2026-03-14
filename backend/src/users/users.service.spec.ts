@@ -587,6 +587,21 @@ describe("UsersService", () => {
         UnauthorizedException,
       );
     });
+
+    it("accepts OIDC token for OIDC users who also have a password", async () => {
+      const hashedPassword = await bcrypt.hash("CorrectPass123!", 10);
+      usersRepository.findOne.mockResolvedValue({
+        ...mockUser,
+        authProvider: "oidc",
+        passwordHash: hashedPassword,
+      });
+
+      await service.deleteAccount("user-1", {
+        oidcIdToken: "oidc-session-confirmed",
+      });
+
+      expect(usersRepository.remove).toHaveBeenCalled();
+    });
   });
 
   describe("deleteData", () => {
@@ -722,6 +737,22 @@ describe("UsersService", () => {
       await expect(service.deleteData("user-1", {})).rejects.toThrow(
         UnauthorizedException,
       );
+    });
+
+    it("accepts OIDC token for OIDC users who also have a password", async () => {
+      const hashedPassword = await bcrypt.hash("CorrectPass123!", 10);
+      usersRepository.findOne.mockResolvedValue({
+        ...mockUser,
+        authProvider: "oidc",
+        passwordHash: hashedPassword,
+      });
+
+      const result = await service.deleteData("user-1", {
+        oidcIdToken: "oidc-session-confirmed",
+      });
+
+      expect(result).toHaveProperty("deleted");
+      expect(mockQueryRunner.commitTransaction).toHaveBeenCalled();
     });
 
     it("throws when user not found", async () => {

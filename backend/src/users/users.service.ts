@@ -232,21 +232,21 @@ export class UsersService {
     }
 
     // SECURITY: Re-authenticate before account deletion
-    if (user.authProvider === "local" || user.passwordHash) {
+    if (user.authProvider === "oidc") {
+      if (!dto?.oidcIdToken) {
+        throw new UnauthorizedException(
+          "OIDC re-authentication is required to confirm account deletion",
+        );
+      }
+    } else if (user.passwordHash) {
       if (!dto?.password) {
         throw new UnauthorizedException(
           "Password is required to confirm account deletion",
         );
       }
-      const isValid = await bcrypt.compare(dto.password, user.passwordHash!);
+      const isValid = await bcrypt.compare(dto.password, user.passwordHash);
       if (!isValid) {
         throw new UnauthorizedException("Invalid password");
-      }
-    } else if (user.authProvider === "oidc") {
-      if (!dto?.oidcIdToken) {
-        throw new UnauthorizedException(
-          "OIDC re-authentication is required to confirm account deletion",
-        );
       }
     }
 
@@ -290,21 +290,21 @@ export class UsersService {
     }
 
     // SECURITY: Re-authenticate before destructive operation
-    if (user.authProvider === "local" || user.passwordHash) {
+    if (user.authProvider === "oidc") {
+      if (!dto.oidcIdToken) {
+        throw new UnauthorizedException(
+          "OIDC re-authentication is required to confirm data deletion",
+        );
+      }
+    } else if (user.passwordHash) {
       if (!dto.password) {
         throw new UnauthorizedException(
           "Password is required to confirm data deletion",
         );
       }
-      const isValid = await bcrypt.compare(dto.password, user.passwordHash!);
+      const isValid = await bcrypt.compare(dto.password, user.passwordHash);
       if (!isValid) {
         throw new UnauthorizedException("Invalid password");
-      }
-    } else if (user.authProvider === "oidc") {
-      if (!dto.oidcIdToken) {
-        throw new UnauthorizedException(
-          "OIDC re-authentication is required to confirm data deletion",
-        );
       }
       // The frontend obtains a fresh OIDC token via the re-auth flow.
       // The presence of a valid JWT session + the OIDC token confirms identity.
