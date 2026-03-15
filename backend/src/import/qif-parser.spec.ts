@@ -546,6 +546,31 @@ T-50.00
       const result = parseQif(qif, "DD/MM/YYYY");
       expect(result.transactions[0].date).toBe("2026-03-15");
     });
+
+    it("parses date with space after apostrophe before single-digit year (M/D' Y)", () => {
+      const qif = `!Type:Bank
+D3/12' 0
+T-50.00
+^
+D4/14' 0
+T-100.00
+^
+D3/11' 1
+T-75.00
+^
+D4/21' 1
+T-200.00
+^
+D3/11' 2
+T-150.00
+^`;
+      const result = parseQif(qif, "MM/DD/YYYY");
+      expect(result.transactions[0].date).toBe("2000-03-12");
+      expect(result.transactions[1].date).toBe("2000-04-14");
+      expect(result.transactions[2].date).toBe("2001-03-11");
+      expect(result.transactions[3].date).toBe("2001-04-21");
+      expect(result.transactions[4].date).toBe("2002-03-11");
+    });
   });
 
   describe("parseQif - DD/MM'YYYY format with apostrophe before 4-digit year", () => {
