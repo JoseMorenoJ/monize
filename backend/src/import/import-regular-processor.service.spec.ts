@@ -267,7 +267,7 @@ describe("ImportRegularProcessorService", () => {
   });
 
   describe("isDuplicateTransfer (via processTransaction)", () => {
-    it("should skip duplicate linked transfers from prior imports", async () => {
+    it("should skip duplicate linked transfers", async () => {
       const accountMap = new Map<string, string | null>();
       accountMap.set("Savings", "acc-savings");
       const ctx = makeContext({ accountMap });
@@ -291,7 +291,7 @@ describe("ImportRegularProcessorService", () => {
       expect(ctx.importResult.imported).toBe(0);
     });
 
-    it("should skip split-linked transfers from prior imports", async () => {
+    it("should skip split-linked transfers", async () => {
       const ctx = makeContext();
 
       // When isTransfer is true but transferAccount is absent,

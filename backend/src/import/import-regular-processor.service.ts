@@ -16,7 +16,7 @@ export class ImportRegularProcessorService {
   private readonly logger = new Logger(ImportRegularProcessorService.name);
 
   async processTransaction(ctx: ImportContext, qifTx: any): Promise<void> {
-    // Check for duplicate transfers from prior imports
+    // Check for duplicate transfers (from prior imports or earlier account blocks)
     if (await this.isDuplicateTransfer(ctx, qifTx)) {
       ctx.importResult.skipped++;
       return;
@@ -108,7 +108,7 @@ export class ImportRegularProcessorService {
     ctx: ImportContext,
     qifTx: any,
   ): Promise<boolean> {
-    // Check for duplicate linked transfers from prior imports
+    // Check for duplicate linked transfers
     if (qifTx.isTransfer && qifTx.transferAccount) {
       const mappedTransferAccountId = ctx.accountMap.get(qifTx.transferAccount);
       if (mappedTransferAccountId) {
@@ -129,9 +129,6 @@ export class ImportRegularProcessorService {
           .andWhere("linked.account_id = :linkedAccountId", {
             linkedAccountId: mappedTransferAccountId,
           })
-          .andWhere("t.created_at < :importStartTime", {
-            importStartTime: ctx.importStartTime,
-          })
           .getOne();
 
         if (existingLinkedTransfers) {
@@ -140,7 +137,7 @@ export class ImportRegularProcessorService {
       }
     }
 
-    // Check for split-linked transfers from prior imports
+    // Check for split-linked transfers
     if (qifTx.isTransfer) {
       const existingSplitLinkedTx = await ctx.queryRunner.manager
         .createQueryBuilder(Transaction, "t")
@@ -156,9 +153,6 @@ export class ImportRegularProcessorService {
         .andWhere("t.is_transfer = true")
         .andWhere("t.transaction_date = :date", { date: qifTx.date })
         .andWhere("t.amount = :amount", { amount: qifTx.amount })
-        .andWhere("t.created_at < :importStartTime", {
-          importStartTime: ctx.importStartTime,
-        })
         .getOne();
 
       if (existingSplitLinkedTx) {
@@ -429,7 +423,7 @@ export class ImportRegularProcessorService {
     ctx.affectedAccountIds.add(splitTransferAccountId);
     const linkedAmount = -split.amount;
 
-    // Check for existing linked transaction from prior import
+    // Check for existing linked transaction
     const existingLinkedTx = await ctx.queryRunner.manager
       .createQueryBuilder(Transaction, "t")
       .where("t.user_id = :userId", { userId: ctx.userId })
@@ -439,9 +433,6 @@ export class ImportRegularProcessorService {
       .andWhere("t.transaction_date = :date", { date: qifTx.date })
       .andWhere("t.amount = :amount", { amount: linkedAmount })
       .andWhere("t.is_transfer = true")
-      .andWhere("t.created_at < :importStartTime", {
-        importStartTime: ctx.importStartTime,
-      })
       .getOne();
 
     if (existingLinkedTx) {
