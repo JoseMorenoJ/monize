@@ -5,7 +5,7 @@ export interface RestoreResult {
   restored: Record<string, number>;
 }
 
-async function compressGzip(data: Uint8Array): Promise<Blob> {
+async function compressGzip(data: ArrayBuffer): Promise<Blob> {
   const stream = new Blob([data]).stream().pipeThrough(
     new CompressionStream('gzip'),
   );
@@ -26,8 +26,7 @@ export const backupApi = {
     password?: string;
     oidcIdToken?: string;
   }): Promise<RestoreResult> => {
-    const fileBytes = new Uint8Array(await params.file.arrayBuffer());
-    const compressed = await compressGzip(fileBytes);
+    const compressed = await compressGzip(await params.file.arrayBuffer());
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/gzip',
