@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import {
   PieChart,
   Pie,
@@ -20,6 +20,7 @@ import { useNumberFormat } from '@/hooks/useNumberFormat';
 import { useDateFormat } from '@/hooks/useDateFormat';
 import { CHART_COLOURS } from '@/lib/chart-colours';
 import { exportToCsv } from '@/lib/csv-export';
+import { ExportDropdown } from '@/components/ui/ExportDropdown';
 
 // Default columns if none specified
 const DEFAULT_TABLE_COLUMNS = [TableColumn.LABEL, TableColumn.VALUE, TableColumn.PERCENTAGE, TableColumn.COUNT];
@@ -31,12 +32,34 @@ interface ReportChartProps {
   onDataPointClick?: (id: string) => void;
   tableColumns?: TableColumn[];
   exportFilename?: string;
+  reportTitle?: string;
+  reportSubtitle?: string;
 }
 
-export function ReportChart({ viewType, data, groupBy, onDataPointClick, tableColumns, exportFilename }: ReportChartProps) {
+function getColumnMap(
+  labelHeader: string,
+  total: number,
+): Record<TableColumn, { header: string; getValue: (item: AggregatedDataPoint) => string | number }> {
+  return {
+    [TableColumn.DATE]: { header: 'Date', getValue: (item) => item.date || '' },
+    [TableColumn.LABEL]: { header: labelHeader, getValue: (item) => item.label },
+    [TableColumn.PAYEE]: { header: 'Payee', getValue: (item) => item.payee || '' },
+    [TableColumn.DESCRIPTION]: { header: 'Description', getValue: (item) => item.description || '' },
+    [TableColumn.MEMO]: { header: 'Memo', getValue: (item) => item.memo || '' },
+    [TableColumn.CATEGORY]: { header: 'Category', getValue: (item) => item.category || '' },
+    [TableColumn.ACCOUNT]: { header: 'Account', getValue: (item) => item.account || '' },
+    [TableColumn.VALUE]: { header: 'Amount', getValue: (item) => item.value },
+    [TableColumn.PERCENTAGE]: { header: '%', getValue: (item) => item.percentage ?? (total > 0 ? Number(((item.value / total) * 100).toFixed(1)) : 0) },
+    [TableColumn.COUNT]: { header: 'Count', getValue: (item) => item.count || 0 },
+    [TableColumn.TAG]: { header: 'Tag', getValue: (item) => item.label || '' },
+  };
+}
+
+export function ReportChart({ viewType, data, groupBy, onDataPointClick, tableColumns, exportFilename, reportTitle, reportSubtitle }: ReportChartProps) {
   const { formatCurrency, formatNumber } = useNumberFormat();
   const { formatDate } = useDateFormat();
   const columns = tableColumns && tableColumns.length > 0 ? tableColumns : DEFAULT_TABLE_COLUMNS;
+  const chartContainerRef = useRef<HTMLDivElement>(null);
 
   // Assign colours to data points without one
   const chartData = useMemo(() => {
@@ -48,6 +71,43 @@ export function ReportChart({ viewType, data, groupBy, onDataPointClick, tableCo
   }, [data]);
 
   const total = chartData.reduce((sum, item) => sum + item.value, 0);
+
+  const labelHeader = groupBy === GroupByType.CATEGORY ? 'Category' :
+                      groupBy === GroupByType.PAYEE ? 'Payee' :
+                      groupBy === GroupByType.NONE ? 'Item' : 'Period';
+
+  const handleExportCsv = () => {
+    const columnMap = getColumnMap(labelHeader, total);
+    const headers = columns.map((col) => columnMap[col]?.header || col);
+    const rows = chartData.map((item) =>
+      columns.map((col) => columnMap[col]?.getValue(item) ?? '')
+    );
+    exportToCsv(exportFilename || 'report', headers, rows);
+  };
+
+  const handleExportPdf = async () => {
+    const { exportToPdf } = await import('@/lib/pdf-export');
+    const columnMap = getColumnMap(labelHeader, total);
+    const headers = columns.map((col) => columnMap[col]?.header || col);
+    const rows = chartData.map((item) =>
+      columns.map((col) => columnMap[col]?.getValue(item) ?? '')
+    );
+    const totalCount = chartData.reduce((sum, item) => sum + (item.count || 0), 0);
+    const totalRow = columns.map((col) => {
+      if (col === TableColumn.LABEL || (col === TableColumn.DATE && !columns.includes(TableColumn.LABEL))) return 'Total';
+      if (col === TableColumn.VALUE) return total;
+      if (col === TableColumn.PERCENTAGE) return '100%';
+      if (col === TableColumn.COUNT) return totalCount || '';
+      return '';
+    });
+    await exportToPdf({
+      title: reportTitle || exportFilename || 'Report',
+      subtitle: reportSubtitle,
+      chartContainer: viewType !== ReportViewType.TABLE ? chartContainerRef.current : null,
+      tableData: { headers, rows, totalRow },
+      filename: exportFilename || 'report',
+    });
+  };
 
   const CustomTooltip = ({
     active,
@@ -78,144 +138,124 @@ export function ReportChart({ viewType, data, groupBy, onDataPointClick, tableCo
 
   const isTimeBased = groupBy === GroupByType.MONTH || groupBy === GroupByType.WEEK || groupBy === GroupByType.DAY;
 
+  const exportBar = (
+    <div className="flex justify-end px-4 py-2">
+      <ExportDropdown onExportCsv={handleExportCsv} onExportPdf={handleExportPdf} />
+    </div>
+  );
+
   switch (viewType) {
     case ReportViewType.PIE_CHART:
       return (
-        <div className="h-80">
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie
-                data={chartData}
-                cx="50%"
-                cy="50%"
-                innerRadius={60}
-                outerRadius={100}
-                paddingAngle={2}
-                dataKey="value"
-                cursor={onDataPointClick ? 'pointer' : 'default'}
-                onClick={(entry) => entry.id && onDataPointClick?.(entry.id)}
-              >
-                {chartData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.color} />
-                ))}
-              </Pie>
-              <Tooltip content={<CustomTooltip />} />
-            </PieChart>
-          </ResponsiveContainer>
+        <div>
+          {exportBar}
+          <div ref={chartContainerRef} className="h-80">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={chartData}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={60}
+                  outerRadius={100}
+                  paddingAngle={2}
+                  dataKey="value"
+                  cursor={onDataPointClick ? 'pointer' : 'default'}
+                  onClick={(entry) => entry.id && onDataPointClick?.(entry.id)}
+                >
+                  {chartData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Pie>
+                <Tooltip content={<CustomTooltip />} />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
         </div>
       );
 
     case ReportViewType.BAR_CHART:
       return (
-        <div className="h-80">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={chartData} margin={{ top: 20, right: 10, left: 0, bottom: 60 }}>
-              <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
-              <XAxis
-                dataKey="label"
-                tick={{ fontSize: 12, fill: 'currentColor' }}
-                angle={-45}
-                textAnchor="end"
-                height={60}
-                interval={0}
-                className="text-gray-600 dark:text-gray-400"
-              />
-              <YAxis
-                tick={{ fontSize: 12, fill: 'currentColor' }}
-                tickFormatter={(value) => formatNumber(value, 0)}
-                className="text-gray-600 dark:text-gray-400"
-              />
-              <Tooltip content={<CustomTooltip />} />
-              <Bar
-                dataKey="value"
-                cursor={onDataPointClick ? 'pointer' : 'default'}
-                onClick={(entry) => entry.id && onDataPointClick?.(entry.id)}
-              >
-                {chartData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.color} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+        <div>
+          {exportBar}
+          <div ref={chartContainerRef} className="h-80">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chartData} margin={{ top: 20, right: 10, left: 0, bottom: 60 }}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
+                <XAxis
+                  dataKey="label"
+                  tick={{ fontSize: 12, fill: 'currentColor' }}
+                  angle={-45}
+                  textAnchor="end"
+                  height={60}
+                  interval={0}
+                  className="text-gray-600 dark:text-gray-400"
+                />
+                <YAxis
+                  tick={{ fontSize: 12, fill: 'currentColor' }}
+                  tickFormatter={(value) => formatNumber(value, 0)}
+                  className="text-gray-600 dark:text-gray-400"
+                />
+                <Tooltip content={<CustomTooltip />} />
+                <Bar
+                  dataKey="value"
+                  cursor={onDataPointClick ? 'pointer' : 'default'}
+                  onClick={(entry) => entry.id && onDataPointClick?.(entry.id)}
+                >
+                  {chartData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         </div>
       );
 
     case ReportViewType.LINE_CHART:
       return (
-        <div className="h-80">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={chartData} margin={{ top: 20, right: 10, left: 0, bottom: 60 }}>
-              <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
-              <XAxis
-                dataKey="label"
-                tick={{ fontSize: 12, fill: 'currentColor' }}
-                angle={isTimeBased ? -45 : 0}
-                textAnchor={isTimeBased ? 'end' : 'middle'}
-                height={60}
-                interval={isTimeBased ? 'preserveStartEnd' : 0}
-                className="text-gray-600 dark:text-gray-400"
-              />
-              <YAxis
-                tick={{ fontSize: 12, fill: 'currentColor' }}
-                tickFormatter={(value) => formatNumber(value, 0)}
-                className="text-gray-600 dark:text-gray-400"
-              />
-              <Tooltip content={<CustomTooltip />} />
-              <Line
-                type="monotone"
-                dataKey="value"
-                stroke="#3b82f6"
-                strokeWidth={2}
-                dot={{ fill: '#3b82f6', strokeWidth: 2 }}
-                activeDot={{ r: 6 }}
-              />
-            </LineChart>
-          </ResponsiveContainer>
+        <div>
+          {exportBar}
+          <div ref={chartContainerRef} className="h-80">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={chartData} margin={{ top: 20, right: 10, left: 0, bottom: 60 }}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
+                <XAxis
+                  dataKey="label"
+                  tick={{ fontSize: 12, fill: 'currentColor' }}
+                  angle={isTimeBased ? -45 : 0}
+                  textAnchor={isTimeBased ? 'end' : 'middle'}
+                  height={60}
+                  interval={isTimeBased ? 'preserveStartEnd' : 0}
+                  className="text-gray-600 dark:text-gray-400"
+                />
+                <YAxis
+                  tick={{ fontSize: 12, fill: 'currentColor' }}
+                  tickFormatter={(value) => formatNumber(value, 0)}
+                  className="text-gray-600 dark:text-gray-400"
+                />
+                <Tooltip content={<CustomTooltip />} />
+                <Line
+                  type="monotone"
+                  dataKey="value"
+                  stroke="#3b82f6"
+                  strokeWidth={2}
+                  dot={{ fill: '#3b82f6', strokeWidth: 2 }}
+                  activeDot={{ r: 6 }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
         </div>
       );
 
     case ReportViewType.TABLE:
     default: {
-      const labelHeader = groupBy === GroupByType.CATEGORY ? 'Category' :
-                          groupBy === GroupByType.PAYEE ? 'Payee' :
-                          groupBy === GroupByType.NONE ? 'Item' : 'Period';
       const totalCount = chartData.reduce((sum, item) => sum + (item.count || 0), 0);
-
-      const handleExportCsv = () => {
-        const columnMap: Record<TableColumn, { header: string; getValue: (item: AggregatedDataPoint) => string | number }> = {
-          [TableColumn.DATE]: { header: 'Date', getValue: (item) => item.date || '' },
-          [TableColumn.LABEL]: { header: labelHeader, getValue: (item) => item.label },
-          [TableColumn.PAYEE]: { header: 'Payee', getValue: (item) => item.payee || '' },
-          [TableColumn.DESCRIPTION]: { header: 'Description', getValue: (item) => item.description || '' },
-          [TableColumn.MEMO]: { header: 'Memo', getValue: (item) => item.memo || '' },
-          [TableColumn.CATEGORY]: { header: 'Category', getValue: (item) => item.category || '' },
-          [TableColumn.ACCOUNT]: { header: 'Account', getValue: (item) => item.account || '' },
-          [TableColumn.VALUE]: { header: 'Amount', getValue: (item) => item.value },
-          [TableColumn.PERCENTAGE]: { header: '%', getValue: (item) => item.percentage ?? (total > 0 ? Number(((item.value / total) * 100).toFixed(1)) : 0) },
-          [TableColumn.COUNT]: { header: 'Count', getValue: (item) => item.count || 0 },
-          [TableColumn.TAG]: { header: 'Tag', getValue: (item) => item.label || '' },
-        };
-        const headers = columns.map((col) => columnMap[col]?.header || col);
-        const rows = chartData.map((item) =>
-          columns.map((col) => columnMap[col]?.getValue(item) ?? '')
-        );
-        exportToCsv(exportFilename || 'report', headers, rows);
-      };
 
       return (
         <div className="overflow-x-auto">
-          <div className="flex justify-end px-4 py-2">
-            <button
-              onClick={handleExportCsv}
-              className="px-3 py-1.5 text-sm font-medium rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex items-center gap-1.5"
-              title="Export to CSV"
-            >
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-              </svg>
-              CSV
-            </button>
-          </div>
+          {exportBar}
           <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
             <thead>
               <tr>

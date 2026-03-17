@@ -5,6 +5,7 @@ import { builtInReportsApi } from '@/lib/built-in-reports';
 import { TaxSummaryResponse } from '@/types/built-in-reports';
 import { useNumberFormat } from '@/hooks/useNumberFormat';
 import { exportToCsv } from '@/lib/csv-export';
+import { ExportDropdown } from '@/components/ui/ExportDropdown';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('TaxSummaryReport');
@@ -70,6 +71,33 @@ export function TaxSummaryReport() {
     exportToCsv(`tax-summary-${selectedYear}`, headers, rows);
   };
 
+  const getExportData = () => {
+    const headers = ['Section', 'Category', 'Amount'];
+    const rows: (string | number)[][] = [];
+    for (const item of incomeBySource) {
+      rows.push(['Income', item.name, item.total]);
+    }
+    for (const item of deductibleExpenses) {
+      rows.push(['Potential Deductions', item.name, item.total]);
+    }
+    for (const item of allExpenses) {
+      rows.push(['Expenses', item.name, item.total]);
+    }
+    return { headers, rows };
+  };
+
+  const handleExportPdf = async () => {
+    const { exportToPdf } = await import('@/lib/pdf-export');
+    const { headers, rows } = getExportData();
+    const totalRow: (string | number)[] = ['Totals', '', ''];
+    await exportToPdf({
+      title: `Tax Summary - ${selectedYear}`,
+      subtitle: `Income: ${totals.income} | Expenses: ${totals.expenses} | Deductions: ${totals.deductible}`,
+      tableData: { headers, rows, totalRow },
+      filename: `tax-summary-${selectedYear}`,
+    });
+  };
+
   return (
     <div className="space-y-6">
       {/* Year Selector */}
@@ -89,16 +117,7 @@ export function TaxSummaryReport() {
               ))}
             </select>
           </div>
-          <button
-            onClick={handleExportCsv}
-            className="px-3 py-1.5 text-sm font-medium rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex items-center gap-1.5 shrink-0"
-            title="Export to CSV"
-          >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-            </svg>
-            CSV
-          </button>
+          <ExportDropdown onExportCsv={handleExportCsv} onExportPdf={handleExportPdf} />
         </div>
       </div>
 
