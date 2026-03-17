@@ -248,7 +248,9 @@ export class BackupService {
       // Phase 1: Delete all existing user data (same order as deleteData in users.service)
       await this.deleteAllUserData(userId, queryRunner);
 
-      // Phase 2: Insert backup data in FK-safe order
+      // Phase 2: Insert backup data in FK-safe order.
+      // Columns that create circular or forward FK references are stripped
+      // during insert and restored in Phase 3 via UPDATE.
       restored.userPreferences = await this.insertRows(
         queryRunner,
         "user_preferences",
@@ -405,6 +407,10 @@ export class BackupService {
         data.monthly_account_balances,
         userId,
       );
+
+      // Phase 3: Restore deferred FK columns that were stripped during insert
+      // to avoid circular/forward reference violations.
+      await this.restoreDeferredFkColumns(queryRunner, data);
 
       await queryRunner.commitTransaction();
       this.logger.log(`Backup restore completed for user ${userId}`);
@@ -637,6 +643,78 @@ export class BackupService {
     ]);
   }
 
+  private async restoreDeferredFkColumns(
+    queryRunner: ReturnType<DataSource["createQueryRunner"]>,
+    data: BackupData,
+  ): Promise<void> {
+    // Each entry: [table, rows, column] -- update rows that have a non-null
+    // value for the deferred FK column.
+    const deferredUpdates: Array<{
+      table: string;
+      rows: Record<string, unknown>[];
+      column: string;
+    }> = [
+      { table: "categories", rows: data.categories, column: "parent_id" },
+      {
+        table: "accounts",
+        rows: data.accounts,
+        column: "linked_account_id",
+      },
+      {
+        table: "accounts",
+        rows: data.accounts,
+        column: "source_account_id",
+      },
+      {
+        table: "accounts",
+        rows: data.accounts,
+        column: "scheduled_transaction_id",
+      },
+      {
+        table: "accounts",
+        rows: data.accounts,
+        column: "principal_category_id",
+      },
+      {
+        table: "accounts",
+        rows: data.accounts,
+        column: "interest_category_id",
+      },
+      {
+        table: "accounts",
+        rows: data.accounts,
+        column: "asset_category_id",
+      },
+      {
+        table: "transactions",
+        rows: data.transactions,
+        column: "linked_transaction_id",
+      },
+      {
+        table: "transactions",
+        rows: data.transactions,
+        column: "parent_transaction_id",
+      },
+      {
+        table: "payees",
+        rows: data.payees,
+        column: "default_category_id",
+      },
+    ];
+
+    for (const { table, rows, column } of deferredUpdates) {
+      if (!rows) continue;
+      for (const row of rows) {
+        if (row[column] != null && row.id != null) {
+          await queryRunner.query(
+            `UPDATE "${table}" SET "${column}" = $1 WHERE id = $2`,
+            [row[column], row.id],
+          );
+        }
+      }
+    }
+  }
+
   private async insertRows(
     queryRunner: ReturnType<DataSource["createQueryRunner"]>,
     table: string,
@@ -683,6 +761,23 @@ export class BackupService {
       );
     }
 
+    // Columns that create circular or forward FK references and must be
+    // deferred until all tables are populated (restored via UPDATE in Phase 3).
+    const deferredFkColumns: Record<string, string[]> = {
+      categories: ["parent_id"],
+      accounts: [
+        "linked_account_id",
+        "source_account_id",
+        "scheduled_transaction_id",
+        "principal_category_id",
+        "interest_category_id",
+        "asset_category_id",
+      ],
+      transactions: ["linked_transaction_id", "parent_transaction_id"],
+      payees: ["default_category_id"],
+    };
+    const columnsToDefer = deferredFkColumns[table] ?? [];
+
     let count = 0;
     for (const row of rows) {
       const filteredRow = { ...row };
@@ -695,6 +790,11 @@ export class BackupService {
       // Remove auto-generated timestamp columns that will be set by DB
       delete filteredRow.created_at;
       delete filteredRow.updated_at;
+
+      // Strip deferred FK columns to avoid circular reference violations
+      for (const col of columnsToDefer) {
+        delete filteredRow[col];
+      }
 
       const columns = Object.keys(filteredRow);
       const values = Object.values(filteredRow);

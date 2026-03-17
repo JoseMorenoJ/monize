@@ -338,6 +338,101 @@ describe("BackupService", () => {
       }
     });
 
+    it("should defer circular FK columns and update them after all inserts", async () => {
+      mockUserRepo.findOne.mockResolvedValue(mockUser);
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+
+      const backupWithFks = {
+        ...validBackupData,
+        categories: [
+          {
+            id: "cat-parent",
+            user_id: userId,
+            name: "Parent",
+            parent_id: null,
+          },
+          {
+            id: "cat-child",
+            user_id: userId,
+            name: "Child",
+            parent_id: "cat-parent",
+          },
+        ],
+        accounts: [
+          {
+            id: "acc-1",
+            user_id: userId,
+            name: "Checking",
+            linked_account_id: "acc-2",
+            scheduled_transaction_id: "sched-1",
+          },
+          {
+            id: "acc-2",
+            user_id: userId,
+            name: "Savings",
+            linked_account_id: "acc-1",
+          },
+        ],
+        scheduled_transactions: [
+          { id: "sched-1", user_id: userId, account_id: "acc-1" },
+        ],
+        transactions: [
+          {
+            id: "txn-1",
+            user_id: userId,
+            account_id: "acc-1",
+            linked_transaction_id: "txn-2",
+          },
+          {
+            id: "txn-2",
+            user_id: userId,
+            account_id: "acc-2",
+            linked_transaction_id: "txn-1",
+          },
+        ],
+      };
+
+      await service.restoreData(
+        userId,
+        makeInput({ password: "test", data: backupWithFks }),
+      );
+
+      // Verify INSERTs do NOT contain deferred FK columns
+      const insertCalls = mockQueryRunner.query.mock.calls.filter(
+        (call: unknown[]) =>
+          typeof call[0] === "string" && call[0].includes("INSERT INTO"),
+      );
+      const categoryInserts = insertCalls.filter(
+        (call: unknown[]) =>
+          typeof call[0] === "string" && call[0].includes('"categories"'),
+      );
+      for (const call of categoryInserts) {
+        expect(call[0]).not.toContain("parent_id");
+      }
+
+      // Verify UPDATEs restore the deferred FK columns
+      const updateCalls = mockQueryRunner.query.mock.calls.filter(
+        (call: unknown[]) =>
+          typeof call[0] === "string" && call[0].includes("UPDATE"),
+      );
+      const parentIdUpdate = updateCalls.find(
+        (call: unknown[]) =>
+          typeof call[0] === "string" &&
+          call[0].includes('"categories"') &&
+          call[0].includes('"parent_id"'),
+      );
+      expect(parentIdUpdate).toBeDefined();
+      expect(parentIdUpdate![1]).toEqual(["cat-parent", "cat-child"]);
+
+      const linkedAccountUpdate = updateCalls.find(
+        (call: unknown[]) =>
+          typeof call[0] === "string" &&
+          call[0].includes('"accounts"') &&
+          call[0].includes('"linked_account_id"'),
+      );
+      expect(linkedAccountUpdate).toBeDefined();
+    });
+
     it("should accept OIDC re-auth for OIDC users", async () => {
       mockUserRepo.findOne.mockResolvedValue({
         ...mockUser,
