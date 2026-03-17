@@ -10,6 +10,7 @@ import { useNumberFormat } from '@/hooks/useNumberFormat';
 import { useDateRange } from '@/hooks/useDateRange';
 import { DateRangeSelector } from '@/components/ui/DateRangeSelector';
 import { exportToCsv } from '@/lib/csv-export';
+import { ExportDropdown } from '@/components/ui/ExportDropdown';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('UncategorizedTransactionsReport');
@@ -110,6 +111,24 @@ export function UncategorizedTransactionsReport() {
       tx.amount,
     ]);
     exportToCsv('uncategorized-transactions', headers, rows);
+  };
+
+  const handleExportPdf = async () => {
+    const { exportToPdf } = await import('@/lib/pdf-export');
+    const headers = ['Date', 'Payee', 'Description', 'Account', 'Amount'];
+    const rows = filteredAndSortedTransactions.map((tx) => [
+      format(parseLocalDate(tx.transactionDate), 'yyyy-MM-dd'),
+      tx.payeeName || 'Unknown',
+      tx.description || '',
+      tx.accountName || 'Unknown',
+      tx.amount,
+    ]);
+    await exportToPdf({
+      title: 'Uncategorized Transactions',
+      subtitle: `${filteredAndSortedTransactions.length} transactions`,
+      tableData: { headers, rows },
+      filename: 'uncategorized-transactions',
+    });
   };
 
   const SortIcon = ({ field }: { field: SortField }) => {
@@ -255,16 +274,7 @@ export function UncategorizedTransactionsReport() {
                 Click a transaction to view it in the transactions page
               </p>
             </div>
-            <button
-              onClick={handleExportCsv}
-              className="px-3 py-1.5 text-sm font-medium rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex items-center gap-1.5 shrink-0"
-              title="Export to CSV"
-            >
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-              </svg>
-              CSV
-            </button>
+            <ExportDropdown onExportCsv={handleExportCsv} onExportPdf={handleExportPdf} />
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
