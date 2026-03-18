@@ -11,13 +11,14 @@ import { createLogger } from '@/lib/logger';
 import { getErrorMessage } from '@/lib/errors';
 import { useTableDensity, nextDensity, type DensityLevel } from '@/hooks/useTableDensity';
 import { SortIcon } from '@/components/ui/SortIcon';
+import { useDateFormat } from '@/hooks/useDateFormat';
 
 const logger = createLogger('PayeeList');
 
 // Re-export DensityLevel from shared hook
 export type { DensityLevel };
 
-export type SortField = 'name' | 'category' | 'count';
+export type SortField = 'name' | 'category' | 'count' | 'createdAt' | 'aliases' | 'lastUsed';
 export type SortDirection = 'asc' | 'desc';
 
 interface PayeeListProps {
@@ -26,6 +27,7 @@ interface PayeeListProps {
   onRefresh: () => void;
   onDelete?: (payeeId: string) => void;
   onReactivate?: (payeeId: string) => void;
+  onMerge?: (payee: Payee) => void;
   showStatusColumn?: boolean;
   density?: DensityLevel;
   onDensityChange?: (density: DensityLevel) => void;
@@ -42,10 +44,12 @@ interface PayeeRowProps {
   onEdit: (payee: Payee) => void;
   onDelete: (payee: Payee) => void;
   onReactivate?: (payeeId: string) => void;
+  onMerge?: (payee: Payee) => void;
   onViewTransactions: (payee: Payee) => void;
   showStatusColumn: boolean;
   index: number;
   categoryColorMap?: Map<string, string | null>;
+  formatDate: (date: string) => string;
 }
 
 const PayeeRow = memo(function PayeeRow({
@@ -55,10 +59,12 @@ const PayeeRow = memo(function PayeeRow({
   onEdit,
   onDelete,
   onReactivate,
+  onMerge,
   onViewTransactions,
   showStatusColumn,
   index,
   categoryColorMap,
+  formatDate,
 }: PayeeRowProps) {
   const defaultCategoryColor = payee.defaultCategory
     ? (categoryColorMap?.get(payee.defaultCategory.id) ?? payee.defaultCategory.color)
@@ -78,6 +84,10 @@ const PayeeRow = memo(function PayeeRow({
   const handleReactivate = useCallback(() => {
     onReactivate?.(payee.id);
   }, [onReactivate, payee.id]);
+
+  const handleMerge = useCallback(() => {
+    onMerge?.(payee);
+  }, [onMerge, payee]);
 
   return (
     <tr
@@ -114,6 +124,15 @@ const PayeeRow = memo(function PayeeRow({
       <td className={`${cellPadding} whitespace-nowrap text-right text-sm text-gray-600 dark:text-gray-400 hidden md:table-cell`}>
         {payee.transactionCount ?? 0}
       </td>
+      <td className={`${cellPadding} whitespace-nowrap text-center text-sm text-gray-600 dark:text-gray-400 hidden lg:table-cell`}>
+        {payee.aliasCount ?? 0}
+      </td>
+      <td className={`${cellPadding} whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 hidden lg:table-cell`}>
+        {payee.lastUsedDate ? formatDate(payee.lastUsedDate.substring(0, 10)) : '-'}
+      </td>
+      <td className={`${cellPadding} whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 hidden lg:table-cell`}>
+        {payee.createdAt ? formatDate(payee.createdAt.substring(0, 10)) : '-'}
+      </td>
       {showStatusColumn && (
         <td className={`${cellPadding} whitespace-nowrap hidden sm:table-cell`}>
           {payee.isActive ? (
@@ -145,13 +164,23 @@ const PayeeRow = memo(function PayeeRow({
             {density === 'dense' ? 'Re' : 'Reactivate'}
           </Button>
         ) : null}
+        {onMerge && payee.isActive && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleMerge}
+            className="text-purple-600 dark:text-purple-400 hover:text-purple-900 dark:hover:text-purple-300 mr-2"
+          >
+            {density === 'dense' ? 'M' : 'Merge'}
+          </Button>
+        )}
         <Button
           variant="ghost"
           size="sm"
           onClick={handleEdit}
           className="text-blue-600 dark:text-blue-400 hover:text-blue-900 dark:hover:text-blue-300 mr-2"
         >
-          {density === 'dense' ? '✎' : 'Edit'}
+          {density === 'dense' ? 'E' : 'Edit'}
         </Button>
         <Button
           variant="ghost"
@@ -159,7 +188,7 @@ const PayeeRow = memo(function PayeeRow({
           onClick={handleDelete}
           className="text-red-600 dark:text-red-400 hover:text-red-900 dark:hover:text-red-300"
         >
-          {density === 'dense' ? '✕' : 'Delete'}
+          {density === 'dense' ? 'X' : 'Delete'}
         </Button>
       </td>
     </tr>
@@ -172,6 +201,7 @@ export function PayeeList({
   onRefresh,
   onDelete,
   onReactivate,
+  onMerge,
   showStatusColumn = false,
   density: propDensity,
   onDensityChange,
@@ -181,6 +211,7 @@ export function PayeeList({
   categoryColorMap,
 }: PayeeListProps) {
   const router = useRouter();
+  const { formatDate } = useDateFormat();
   const [deletePayee, setDeletePayee] = useState<Payee | null>(null);
   const [localDensity, setLocalDensity] = useState<DensityLevel>('normal');
   const [localSortField, setLocalSortField] = useState<SortField>('name');
@@ -206,26 +237,21 @@ export function PayeeList({
 
   const handleSort = useCallback((field: SortField) => {
     if (onSort) {
-      // Controlled mode - let parent handle sort
       onSort(field);
     } else {
-      // Uncontrolled mode - manage sort locally
       if (localSortField === field) {
         setLocalSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
       } else {
         setLocalSortField(field);
-        setLocalSortDirection(field === 'count' ? 'desc' : 'asc');
+        setLocalSortDirection(field === 'count' || field === 'aliases' || field === 'lastUsed' || field === 'createdAt' ? 'desc' : 'asc');
       }
     }
   }, [onSort, localSortField]);
 
-  // Only sort locally if not controlled (parent passes pre-sorted data when controlled)
   const displayPayees = useMemo(() => {
     if (onSort) {
-      // Controlled mode - payees are already sorted by parent
       return payees;
     }
-    // Uncontrolled mode - sort locally
     return [...payees].sort((a, b) => {
       let comparison = 0;
       if (sortField === 'name') {
@@ -236,6 +262,12 @@ export function PayeeList({
         comparison = catA.localeCompare(catB, undefined, { sensitivity: 'base' });
       } else if (sortField === 'count') {
         comparison = (a.transactionCount ?? 0) - (b.transactionCount ?? 0);
+      } else if (sortField === 'aliases') {
+        comparison = (a.aliasCount ?? 0) - (b.aliasCount ?? 0);
+      } else if (sortField === 'lastUsed') {
+        comparison = (a.lastUsedDate || '').localeCompare(b.lastUsedDate || '');
+      } else if (sortField === 'createdAt') {
+        comparison = (a.createdAt || '').localeCompare(b.createdAt || '');
       }
       return sortDirection === 'asc' ? comparison : -comparison;
     });
@@ -288,7 +320,6 @@ export function PayeeList({
 
   return (
     <div>
-      {/* Density toggle */}
       <div className="flex justify-end p-2 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
         <button
           onClick={cycleDensity}
@@ -323,6 +354,24 @@ export function PayeeList({
               >
                 Count<SortIcon field="count" sortField={sortField} sortDirection={sortDirection} />
               </th>
+              <th
+                className={`${headerPadding} text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:text-gray-700 dark:hover:text-gray-200 hidden lg:table-cell`}
+                onClick={() => handleSort('aliases')}
+              >
+                Aliases<SortIcon field="aliases" sortField={sortField} sortDirection={sortDirection} />
+              </th>
+              <th
+                className={`${headerPadding} text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:text-gray-700 dark:hover:text-gray-200 hidden lg:table-cell`}
+                onClick={() => handleSort('lastUsed')}
+              >
+                Last Used<SortIcon field="lastUsed" sortField={sortField} sortDirection={sortDirection} />
+              </th>
+              <th
+                className={`${headerPadding} text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:text-gray-700 dark:hover:text-gray-200 hidden lg:table-cell`}
+                onClick={() => handleSort('createdAt')}
+              >
+                Created<SortIcon field="createdAt" sortField={sortField} sortDirection={sortDirection} />
+              </th>
               {showStatusColumn && (
                 <th className={`${headerPadding} text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden sm:table-cell`}>
                   Status
@@ -348,10 +397,12 @@ export function PayeeList({
                 onEdit={onEdit}
                 onDelete={setDeletePayee}
                 onReactivate={onReactivate}
+                onMerge={onMerge}
                 onViewTransactions={handleViewTransactions}
                 showStatusColumn={showStatusColumn}
                 index={index}
                 categoryColorMap={categoryColorMap}
+                formatDate={formatDate}
               />
             ))}
           </tbody>

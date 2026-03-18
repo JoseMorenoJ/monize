@@ -252,7 +252,7 @@ export const CurrencyInput = forwardRef<HTMLInputElement, CurrencyInputProps>(
             onFocus={handleFocus}
             disabled={disabled}
             style={{
-              paddingLeft: prefix ? '1.75rem' : undefined,
+              paddingLeft: prefix ? `${1.15 + prefix.length * 0.6}rem` : undefined,
               paddingRight: allowCalculator ? '2.25rem' : undefined,
             }}
             className={cn(

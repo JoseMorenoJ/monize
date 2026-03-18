@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { Account } from '@/types/account';
 import { Category } from '@/types/category';
 import { Payee } from '@/types/payee';
+import { Tag } from '@/types/tag';
 import { TimePeriod, TIME_PERIOD_OPTIONS, resolveTimePeriod } from '@/lib/time-periods';
 
 interface TransactionFilterPanelProps {
@@ -19,6 +20,9 @@ interface TransactionFilterPanelProps {
   searchInput: string;
   filterAccountStatus: 'active' | 'closed' | '';
   filterTimePeriod: string;
+  filterAmountFrom: string;
+  filterAmountTo: string;
+  filterTagIds: string[];
   weekStartsOn: 0 | 1 | 2 | 3 | 4 | 5 | 6;
   handleArrayFilterChange: <T>(setter: (value: T) => void, value: T) => void;
   handleFilterChange: (setter: (value: string) => void, value: string) => void;
@@ -31,6 +35,9 @@ interface TransactionFilterPanelProps {
   setFilterEndDate: (value: string) => void;
   setFilterSearch: (value: string) => void;
   setFilterTimePeriod: (value: string) => void;
+  setFilterAmountFrom: (value: string) => void;
+  setFilterAmountTo: (value: string) => void;
+  setFilterTagIds: (value: string[]) => void;
   filtersExpanded: boolean;
   setFiltersExpanded: (value: boolean) => void;
   activeFilterCount: number;
@@ -38,9 +45,11 @@ interface TransactionFilterPanelProps {
   selectedAccounts: Account[];
   selectedCategories: Category[];
   selectedPayees: Payee[];
+  selectedTags: Tag[];
   accountFilterOptions: MultiSelectOption[];
   categoryFilterOptions: MultiSelectOption[];
   payeeFilterOptions: MultiSelectOption[];
+  tagFilterOptions: MultiSelectOption[];
   formatDate: (date: string) => string;
   onClearFilters: () => void;
   bulkSelectMode?: boolean;
@@ -57,6 +66,9 @@ export function TransactionFilterPanel({
   searchInput,
   filterAccountStatus,
   filterTimePeriod,
+  filterAmountFrom,
+  filterAmountTo,
+  filterTagIds,
   weekStartsOn,
   handleArrayFilterChange,
   handleFilterChange,
@@ -69,6 +81,9 @@ export function TransactionFilterPanel({
   setFilterEndDate,
   setFilterSearch,
   setFilterTimePeriod,
+  setFilterAmountFrom,
+  setFilterAmountTo,
+  setFilterTagIds,
   filtersExpanded,
   setFiltersExpanded,
   activeFilterCount,
@@ -76,9 +91,11 @@ export function TransactionFilterPanel({
   selectedAccounts,
   selectedCategories,
   selectedPayees,
+  selectedTags,
   accountFilterOptions,
   categoryFilterOptions,
   payeeFilterOptions,
+  tagFilterOptions,
   formatDate,
   onClearFilters,
   bulkSelectMode,
@@ -234,6 +251,30 @@ export function TransactionFilterPanel({
                   </button>
                 </span>
               ))}
+              {/* Tag chips - Rose */}
+              {selectedTags.map(tag => (
+                <span
+                  key={`tag-${tag.id}`}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-rose-100 dark:bg-rose-900 text-rose-800 dark:text-rose-200 whitespace-nowrap"
+                >
+                  {tag.color && (
+                    <span
+                      className="w-2 h-2 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: tag.color }}
+                    />
+                  )}
+                  {tag.name}
+                  <button
+                    onClick={() => handleArrayFilterChange(setFilterTagIds, filterTagIds.filter(id => id !== tag.id))}
+                    className="ml-0.5 -mr-1 p-0.5 rounded-full inline-flex items-center justify-center hover:bg-rose-200 dark:hover:bg-rose-800"
+                    aria-label={`Remove ${tag.name} filter`}
+                  >
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </span>
+              ))}
               {/* Date range chip - Amber */}
               {(filterStartDate || filterEndDate) && (
                 <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-200 whitespace-nowrap">
@@ -249,6 +290,28 @@ export function TransactionFilterPanel({
                     }}
                     className="ml-0.5 -mr-1 p-0.5 rounded-full inline-flex items-center justify-center hover:bg-amber-200 dark:hover:bg-amber-800"
                     aria-label="Remove date filter"
+                  >
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </span>
+              )}
+              {/* Amount range chip - Teal */}
+              {(filterAmountFrom || filterAmountTo) && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-teal-100 dark:bg-teal-900 text-teal-800 dark:text-teal-200 whitespace-nowrap">
+                  {filterAmountFrom && filterAmountTo
+                    ? `${filterAmountFrom} - ${filterAmountTo}`
+                    : filterAmountFrom
+                      ? `From ${filterAmountFrom}`
+                      : `Up to ${filterAmountTo}`}
+                  <button
+                    onClick={() => {
+                      handleFilterChange(setFilterAmountFrom, '');
+                      handleFilterChange(setFilterAmountTo, '');
+                    }}
+                    className="ml-0.5 -mr-1 p-0.5 rounded-full inline-flex items-center justify-center hover:bg-teal-200 dark:hover:bg-teal-800"
+                    aria-label="Remove amount filter"
                   >
                     <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -330,7 +393,7 @@ export function TransactionFilterPanel({
               </div>
 
               {/* First row: Main filters */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pt-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-2">
                 <MultiSelect
                   label="Accounts"
                   options={accountFilterOptions}
@@ -354,10 +417,18 @@ export function TransactionFilterPanel({
                   onChange={(values) => handleArrayFilterChange(setFilterCategoryIds, values)}
                   placeholder="All categories"
                 />
+
+                <MultiSelect
+                  label="Tags"
+                  options={tagFilterOptions}
+                  value={filterTagIds}
+                  onChange={(values) => handleArrayFilterChange(setFilterTagIds, values)}
+                  placeholder="All tags"
+                />
               </div>
 
-              {/* Second row: Time period, dates, and search */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
+              {/* Second row: Time period, dates, amount range, and search */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4 mt-4">
                 <Select
                   label="Time Period"
                   options={TIME_PERIOD_OPTIONS}
@@ -395,6 +466,24 @@ export function TransactionFilterPanel({
                       setFilterTimePeriod('custom');
                     }
                   }}
+                />
+
+                <Input
+                  label="Amount From"
+                  type="number"
+                  step="0.01"
+                  value={filterAmountFrom}
+                  onChange={(e) => handleFilterChange(setFilterAmountFrom, e.target.value)}
+                  placeholder="Min"
+                />
+
+                <Input
+                  label="Amount To"
+                  type="number"
+                  step="0.01"
+                  value={filterAmountTo}
+                  onChange={(e) => handleFilterChange(setFilterAmountTo, e.target.value)}
+                  placeholder="Max"
                 />
 
                 <Input

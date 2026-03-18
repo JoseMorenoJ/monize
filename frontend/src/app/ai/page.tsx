@@ -13,6 +13,7 @@ export default function AiPage() {
           <PageHeader
             title="AI Assistant"
             subtitle="Ask questions about your finances in natural language"
+            helpUrl="https://github.com/kenlasko/monize/wiki/AI"
           />
           <div className="max-w-4xl mx-auto">
             <ChatInterface />

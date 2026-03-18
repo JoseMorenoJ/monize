@@ -432,6 +432,7 @@ function BillsContent() {
         <PageHeader
           title="Bills & Deposits"
           subtitle="Manage your recurring transactions and scheduled payments"
+          helpUrl="https://github.com/kenlasko/monize/wiki/Bills-and-Deposits"
           actions={<Button onClick={handleCreateNew}>+ New Schedule</Button>}
         />
         {/* Summary Cards */}

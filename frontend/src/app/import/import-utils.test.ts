@@ -44,6 +44,8 @@ function createAccount(overrides: Partial<Account> = {}): Account {
     termEndDate: null,
     amortizationMonths: null,
     originalPrincipal: null,
+    statementDueDay: null,
+    statementSettlementDay: null,
     canDelete: false,
     createdAt: '2024-01-01T00:00:00Z',
     updatedAt: '2024-01-01T00:00:00Z',
@@ -397,6 +399,7 @@ describe('exported types', () => {
     const data: ImportFileData = {
       fileName: 'test.qif',
       fileContent: 'content',
+      fileType: 'qif',
       parsedData: {} as any,
       selectedAccountId: 'acc-1',
       matchConfidence: 'exact',

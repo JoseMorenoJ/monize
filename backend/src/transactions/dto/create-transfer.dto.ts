@@ -5,6 +5,7 @@ import {
   IsDateString,
   IsUUID,
   IsEnum,
+  IsArray,
   MaxLength,
   Min,
   Max,
@@ -30,9 +31,9 @@ export class CreateTransferDto {
   @IsDateString()
   transactionDate: string;
 
-  @ApiProperty({ description: "Transfer amount (must be positive)" })
+  @ApiProperty({ description: "Transfer amount (must be zero or positive)" })
   @IsNumber({ maxDecimalPlaces: 4 })
-  @Min(0.0001)
+  @Min(0)
   @Max(999999999999)
   amount: number;
 
@@ -106,4 +107,12 @@ export class CreateTransferDto {
   @IsOptional()
   @IsEnum(TransactionStatus)
   status?: TransactionStatus;
+
+  @ApiPropertyOptional({
+    description: "Tag IDs to apply to both transfer transactions",
+  })
+  @IsOptional()
+  @IsArray()
+  @IsUUID("4", { each: true })
+  tagIds?: string[];
 }

@@ -3,7 +3,19 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
-import { importApi, CategoryMapping, AccountMapping, SecurityMapping, ImportResult, DateFormat } from '@/lib/import';
+import {
+  importApi,
+  CategoryMapping,
+  AccountMapping,
+  SecurityMapping,
+  ImportResult,
+  DateFormat,
+  CsvColumnMappingConfig,
+  CsvTransferRule,
+  SavedColumnMapping,
+  ParsedQifMultiAccountResponse,
+  autoMatchCsvColumns,
+} from '@/lib/import';
 import { accountsApi } from '@/lib/accounts';
 import { categoriesApi } from '@/lib/categories';
 import { investmentsApi } from '@/lib/investments';
@@ -17,6 +29,7 @@ import { usePreferencesStore } from '@/store/preferencesStore';
 import { createLogger } from '@/lib/logger';
 import {
   ImportStep,
+  ImportFileType,
   MatchConfidence,
   ImportFileData,
   BulkImportResult,
@@ -34,6 +47,25 @@ import {
 } from '@/app/import/import-matching';
 
 const logger = createLogger('Import');
+
+function detectFileType(fileName: string): ImportFileType {
+  const ext = fileName.toLowerCase().split('.').pop() || '';
+  if (ext === 'ofx' || ext === 'qfx') return 'ofx';
+  if (ext === 'csv') return 'csv';
+  return 'qif';
+}
+
+const DEFAULT_CSV_COLUMN_MAPPING: CsvColumnMappingConfig = {
+  date: 0,
+  amount: 1,
+  payee: undefined,
+  category: undefined,
+  memo: undefined,
+  referenceNumber: undefined,
+  dateFormat: 'MM/DD/YYYY',
+  hasHeader: true,
+  delimiter: ',',
+};
 
 export function useImportWizard() {
   const searchParams = useSearchParams();
@@ -68,8 +100,35 @@ export function useImportWizard() {
   const [isCreatingAccount, setIsCreatingAccount] = useState(false);
   const [creatingForFileIndex, setCreatingForFileIndex] = useState(-1);
 
+  // Multi-account QIF state
+  const [multiAccountData, setMultiAccountData] = useState<ParsedQifMultiAccountResponse | null>(null);
+  const [multiAccountContent, setMultiAccountContent] = useState<string>('');
+  const [multiAccountCurrency, setMultiAccountCurrency] = useState(defaultCurrency);
+
+  // CSV-specific state
+  const [fileType, setFileType] = useState<ImportFileType>('qif');
+  const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
+  const [csvSampleRows, setCsvSampleRows] = useState<string[][]>([]);
+  const [csvColumnMapping, setCsvColumnMapping] = useState<CsvColumnMappingConfig>(DEFAULT_CSV_COLUMN_MAPPING);
+  const [csvTransferRules, setCsvTransferRules] = useState<CsvTransferRule[]>([]);
+  const [savedColumnMappings, setSavedColumnMappings] = useState<SavedColumnMapping[]>([]);
+
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const isBulkImport = importFiles.length > 1;
+
+  // Determine the next step after account selection, based on what mappings exist
+  const getStepAfterAccountSelection = (
+    catMappings: CategoryMapping[],
+    secMappings: SecurityMapping[],
+    accMappings: AccountMapping[],
+    isInvestment: boolean,
+  ): ImportStep => {
+    const showMapAccounts = accMappings.length > 0 && !isInvestment;
+    if (catMappings.length > 0) return 'mapCategories';
+    if (secMappings.length > 0) return 'mapSecurities';
+    if (showMapAccounts) return 'mapAccounts';
+    return 'review';
+  };
 
   const setFileAccountId = useCallback((fileIndex: number, accountId: string, confidence: MatchConfidence = 'exact') => {
     setImportFiles(prev => prev.map((f, i) =>
@@ -115,20 +174,22 @@ export function useImportWizard() {
     }
   };
 
-  // Load accounts, categories, and securities
+  // Load accounts, categories, securities, and saved column mappings
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [accountsData, categoriesData, securitiesData, currenciesData] = await Promise.all([
+        const [accountsData, categoriesData, securitiesData, currenciesData, columnMappingsData] = await Promise.all([
           accountsApi.getAll(),
           categoriesApi.getAll(),
           investmentsApi.getSecurities(true),
           exchangeRatesApi.getCurrencies(),
+          importApi.getColumnMappings().catch(() => [] as SavedColumnMapping[]),
         ]);
         setAccounts(accountsData);
         setCategories(categoriesData);
         setSecurities(securitiesData);
         setCurrencies(currenciesData);
+        setSavedColumnMappings(columnMappingsData);
 
         if (preselectedAccountId) {
           const accountExists = accountsData.some((a) => a.id === preselectedAccountId);
@@ -261,15 +322,225 @@ export function useImportWizard() {
     setInitialLookupDone(false);
 
     try {
+      const fileArray = Array.from(files);
+
+      // Detect file types and enforce same type
+      const detectedTypes = fileArray.map((f) => detectFileType(f.name));
+      const uniqueTypes = [...new Set(detectedTypes)];
+      if (uniqueTypes.length > 1) {
+        toast.error('All files must be the same type. Cannot mix QIF, OFX, and CSV files.');
+        setIsLoading(false);
+        return;
+      }
+
+      const detectedFileType = uniqueTypes[0];
+      setFileType(detectedFileType);
+
+      if (detectedFileType === 'csv') {
+        // For CSV, read the first file and get headers
+        const firstFile = fileArray[0];
+        const content = await firstFile.text();
+
+        const headersResponse = await importApi.parseCsvHeaders(content);
+        setCsvHeaders(headersResponse.headers);
+        setCsvSampleRows(headersResponse.sampleRows);
+
+        // Store all file contents
+        const fileDataArray: ImportFileData[] = [];
+        for (const file of fileArray) {
+          const fileContent = file === firstFile ? content : await file.text();
+          fileDataArray.push({
+            fileName: file.name,
+            fileContent,
+            fileType: 'csv',
+            parsedData: null as unknown as ImportFileData['parsedData'],
+            selectedAccountId: preselectedAccountId || '',
+            matchConfidence: preselectedAccountId ? 'exact' : 'none',
+          });
+        }
+        setImportFiles(fileDataArray);
+        const autoMatched = autoMatchCsvColumns(headersResponse.headers);
+        setCsvColumnMapping({ ...DEFAULT_CSV_COLUMN_MAPPING, ...autoMatched });
+        setCsvTransferRules([]);
+        setStep('csvColumnMapping');
+
+        if (fileArray.length > 1) {
+          toast.success(`Loaded ${fileArray.length} CSV files for import`);
+        }
+      } else {
+        // QIF or OFX: parse all files
+
+        // For a single QIF file, check if it's a multi-account export
+        if (detectedFileType === 'qif' && fileArray.length === 1) {
+          const content = await fileArray[0].text();
+
+          // Quick check: does this file contain multiple !Account sections or !Type:Cat?
+          const accountMatches = content.match(/^!Account$/gm);
+          const hasCatSection = /^!Type:Cat\s*$/im.test(content);
+
+          if ((accountMatches && accountMatches.length > 1) || hasCatSection) {
+            // Multi-account QIF detected
+            const multiResult = await importApi.parseQifMultiAccount(content);
+
+            if (multiResult.isMultiAccount) {
+              setMultiAccountData(multiResult);
+              setMultiAccountContent(content);
+              setMultiAccountCurrency(defaultCurrency);
+              if (multiResult.detectedDateFormat) {
+                setDateFormat(multiResult.detectedDateFormat);
+              }
+              // Build security mappings if the file contains investment securities
+              if (multiResult.securities && multiResult.securities.length > 0) {
+                const newSecMappings = buildSecurityMappings(
+                  new Set(multiResult.securities),
+                  securities,
+                );
+                setSecurityMappings(newSecMappings);
+              } else {
+                setSecurityMappings([]);
+              }
+              setStep('multiAccountReview');
+              setIsLoading(false);
+              return;
+            }
+          }
+        }
+
+        const fileDataArray: ImportFileData[] = [];
+        const allCats: Set<string> = new Set();
+        const allTransferAccounts: Set<string> = new Set();
+        const allSecs: Set<string> = new Set();
+        let detectedFormat: DateFormat | null = null;
+
+        for (const file of fileArray) {
+          const content = await file.text();
+          const parsed = detectedFileType === 'ofx'
+            ? await importApi.parseOfx(content)
+            : await importApi.parseQif(content);
+
+          if (!detectedFormat && parsed.detectedDateFormat) {
+            detectedFormat = parsed.detectedDateFormat;
+          }
+
+          parsed.categories.forEach((cat) => allCats.add(cat));
+          parsed.transferAccounts.forEach((acc) => allTransferAccounts.add(acc));
+          (parsed.securities || []).forEach((sec) => allSecs.add(sec));
+
+          const isInvestmentType = parsed.accountType === 'INVESTMENT';
+          const match = matchFilenameToAccount(file.name, isInvestmentType, accounts, parsed.accountType);
+          const accountId = preselectedAccountId || match.id;
+          const confidence: MatchConfidence = preselectedAccountId ? 'exact' : match.confidence;
+
+          fileDataArray.push({
+            fileName: file.name,
+            fileContent: content,
+            fileType: detectedFileType,
+            parsedData: parsed,
+            selectedAccountId: accountId,
+            matchConfidence: confidence,
+          });
+        }
+
+        if (detectedFormat) setDateFormat(detectedFormat);
+        const newCatMappings = buildCategoryMappings(allCats, categories, accounts);
+        const newAccMappings = buildAccountMappings(allTransferAccounts, accounts, defaultCurrency);
+        const newSecMappings = buildSecurityMappings(allSecs, securities);
+        setImportFiles(fileDataArray);
+        setCategoryMappings(newCatMappings);
+        setAccountMappings(newAccMappings);
+        setSecurityMappings(newSecMappings);
+
+        // Skip account selection when a single file is imported with a preselected account
+        if (preselectedAccountId && fileDataArray.length === 1) {
+          const isInvestment = fileDataArray[0].parsedData?.accountType === 'INVESTMENT';
+          setStep(getStepAfterAccountSelection(newCatMappings, newSecMappings, newAccMappings, isInvestment));
+        } else {
+          setStep('selectAccount');
+        }
+
+        if (fileDataArray.length > 1) {
+          toast.success(`Loaded ${fileDataArray.length} files for import`);
+        }
+      }
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Failed to parse file(s)'));
+    } finally {
+      setIsLoading(false);
+    }
+  }, [accounts, categories, securities, defaultCurrency, preselectedAccountId]);
+
+  // CSV column mapping handlers
+  const handleCsvColumnMappingChange = useCallback((mapping: CsvColumnMappingConfig) => {
+    setCsvColumnMapping(mapping);
+  }, []);
+
+  const handleCsvTransferRulesChange = useCallback((rules: CsvTransferRule[]) => {
+    setCsvTransferRules(rules);
+  }, []);
+
+  const handleCsvDelimiterChange = useCallback(async (delimiter: string) => {
+    if (importFiles.length === 0) return;
+    setIsLoading(true);
+    try {
+      const headersResponse = await importApi.parseCsvHeaders(importFiles[0].fileContent, delimiter);
+      setCsvHeaders(headersResponse.headers);
+      setCsvSampleRows(headersResponse.sampleRows);
+      setCsvColumnMapping(prev => ({ ...prev, delimiter }));
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Failed to parse CSV with new delimiter'));
+    } finally {
+      setIsLoading(false);
+    }
+  }, [importFiles]);
+
+  const handleCsvHasHeaderChange = useCallback(async (hasHeader: boolean) => {
+    if (importFiles.length === 0) return;
+    setCsvColumnMapping(prev => ({ ...prev, hasHeader }));
+    // Re-fetch headers to update sample rows display
+    setIsLoading(true);
+    try {
+      const headersResponse = await importApi.parseCsvHeaders(importFiles[0].fileContent, csvColumnMapping.delimiter);
+      setCsvHeaders(headersResponse.headers);
+      setCsvSampleRows(headersResponse.sampleRows);
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Failed to update CSV preview'));
+    } finally {
+      setIsLoading(false);
+    }
+  }, [importFiles, csvColumnMapping.delimiter]);
+
+  const handleCsvMappingComplete = useCallback(async () => {
+    if (importFiles.length === 0) return;
+
+    setIsLoading(true);
+    try {
+      // Parse all CSV files using the column mapping
       const fileDataArray: ImportFileData[] = [];
       const allCats: Set<string> = new Set();
       const allTransferAccounts: Set<string> = new Set();
-      const allSecs: Set<string> = new Set();
       let detectedFormat: DateFormat | null = null;
 
-      for (const file of Array.from(files)) {
-        const content = await file.text();
-        const parsed = await importApi.parseQif(content);
+      // For bulk CSV, check if subsequent files have matching headers
+      let currentMapping = csvColumnMapping;
+      let currentRules = csvTransferRules;
+
+      for (let i = 0; i < importFiles.length; i++) {
+        const fileData = importFiles[i];
+
+        // For bulk CSV (file index > 0), check if headers match the first file
+        if (i > 0) {
+          const headersResponse = await importApi.parseCsvHeaders(fileData.fileContent, currentMapping.delimiter);
+          const headersMatch = headersResponse.headers.length === csvHeaders.length &&
+            headersResponse.headers.every((h, idx) => h === csvHeaders[idx]);
+
+          if (!headersMatch) {
+            // Headers differ - stop here and prompt user for new mapping
+            // For now, we'll use the same mapping and let the backend handle any issues
+            logger.warn(`CSV file "${fileData.fileName}" has different headers than the first file`);
+          }
+        }
+
+        const parsed = await importApi.parseCsv(fileData.fileContent, currentMapping, currentRules);
 
         if (!detectedFormat && parsed.detectedDateFormat) {
           detectedFormat = parsed.detectedDateFormat;
@@ -277,14 +548,13 @@ export function useImportWizard() {
 
         parsed.categories.forEach((cat) => allCats.add(cat));
         parsed.transferAccounts.forEach((acc) => allTransferAccounts.add(acc));
-        (parsed.securities || []).forEach((sec) => allSecs.add(sec));
 
-        const isInvestmentType = parsed.accountType === 'INVESTMENT';
-        const match = matchFilenameToAccount(file.name, isInvestmentType, accounts, parsed.accountType);
+        const match = matchFilenameToAccount(fileData.fileName, false, accounts, parsed.accountType);
 
         fileDataArray.push({
-          fileName: file.name,
-          fileContent: content,
+          fileName: fileData.fileName,
+          fileContent: fileData.fileContent,
+          fileType: 'csv',
           parsedData: parsed,
           selectedAccountId: match.id,
           matchConfidence: match.confidence,
@@ -292,21 +562,63 @@ export function useImportWizard() {
       }
 
       if (detectedFormat) setDateFormat(detectedFormat);
+      const newCatMappings = buildCategoryMappings(allCats, categories, accounts);
+      const newAccMappings = buildAccountMappings(allTransferAccounts, accounts, defaultCurrency);
       setImportFiles(fileDataArray);
-      setCategoryMappings(buildCategoryMappings(allCats, categories, accounts));
-      setAccountMappings(buildAccountMappings(allTransferAccounts, accounts, defaultCurrency));
-      setSecurityMappings(buildSecurityMappings(allSecs, securities));
-      setStep('selectAccount');
+      setCategoryMappings(newCatMappings);
+      setAccountMappings(newAccMappings);
+      setSecurityMappings([]);
 
-      if (fileDataArray.length > 1) {
-        toast.success(`Loaded ${fileDataArray.length} files for import`);
+      // Skip account selection when a single file is imported with a preselected account
+      if (preselectedAccountId && fileDataArray.length === 1) {
+        setStep(getStepAfterAccountSelection(newCatMappings, [], newAccMappings, false));
+      } else {
+        setStep('selectAccount');
       }
     } catch (error) {
-      toast.error(getErrorMessage(error, 'Failed to parse QIF file(s)'));
+      toast.error(getErrorMessage(error, 'Failed to parse CSV file(s)'));
     } finally {
       setIsLoading(false);
     }
-  }, [accounts, categories, securities, defaultCurrency]);
+  }, [importFiles, csvColumnMapping, csvTransferRules, csvHeaders, accounts, categories, defaultCurrency, preselectedAccountId]);
+
+  const handleSaveColumnMapping = useCallback(async (name: string) => {
+    try {
+      const saved = await importApi.createColumnMapping({
+        name,
+        columnMappings: csvColumnMapping,
+        transferRules: csvTransferRules,
+      });
+      setSavedColumnMappings(prev => {
+        const existingIndex = prev.findIndex(m => m.id === saved.id);
+        if (existingIndex >= 0) {
+          const updated = [...prev];
+          updated[existingIndex] = saved;
+          return updated;
+        }
+        return [...prev, saved];
+      });
+      toast.success(`Column mapping "${name}" saved`);
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Failed to save column mapping'));
+    }
+  }, [csvColumnMapping, csvTransferRules]);
+
+  const handleLoadColumnMapping = useCallback((mapping: SavedColumnMapping) => {
+    setCsvColumnMapping(mapping.columnMappings as unknown as CsvColumnMappingConfig);
+    setCsvTransferRules((mapping.transferRules || []) as unknown as CsvTransferRule[]);
+    toast.success(`Loaded mapping "${mapping.name}"`);
+  }, []);
+
+  const handleDeleteColumnMapping = useCallback(async (id: string) => {
+    try {
+      await importApi.deleteColumnMapping(id);
+      setSavedColumnMappings(prev => prev.filter(m => m.id !== id));
+      toast.success('Column mapping deleted');
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Failed to delete column mapping'));
+    }
+  }, []);
 
   const handleAccountMappingChange = (index: number, field: keyof AccountMapping, value: string) => {
     setAccountMappings((prev) => {
@@ -392,6 +704,33 @@ export function useImportWizard() {
     }
   };
 
+  const handleMultiAccountImport = async () => {
+    if (!multiAccountContent || !multiAccountData) return;
+
+    setIsLoading(true);
+    try {
+      const result = await importApi.importQifMultiAccount({
+        content: multiAccountContent,
+        currencyCode: multiAccountCurrency,
+        dateFormat,
+        securityMappings: securityMappings.length > 0 ? securityMappings : undefined,
+      });
+
+      setImportResult(result);
+      setStep('complete');
+
+      if (result.errors === 0) {
+        toast.success(`Successfully imported ${result.imported} transactions across ${multiAccountData.accounts.length} accounts`);
+      } else {
+        toast.success(`Imported ${result.imported} transactions with ${result.errors} errors`);
+      }
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Multi-account import failed'));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleImport = async () => {
     if (importFiles.length === 0) return;
 
@@ -403,6 +742,37 @@ export function useImportWizard() {
 
     setIsLoading(true);
     try {
+      const importFn = (fileData: ImportFileData, catMappings: CategoryMapping[], accMappings: AccountMapping[], secMappings: SecurityMapping[]) => {
+        if (fileType === 'csv') {
+          return importApi.importCsv({
+            content: fileData.fileContent,
+            accountId: fileData.selectedAccountId,
+            columnMapping: csvColumnMapping,
+            transferRules: csvTransferRules,
+            categoryMappings: catMappings,
+            accountMappings: accMappings,
+            dateFormat,
+          });
+        } else if (fileType === 'ofx') {
+          return importApi.importOfx({
+            content: fileData.fileContent,
+            accountId: fileData.selectedAccountId,
+            categoryMappings: catMappings,
+            accountMappings: accMappings,
+            dateFormat,
+          });
+        } else {
+          return importApi.importQif({
+            content: fileData.fileContent,
+            accountId: fileData.selectedAccountId,
+            categoryMappings: catMappings,
+            accountMappings: accMappings,
+            securityMappings: secMappings,
+            dateFormat,
+          });
+        }
+      };
+
       if (isBulkImport) {
         const fileResults: BulkImportResult['fileResults'] = [];
         let totalImported = 0;
@@ -419,14 +789,7 @@ export function useImportWizard() {
 
         for (const fileData of importFiles) {
           try {
-            const result = await importApi.importQif({
-              content: fileData.fileContent,
-              accountId: fileData.selectedAccountId,
-              categoryMappings: currentCatMappings,
-              accountMappings: currentAccMappings,
-              securityMappings: currentSecMappings,
-              dateFormat,
-            });
+            const result = await importFn(fileData, currentCatMappings, currentAccMappings, currentSecMappings);
 
             const targetAccount = accounts.find((a) => a.id === fileData.selectedAccountId);
             fileResults.push({
@@ -502,14 +865,7 @@ export function useImportWizard() {
           toast.success(`Imported ${totalImported} transactions with ${totalErrors} errors`);
         }
       } else {
-        const result = await importApi.importQif({
-          content: fileContent,
-          accountId: selectedAccountId,
-          categoryMappings,
-          accountMappings,
-          securityMappings,
-          dateFormat,
-        });
+        const result = await importFn(importFiles[0], categoryMappings, accountMappings, securityMappings);
 
         setImportResult(result);
         setStep('complete');
@@ -562,7 +918,7 @@ export function useImportWizard() {
   };
 
   const isInvestmentImport = parsedData?.accountType === 'INVESTMENT' ||
-    (isBulkImport && importFiles.some((f) => f.parsedData.accountType === 'INVESTMENT'));
+    (isBulkImport && importFiles.some((f) => f.parsedData?.accountType === 'INVESTMENT'));
   const shouldShowMapAccounts = accountMappings.length > 0 && !isInvestmentImport;
 
   const currencyOptions = useMemo(() => {
@@ -590,6 +946,14 @@ export function useImportWizard() {
     setAccountMappings([]);
     setSecurityMappings([]);
     setInitialLookupDone(false);
+    setFileType('qif');
+    setMultiAccountData(null);
+    setMultiAccountContent('');
+    setMultiAccountCurrency(defaultCurrency);
+    setCsvHeaders([]);
+    setCsvSampleRows([]);
+    setCsvColumnMapping(DEFAULT_CSV_COLUMN_MAPPING);
+    setCsvTransferRules([]);
   };
 
   return {
@@ -606,6 +970,20 @@ export function useImportWizard() {
     categoryOptions, parentCategoryOptions, getAccountOptions,
     accountTypeOptions: ACCOUNT_TYPE_OPTIONS, currencyOptions, getSecurityOptions, securityTypeOptions: SECURITY_TYPE_OPTIONS,
     shouldShowMapAccounts, preselectedAccount,
-    scrollContainerRef, dateFormat, defaultCurrency,
+    scrollContainerRef, dateFormat, setDateFormat, defaultCurrency,
+    // Multi-account QIF
+    multiAccountData, multiAccountCurrency, setMultiAccountCurrency, handleMultiAccountImport,
+    // CSV-specific exports
+    fileType,
+    csvHeaders, csvSampleRows,
+    csvColumnMapping, handleCsvColumnMappingChange,
+    csvTransferRules, handleCsvTransferRulesChange,
+    savedColumnMappings,
+    handleCsvMappingComplete,
+    handleCsvDelimiterChange,
+    handleCsvHasHeaderChange,
+    handleSaveColumnMapping,
+    handleLoadColumnMapping,
+    handleDeleteColumnMapping,
   };
 }

@@ -84,6 +84,9 @@ describe("TransactionsController", () => {
         false,
         undefined,
         undefined,
+        undefined,
+        undefined,
+        undefined,
       );
     });
 
@@ -110,6 +113,9 @@ describe("TransactionsController", () => {
         false,
         undefined,
         undefined,
+        undefined,
+        undefined,
+        undefined,
       );
     });
 
@@ -128,6 +134,9 @@ describe("TransactionsController", () => {
         undefined,
         undefined,
         false,
+        undefined,
+        undefined,
+        undefined,
         undefined,
         undefined,
       );
@@ -162,6 +171,9 @@ describe("TransactionsController", () => {
         false,
         undefined,
         undefined,
+        undefined,
+        undefined,
+        undefined,
       );
     });
 
@@ -193,6 +205,9 @@ describe("TransactionsController", () => {
         undefined,
         undefined,
         true,
+        undefined,
+        undefined,
+        undefined,
         undefined,
         undefined,
       );
@@ -230,6 +245,9 @@ describe("TransactionsController", () => {
         false,
         "grocery",
         uuid3,
+        undefined,
+        undefined,
+        undefined,
       );
     });
 
@@ -685,6 +703,8 @@ describe("TransactionsController", () => {
         undefined,
         undefined,
         undefined,
+        undefined,
+        undefined,
       );
     });
 
@@ -707,6 +727,8 @@ describe("TransactionsController", () => {
         undefined,
         undefined,
         undefined,
+        undefined,
+        undefined,
       );
     });
 
@@ -719,6 +741,286 @@ describe("TransactionsController", () => {
     it("rejects invalid UUID in summary accountIds", () => {
       expect(() =>
         controller.getSummary(mockReq, undefined, "bad-uuid"),
+      ).toThrow(BadRequestException);
+    });
+
+    it("parses amountFrom and amountTo as floats for summary", async () => {
+      mockService.getSummary.mockResolvedValue({});
+
+      await controller.getSummary(
+        mockReq,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        "10.50",
+        "99.99",
+      );
+
+      expect(mockService.getSummary).toHaveBeenCalledWith(
+        "user-1",
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        10.5,
+        99.99,
+      );
+    });
+
+    it("rejects non-numeric amountFrom in summary", () => {
+      expect(() =>
+        controller.getSummary(
+          mockReq,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          "abc",
+        ),
+      ).toThrow(BadRequestException);
+    });
+
+    it("rejects non-numeric amountTo in summary", () => {
+      expect(() =>
+        controller.getSummary(
+          mockReq,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          "xyz",
+        ),
+      ).toThrow(BadRequestException);
+    });
+  });
+
+  describe("findAll() amount filters", () => {
+    it("parses amountFrom and amountTo as floats", async () => {
+      mockService.findAll.mockResolvedValue({ data: [], total: 0 });
+
+      await controller.findAll(
+        mockReq,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        "-100.50",
+        "500.25",
+      );
+
+      expect(mockService.findAll).toHaveBeenCalledWith(
+        "user-1",
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        false,
+        undefined,
+        undefined,
+        -100.5,
+        500.25,
+        undefined,
+      );
+    });
+
+    it("passes undefined when amountFrom and amountTo are not provided", async () => {
+      mockService.findAll.mockResolvedValue({ data: [], total: 0 });
+
+      await controller.findAll(mockReq);
+
+      const call = mockService.findAll.mock.calls[0];
+      expect(call[11]).toBeUndefined(); // amountFrom
+      expect(call[12]).toBeUndefined(); // amountTo
+    });
+
+    it("rejects non-numeric amountFrom", () => {
+      expect(() =>
+        controller.findAll(
+          mockReq,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          "not-a-number",
+        ),
+      ).toThrow(BadRequestException);
+    });
+
+    it("rejects non-numeric amountTo", () => {
+      expect(() =>
+        controller.findAll(
+          mockReq,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          "not-a-number",
+        ),
+      ).toThrow(BadRequestException);
+    });
+
+    it("allows only amountFrom without amountTo", async () => {
+      mockService.findAll.mockResolvedValue({ data: [], total: 0 });
+
+      await controller.findAll(
+        mockReq,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        "50",
+      );
+
+      const call = mockService.findAll.mock.calls[0];
+      expect(call[11]).toBe(50); // amountFrom
+      expect(call[12]).toBeUndefined(); // amountTo
+    });
+
+    it("allows only amountTo without amountFrom", async () => {
+      mockService.findAll.mockResolvedValue({ data: [], total: 0 });
+
+      await controller.findAll(
+        mockReq,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        "200",
+      );
+
+      const call = mockService.findAll.mock.calls[0];
+      expect(call[11]).toBeUndefined(); // amountFrom
+      expect(call[12]).toBe(200); // amountTo
+    });
+  });
+
+  describe("getMonthlyTotals() amount filters", () => {
+    it("parses amountFrom and amountTo as floats for monthly totals", async () => {
+      mockService.getMonthlyTotals = jest.fn().mockResolvedValue([]);
+
+      await controller.getMonthlyTotals(
+        mockReq,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        "-50",
+        "1000",
+      );
+
+      expect(mockService.getMonthlyTotals).toHaveBeenCalledWith(
+        "user-1",
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        -50,
+        1000,
+        undefined,
+      );
+    });
+
+    it("rejects non-numeric amountFrom in monthly totals", () => {
+      expect(() =>
+        controller.getMonthlyTotals(
+          mockReq,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          "abc",
+        ),
+      ).toThrow(BadRequestException);
+    });
+
+    it("rejects non-numeric amountTo in monthly totals", () => {
+      expect(() =>
+        controller.getMonthlyTotals(
+          mockReq,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          "xyz",
+        ),
       ).toThrow(BadRequestException);
     });
   });

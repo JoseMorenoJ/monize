@@ -6,6 +6,9 @@ import {
 } from "../transactions/entities/transaction.entity";
 import { TransactionSplit } from "../transactions/entities/transaction-split.entity";
 import { Payee } from "../payees/entities/payee.entity";
+import { PayeeAlias } from "../payees/entities/payee-alias.entity";
+import { TransactionTag } from "../tags/entities/transaction-tag.entity";
+import { TransactionSplitTag } from "../tags/entities/transaction-split-tag.entity";
 import { ImportContext, updateAccountBalance } from "./import-context";
 
 @Injectable()
@@ -13,7 +16,7 @@ export class ImportRegularProcessorService {
   private readonly logger = new Logger(ImportRegularProcessorService.name);
 
   async processTransaction(ctx: ImportContext, qifTx: any): Promise<void> {
-    // Check for duplicate transfers from prior imports
+    // Check for duplicate transfers (from prior imports or earlier account blocks)
     if (await this.isDuplicateTransfer(ctx, qifTx)) {
       ctx.importResult.skipped++;
       return;
@@ -25,8 +28,8 @@ export class ImportRegularProcessorService {
       return;
     }
 
-    // Get or create payee
-    const payeeId = await this.resolvePayee(ctx, qifTx);
+    // Get or create payee (with alias matching)
+    const resolvedPayee = await this.resolvePayee(ctx, qifTx);
 
     // Check if this is a split transaction
     const isSplit = qifTx.splits && qifTx.splits.length > 0;
@@ -34,6 +37,11 @@ export class ImportRegularProcessorService {
     // Determine category and transfer account
     const { categoryId, isLoanPaymentTx, transferAccountId } =
       this.resolveTransactionTarget(ctx, qifTx, isSplit);
+
+    // If payee has a default category and no category was resolved from the import, use the payee's default
+    const effectiveCategoryId = isSplit
+      ? null
+      : categoryId || resolvedPayee.defaultCategoryId || null;
 
     // Generate unique createdAt timestamp
     const counter = ctx.dateCounters.get(qifTx.date) || 0;
@@ -48,18 +56,18 @@ export class ImportRegularProcessorService {
         ? TransactionStatus.CLEARED
         : TransactionStatus.UNRECONCILED;
 
-    // Create transaction
+    // Create transaction (use canonical payee name if alias-matched)
     const isTransfer = !isSplit && (qifTx.isTransfer || isLoanPaymentTx);
     const transaction = ctx.queryRunner.manager.create(Transaction, {
       userId: ctx.userId,
       accountId: ctx.accountId,
       transactionDate: qifTx.date,
       amount: qifTx.amount,
-      payeeName: qifTx.payee,
-      payeeId,
+      payeeName: resolvedPayee.payeeName,
+      payeeId: resolvedPayee.payeeId,
       description: qifTx.memo,
       referenceNumber: qifTx.number,
-      categoryId: isSplit ? null : categoryId,
+      categoryId: effectiveCategoryId,
       status,
       currencyCode: ctx.account.currencyCode,
       isSplit,
@@ -68,6 +76,9 @@ export class ImportRegularProcessorService {
     });
 
     const savedTx = await ctx.queryRunner.manager.save(transaction);
+
+    // Assign tags to the transaction
+    await this.assignTransactionTags(ctx, savedTx.id, qifTx.tagNames);
 
     // Handle splits
     if (isSplit) {
@@ -97,7 +108,7 @@ export class ImportRegularProcessorService {
     ctx: ImportContext,
     qifTx: any,
   ): Promise<boolean> {
-    // Check for duplicate linked transfers from prior imports
+    // Check for duplicate linked transfers
     if (qifTx.isTransfer && qifTx.transferAccount) {
       const mappedTransferAccountId = ctx.accountMap.get(qifTx.transferAccount);
       if (mappedTransferAccountId) {
@@ -118,9 +129,6 @@ export class ImportRegularProcessorService {
           .andWhere("linked.account_id = :linkedAccountId", {
             linkedAccountId: mappedTransferAccountId,
           })
-          .andWhere("t.created_at < :importStartTime", {
-            importStartTime: ctx.importStartTime,
-          })
           .getOne();
 
         if (existingLinkedTransfers) {
@@ -129,7 +137,7 @@ export class ImportRegularProcessorService {
       }
     }
 
-    // Check for split-linked transfers from prior imports
+    // Check for split-linked transfers
     if (qifTx.isTransfer) {
       const existingSplitLinkedTx = await ctx.queryRunner.manager
         .createQueryBuilder(Transaction, "t")
@@ -145,9 +153,6 @@ export class ImportRegularProcessorService {
         .andWhere("t.is_transfer = true")
         .andWhere("t.transaction_date = :date", { date: qifTx.date })
         .andWhere("t.amount = :amount", { amount: qifTx.amount })
-        .andWhere("t.created_at < :importStartTime", {
-          importStartTime: ctx.importStartTime,
-        })
         .getOne();
 
       if (existingSplitLinkedTx) {
@@ -209,23 +214,82 @@ export class ImportRegularProcessorService {
   private async resolvePayee(
     ctx: ImportContext,
     qifTx: any,
-  ): Promise<string | null> {
-    if (!qifTx.payee) return null;
+  ): Promise<{
+    payeeId: string | null;
+    payeeName: string | null;
+    defaultCategoryId: string | null;
+  }> {
+    if (!qifTx.payee)
+      return { payeeId: null, payeeName: null, defaultCategoryId: null };
 
+    // 1. Check for exact name match
     const existingPayee = await ctx.queryRunner.manager.findOne(Payee, {
       where: { userId: ctx.userId, name: qifTx.payee },
     });
     if (existingPayee) {
-      return existingPayee.id;
+      return {
+        payeeId: existingPayee.id,
+        payeeName: existingPayee.name,
+        defaultCategoryId: existingPayee.defaultCategoryId,
+      };
     }
 
+    // 2. Check for alias match (case-insensitive, supports wildcards)
+    const aliases = await ctx.queryRunner.manager.find(PayeeAlias, {
+      where: { userId: ctx.userId },
+      relations: ["payee"],
+    });
+
+    for (const alias of aliases) {
+      if (this.matchesAliasPattern(qifTx.payee, alias.alias) && alias.payee) {
+        this.logger.debug(
+          `Alias match: "${qifTx.payee}" matched alias "${alias.alias}" -> payee "${alias.payee.name}"`,
+        );
+        return {
+          payeeId: alias.payee.id,
+          payeeName: alias.payee.name,
+          defaultCategoryId: alias.payee.defaultCategoryId,
+        };
+      }
+    }
+
+    // 3. No match found - create new payee
     const newPayee = ctx.queryRunner.manager.create(Payee, {
       userId: ctx.userId,
       name: qifTx.payee,
     });
     const savedPayee = await ctx.queryRunner.manager.save(newPayee);
     ctx.importResult.payeesCreated++;
-    return savedPayee.id;
+    return {
+      payeeId: savedPayee.id,
+      payeeName: savedPayee.name,
+      defaultCategoryId: null,
+    };
+  }
+
+  /**
+   * Check if a name matches a wildcard alias pattern (case-insensitive).
+   * Uses iterative glob matching instead of regex to avoid ReDoS risks.
+   */
+  private matchesAliasPattern(name: string, aliasPattern: string): boolean {
+    if (aliasPattern.length > 500 || name.length > 500) return false;
+    const pattern = aliasPattern.replace(/\*{2,}/g, "*").toLowerCase();
+    const text = name.toLowerCase();
+    const parts = pattern.split("*");
+    if (parts.length === 1) return text === pattern;
+    if (!text.startsWith(parts[0])) return false;
+    if (!text.endsWith(parts[parts.length - 1])) return false;
+    let pos = parts[0].length;
+    for (let i = 1; i < parts.length - 1; i++) {
+      const idx = text.indexOf(parts[i], pos);
+      if (idx === -1) return false;
+      pos = idx + parts[i].length;
+    }
+    if (parts.length > 2) {
+      const suffixStart = text.length - parts[parts.length - 1].length;
+      if (pos > suffixStart) return false;
+    }
+    return true;
   }
 
   private resolveTransactionTarget(
@@ -260,6 +324,16 @@ export class ImportRegularProcessorService {
     if (!isSplit) {
       if (qifTx.isTransfer && qifTx.transferAccount) {
         transferAccountId = ctx.accountMap.get(qifTx.transferAccount) || null;
+        // Case-insensitive fallback
+        if (!transferAccountId) {
+          const lowerName = qifTx.transferAccount.toLowerCase();
+          for (const [name, id] of ctx.accountMap) {
+            if (name.toLowerCase() === lowerName) {
+              transferAccountId = id;
+              break;
+            }
+          }
+        }
       } else if (isLoanPaymentTx && qifTx.category) {
         transferAccountId = ctx.loanCategoryMap.get(qifTx.category) || null;
       }
@@ -283,6 +357,16 @@ export class ImportRegularProcessorService {
       if (split.isTransfer && split.transferAccount) {
         splitTransferAccountId =
           ctx.accountMap.get(split.transferAccount) || null;
+        // If transfer account not found, try case-insensitive match
+        if (!splitTransferAccountId) {
+          const lowerName = split.transferAccount.toLowerCase();
+          for (const [name, id] of ctx.accountMap) {
+            if (name.toLowerCase() === lowerName) {
+              splitTransferAccountId = id;
+              break;
+            }
+          }
+        }
       } else if (split.category) {
         if (ctx.loanCategoryMap.has(split.category)) {
           splitTransferAccountId =
@@ -305,6 +389,9 @@ export class ImportRegularProcessorService {
       );
 
       const savedSplit = await ctx.queryRunner.manager.save(transactionSplit);
+
+      // Assign tags to the split
+      await this.assignSplitTags(ctx, savedSplit.id, split.tagNames);
 
       if (splitTransferAccountId) {
         await this.processSplitTransfer(
@@ -336,7 +423,10 @@ export class ImportRegularProcessorService {
     ctx.affectedAccountIds.add(splitTransferAccountId);
     const linkedAmount = -split.amount;
 
-    // Check for existing linked transaction from prior import
+    // Check for existing linked transaction
+    // Exclude transactions already linked to the current transaction (savedTx)
+    // to prevent a second split transfer from matching the linked transaction
+    // created by a prior split transfer in the same parent transaction.
     const existingLinkedTx = await ctx.queryRunner.manager
       .createQueryBuilder(Transaction, "t")
       .where("t.user_id = :userId", { userId: ctx.userId })
@@ -346,9 +436,10 @@ export class ImportRegularProcessorService {
       .andWhere("t.transaction_date = :date", { date: qifTx.date })
       .andWhere("t.amount = :amount", { amount: linkedAmount })
       .andWhere("t.is_transfer = true")
-      .andWhere("t.created_at < :importStartTime", {
-        importStartTime: ctx.importStartTime,
-      })
+      .andWhere(
+        "(t.linked_transaction_id IS NULL OR t.linked_transaction_id != :currentTxId)",
+        { currentTxId: savedTx.id },
+      )
       .getOne();
 
     if (existingLinkedTx) {
@@ -460,7 +551,7 @@ export class ImportRegularProcessorService {
           accountId: ctx.accountId,
         },
       });
-      if (placeholderTx) {
+      if (placeholderTx && placeholderTx.id !== savedTx.id) {
         await updateAccountBalance(
           ctx.queryRunner,
           ctx.accountId,
@@ -470,6 +561,44 @@ export class ImportRegularProcessorService {
         await ctx.queryRunner.manager.update(Transaction, existingLinkedTx.id, {
           linkedTransactionId: null,
         });
+      }
+    }
+  }
+
+  private async assignTransactionTags(
+    ctx: ImportContext,
+    transactionId: string,
+    tagNames: string[],
+  ): Promise<void> {
+    if (!tagNames || tagNames.length === 0) return;
+
+    for (const name of tagNames) {
+      const tagId = ctx.tagMap.get(name.toLowerCase());
+      if (tagId) {
+        const txTag = ctx.queryRunner.manager.create(TransactionTag, {
+          transactionId,
+          tagId,
+        });
+        await ctx.queryRunner.manager.save(txTag);
+      }
+    }
+  }
+
+  private async assignSplitTags(
+    ctx: ImportContext,
+    splitId: string,
+    tagNames: string[],
+  ): Promise<void> {
+    if (!tagNames || tagNames.length === 0) return;
+
+    for (const name of tagNames) {
+      const tagId = ctx.tagMap.get(name.toLowerCase());
+      if (tagId) {
+        const splitTag = ctx.queryRunner.manager.create(TransactionSplitTag, {
+          transactionSplitId: splitId,
+          tagId,
+        });
+        await ctx.queryRunner.manager.save(splitTag);
       }
     }
   }

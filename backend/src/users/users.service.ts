@@ -117,6 +117,9 @@ export class UsersService {
     if (dto.budgetDigestDay !== undefined) {
       preferences.budgetDigestDay = dto.budgetDigestDay;
     }
+    if (dto.favouriteReportIds !== undefined) {
+      preferences.favouriteReportIds = dto.favouriteReportIds;
+    }
 
     return this.preferencesRepository.save(preferences);
   }

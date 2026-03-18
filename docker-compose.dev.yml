@@ -52,6 +52,8 @@ services:
       AI_DEFAULT_MODEL: ${AI_DEFAULT_MODEL:-}
       AI_DEFAULT_API_KEY: ${AI_DEFAULT_API_KEY:-}
       AI_DEFAULT_BASE_URL: ${AI_DEFAULT_BASE_URL:-}
+      # HTTP mode (optional)
+      DISABLE_HTTPS_HEADERS: ${DISABLE_HTTPS_HEADERS:-false}
     volumes:
       - ./backend:/app
       - ./database/schema.sql:/app/schema.sql:ro
@@ -77,6 +79,7 @@ services:
       NODE_ENV: ${NODE_ENV:-development}
       INTERNAL_API_URL: http://backend:3000
       PUBLIC_APP_URL: http://localhost:3001
+      DISABLE_HTTPS_HEADERS: ${DISABLE_HTTPS_HEADERS:-false}
     volumes:
       - ./frontend:/app
       - /app/node_modules

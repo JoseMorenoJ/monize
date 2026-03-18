@@ -38,7 +38,7 @@ export async function queryCategorySpending(
       transactionsRepository
         .createQueryBuilder("t")
         .select("t.category_id", "categoryId")
-        .addSelect("COALESCE(SUM(ABS(t.amount)), 0)", "total")
+        .addSelect("COALESCE(SUM(t.amount), 0)", "total")
         .where("t.user_id = :userId", { userId })
         .andWhere("t.category_id IN (:...categoryIds)", { categoryIds })
         .andWhere("t.transaction_date >= :periodStart", { periodStart })
@@ -59,7 +59,7 @@ export async function queryCategorySpending(
         .createQueryBuilder("s")
         .innerJoin("s.transaction", "t")
         .select("s.category_id", "categoryId")
-        .addSelect("COALESCE(SUM(ABS(s.amount)), 0)", "total")
+        .addSelect("COALESCE(SUM(s.amount), 0)", "total")
         .where("t.user_id = :userId", { userId })
         .andWhere("s.category_id IN (:...categoryIds)", { categoryIds })
         .andWhere("t.transaction_date >= :periodStart", { periodStart })
@@ -89,7 +89,7 @@ export async function queryCategorySpending(
         .createQueryBuilder("t")
         .innerJoin("t.linkedTransaction", "lt")
         .select("lt.account_id", "destinationAccountId")
-        .addSelect("COALESCE(SUM(ABS(t.amount)), 0)", "total")
+        .addSelect("COALESCE(ABS(SUM(t.amount)), 0)", "total")
         .where("t.user_id = :userId", { userId })
         .andWhere("t.is_transfer = true")
         .andWhere("t.amount < 0")
@@ -130,7 +130,17 @@ export function resolveCategoryName(bc: BudgetCategory): string {
     : "Uncategorized";
 }
 
-/** Resolves the actual spent amount for a budget category from the spending maps. */
+/**
+ * Resolves the actual spent/earned amount for a budget category from the
+ * spending maps.  The maps now contain signed net sums (expenses negative,
+ * income positive).  We convert to a non-negative "spent" / "earned" value:
+ *   - Expense categories: negate the sum so spending is positive, clamp to 0
+ *     when refunds exceed spending.
+ *   - Income categories: keep the positive sum, clamp to 0 when deductions
+ *     exceed income.
+ *   - Transfers: already filtered to outgoing (amount < 0), returned as a
+ *     positive value by the query.
+ */
 export function resolveCategorySpent(
   bc: BudgetCategory,
   spendingMap: Map<string, number>,
@@ -139,5 +149,6 @@ export function resolveCategorySpent(
   if (bc.isTransfer && bc.transferAccountId) {
     return transferSpendingMap.get(bc.transferAccountId) || 0;
   }
-  return bc.categoryId ? spendingMap.get(bc.categoryId) || 0 : 0;
+  const raw = bc.categoryId ? spendingMap.get(bc.categoryId) || 0 : 0;
+  return bc.isIncome ? Math.max(raw, 0) : Math.max(-raw, 0);
 }

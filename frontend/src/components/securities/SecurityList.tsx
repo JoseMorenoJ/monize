@@ -5,6 +5,10 @@ import { Security } from '@/types/investment';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { DensityLevel, nextDensity } from '@/hooks/useTableDensity';
+import { SortIcon } from '@/components/ui/SortIcon';
+
+export type SecuritySortField = 'symbol' | 'name' | 'type' | 'exchange' | 'currency';
+export type SortDirection = 'asc' | 'desc';
 
 // Map of securityId -> total quantity across all accounts
 export type SecurityHoldings = Record<string, number>;
@@ -14,8 +18,12 @@ interface SecurityListProps {
   holdings?: SecurityHoldings;
   onEdit: (security: Security) => void;
   onToggleActive: (security: Security) => void;
+  onViewPrices?: (security: Security) => void;
   density?: DensityLevel;
   onDensityChange?: (density: DensityLevel) => void;
+  sortField?: SecuritySortField;
+  sortDirection?: SortDirection;
+  onSort?: (field: SecuritySortField) => void;
 }
 
 interface SecurityRowProps {
@@ -25,6 +33,7 @@ interface SecurityRowProps {
   cellPadding: string;
   onEdit: (security: Security) => void;
   onToggleActive: (security: Security) => void;
+  onViewPrices?: (security: Security) => void;
   onLongPressStart: (security: Security) => void;
   onLongPressStartTouch: (security: Security, e: React.TouchEvent) => void;
   onLongPressEnd: () => void;
@@ -55,6 +64,7 @@ const SecurityRow = memo(function SecurityRow({
   cellPadding,
   onEdit,
   onToggleActive,
+  onViewPrices,
   onLongPressStart,
   onLongPressStartTouch,
   onLongPressEnd,
@@ -68,6 +78,10 @@ const SecurityRow = memo(function SecurityRow({
   const handleToggleActive = useCallback(() => {
     onToggleActive(security);
   }, [onToggleActive, security]);
+
+  const handleViewPrices = useCallback(() => {
+    onViewPrices?.(security);
+  }, [onViewPrices, security]);
 
   return (
     <tr
@@ -126,6 +140,16 @@ const SecurityRow = memo(function SecurityRow({
       {/* Actions - hidden on mobile */}
       <td className={`${cellPadding} whitespace-nowrap text-right text-sm font-medium hidden sm:table-cell`}>
         <div className="flex justify-end gap-2">
+          {onViewPrices && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleViewPrices}
+              className="text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
+            >
+              {density === 'dense' ? '$' : 'Prices'}
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="sm"
@@ -159,13 +183,36 @@ export function SecurityList({
   holdings = {},
   onEdit,
   onToggleActive,
+  onViewPrices,
   density: propDensity,
   onDensityChange,
+  sortField: propSortField,
+  sortDirection: propSortDirection,
+  onSort,
 }: SecurityListProps) {
   const [localDensity, setLocalDensity] = useState<DensityLevel>('normal');
+  const [localSortField, setLocalSortField] = useState<SecuritySortField>('symbol');
+  const [localSortDirection, setLocalSortDirection] = useState<SortDirection>('asc');
+
+  // Use prop sort state if provided (controlled), otherwise use local state
+  const sortField = propSortField ?? localSortField;
+  const sortDirection = propSortDirection ?? localSortDirection;
 
   // Use prop density if provided, otherwise use local state
   const density = propDensity ?? localDensity;
+
+  const handleSort = useCallback((field: SecuritySortField) => {
+    if (onSort) {
+      onSort(field);
+    } else {
+      if (localSortField === field) {
+        setLocalSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+      } else {
+        setLocalSortField(field);
+        setLocalSortDirection('asc');
+      }
+    }
+  }, [onSort, localSortField]);
 
   // Long-press handling for context menu on mobile
   const longPressTimer = useRef<NodeJS.Timeout | null>(null);
@@ -287,22 +334,37 @@ export function SecurityList({
         <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
           <thead className="bg-gray-50 dark:bg-gray-800">
             <tr>
-              <th className={`${headerPadding} text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider`}>
-                Symbol
+              <th
+                className={`${headerPadding} text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:text-gray-700 dark:hover:text-gray-200`}
+                onClick={() => handleSort('symbol')}
+              >
+                Symbol<SortIcon field="symbol" sortField={sortField} sortDirection={sortDirection} />
               </th>
-              <th className={`${headerPadding} text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider`}>
-                Name
+              <th
+                className={`${headerPadding} text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:text-gray-700 dark:hover:text-gray-200`}
+                onClick={() => handleSort('name')}
+              >
+                Name<SortIcon field="name" sortField={sortField} sortDirection={sortDirection} />
               </th>
-              <th className={`${headerPadding} text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider`}>
-                Type
+              <th
+                className={`${headerPadding} text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:text-gray-700 dark:hover:text-gray-200`}
+                onClick={() => handleSort('type')}
+              >
+                Type<SortIcon field="type" sortField={sortField} sortDirection={sortDirection} />
               </th>
               {density === 'normal' && (
                 <>
-                  <th className={`${headerPadding} text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden sm:table-cell`}>
-                    Exchange
+                  <th
+                    className={`${headerPadding} text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:text-gray-700 dark:hover:text-gray-200 hidden sm:table-cell`}
+                    onClick={() => handleSort('exchange')}
+                  >
+                    Exchange<SortIcon field="exchange" sortField={sortField} sortDirection={sortDirection} />
                   </th>
-                  <th className={`${headerPadding} text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden sm:table-cell`}>
-                    Currency
+                  <th
+                    className={`${headerPadding} text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:text-gray-700 dark:hover:text-gray-200 hidden sm:table-cell`}
+                    onClick={() => handleSort('currency')}
+                  >
+                    Currency<SortIcon field="currency" sortField={sortField} sortDirection={sortDirection} />
                   </th>
                 </>
               )}
@@ -324,6 +386,7 @@ export function SecurityList({
                 cellPadding={cellPadding}
                 onEdit={onEdit}
                 onToggleActive={onToggleActive}
+                onViewPrices={onViewPrices}
                 onLongPressStart={handleLongPressStart}
                 onLongPressStartTouch={handleLongPressStartTouch}
                 onLongPressEnd={handleLongPressEnd}
@@ -346,6 +409,17 @@ export function SecurityList({
               <p className="text-sm text-gray-500 dark:text-gray-400">{contextSecurity.name}</p>
             </div>
             <div className="py-2">
+              {onViewPrices && (
+                <button
+                  onClick={() => { setContextSecurity(null); onViewPrices(contextSecurity); }}
+                  className="w-full text-left px-5 py-3 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-3"
+                >
+                  <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  View Prices
+                </button>
+              )}
               <button
                 onClick={() => { setContextSecurity(null); onEdit(contextSecurity); }}
                 className="w-full text-left px-5 py-3 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-3"

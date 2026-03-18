@@ -13,8 +13,18 @@ import { Category } from "../categories/entities/category.entity";
 import { Payee } from "../payees/entities/payee.entity";
 import { AccountsService } from "../accounts/accounts.service";
 import { NetWorthService } from "../net-worth/net-worth.service";
-import { BulkUpdateDto, BulkUpdateFilterDto } from "./dto/bulk-update.dto";
+import { TagsService } from "../tags/tags.service";
+import {
+  BulkUpdateDto,
+  BulkDeleteDto,
+  BulkUpdateFilterDto,
+} from "./dto/bulk-update.dto";
 import { getAllCategoryIdsWithChildren } from "../common/category-tree.util";
+import { isTransactionInFuture } from "../common/date-utils";
+
+export interface BulkDeleteResult {
+  deleted: number;
+}
 
 export interface BulkUpdateResult {
   updated: number;
@@ -37,6 +47,7 @@ export class TransactionBulkUpdateService {
     private accountsService: AccountsService,
     @Inject(forwardRef(() => NetWorthService))
     private netWorthService: NetWorthService,
+    private tagsService: TagsService,
     private dataSource: DataSource,
   ) {}
 
@@ -45,7 +56,8 @@ export class TransactionBulkUpdateService {
     dto: BulkUpdateDto,
   ): Promise<BulkUpdateResult> {
     const updateFields = this.extractUpdateFields(dto);
-    if (Object.keys(updateFields).length === 0) {
+    const isUpdatingTags = "tagIds" in dto;
+    if (Object.keys(updateFields).length === 0 && !isUpdatingTags) {
       throw new BadRequestException(
         "At least one update field must be provided",
       );
@@ -107,14 +119,36 @@ export class TransactionBulkUpdateService {
         );
       }
 
-      // Step 4: Execute batch update
-      await queryRunner.manager
-        .createQueryBuilder()
-        .update(Transaction)
-        .set(updateFields)
-        .where("id IN (:...ids)", { ids: eligibleIds })
-        .andWhere("userId = :userId", { userId })
-        .execute();
+      // Step 4: Execute batch update for column fields
+      if (Object.keys(updateFields).length > 0) {
+        await queryRunner.manager
+          .createQueryBuilder()
+          .update(Transaction)
+          .set(updateFields)
+          .where("id IN (:...ids)", { ids: eligibleIds })
+          .andWhere("userId = :userId", { userId })
+          .execute();
+
+        // Step 4b: Sync payee/description to linked transfer transactions
+        await this.syncLinkedTransfers(
+          userId,
+          eligibleIds,
+          updateFields,
+          queryRunner,
+        );
+      }
+
+      // Step 4c: Update tags (many-to-many relation, must be done per-transaction)
+      if (isUpdatingTags) {
+        for (const txId of eligibleIds) {
+          await this.tagsService.setTransactionTags(
+            txId,
+            dto.tagIds ?? [],
+            userId,
+            queryRunner,
+          );
+        }
+      }
 
       await queryRunner.commitTransaction();
     } catch (error) {
@@ -134,6 +168,145 @@ export class TransactionBulkUpdateService {
       skipped,
       skippedReasons,
     };
+  }
+
+  async bulkDelete(
+    userId: string,
+    dto: BulkDeleteDto,
+  ): Promise<BulkDeleteResult> {
+    const allIds = await this.resolveTransactionIds(userId, dto);
+    if (allIds.length === 0) {
+      return { deleted: 0 };
+    }
+
+    // Load transaction details needed for balance adjustments and linked transfers
+    const transactions = await this.transactionsRepository
+      .createQueryBuilder("transaction")
+      .select([
+        "transaction.id",
+        "transaction.accountId",
+        "transaction.amount",
+        "transaction.status",
+        "transaction.transactionDate",
+        "transaction.isTransfer",
+        "transaction.linkedTransactionId",
+        "transaction.isSplit",
+      ])
+      .leftJoinAndSelect("transaction.splits", "splits")
+      .where("transaction.id IN (:...ids)", { ids: allIds })
+      .andWhere("transaction.userId = :userId", { userId })
+      .getMany();
+
+    if (transactions.length === 0) {
+      return { deleted: 0 };
+    }
+
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      // Collect linked transaction IDs from transfers and split transfers
+      const linkedIdsToDelete = new Set<string>();
+      const transactionIdsSet = new Set(transactions.map((t) => t.id));
+
+      for (const tx of transactions) {
+        if (
+          tx.linkedTransactionId &&
+          !transactionIdsSet.has(tx.linkedTransactionId)
+        ) {
+          linkedIdsToDelete.add(tx.linkedTransactionId);
+        }
+        if (tx.isSplit && tx.splits) {
+          for (const split of tx.splits) {
+            if (
+              split.linkedTransactionId &&
+              !transactionIdsSet.has(split.linkedTransactionId)
+            ) {
+              linkedIdsToDelete.add(split.linkedTransactionId);
+            }
+          }
+        }
+      }
+
+      // Load linked transactions for balance adjustments
+      let linkedTransactions: Transaction[] = [];
+      if (linkedIdsToDelete.size > 0) {
+        linkedTransactions = await queryRunner.manager
+          .createQueryBuilder(Transaction, "transaction")
+          .select([
+            "transaction.id",
+            "transaction.accountId",
+            "transaction.amount",
+            "transaction.status",
+            "transaction.transactionDate",
+          ])
+          .where("transaction.id IN (:...ids)", {
+            ids: [...linkedIdsToDelete],
+          })
+          .andWhere("transaction.userId = :userId", { userId })
+          .getMany();
+      }
+
+      // Adjust balances for all transactions being deleted (primary + linked)
+      const allTransactionsToDelete = [...transactions, ...linkedTransactions];
+      const balanceAdjustments = new Map<string, number>();
+
+      for (const tx of allTransactionsToDelete) {
+        if (
+          tx.status !== TransactionStatus.VOID &&
+          !isTransactionInFuture(tx.transactionDate)
+        ) {
+          const current = balanceAdjustments.get(tx.accountId) || 0;
+          balanceAdjustments.set(tx.accountId, current - Number(tx.amount));
+        }
+      }
+
+      for (const [accountId, adjustment] of balanceAdjustments) {
+        if (adjustment !== 0) {
+          await this.accountsService.updateBalance(
+            accountId,
+            adjustment,
+            queryRunner,
+          );
+        }
+      }
+
+      // Delete linked transactions first (foreign key order)
+      if (linkedIdsToDelete.size > 0) {
+        await queryRunner.manager
+          .createQueryBuilder()
+          .delete()
+          .from(Transaction)
+          .where("id IN (:...ids)", { ids: [...linkedIdsToDelete] })
+          .andWhere("userId = :userId", { userId })
+          .execute();
+      }
+
+      // Delete the primary transactions
+      await queryRunner.manager
+        .createQueryBuilder()
+        .delete()
+        .from(Transaction)
+        .where("id IN (:...ids)", { ids: allIds })
+        .andWhere("userId = :userId", { userId })
+        .execute();
+
+      await queryRunner.commitTransaction();
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
+
+    // Trigger net worth recalc for all affected accounts
+    const affectedAccountIds = new Set(transactions.map((t) => t.accountId));
+    for (const accountId of affectedAccountIds) {
+      this.netWorthService.triggerDebouncedRecalc(accountId, userId);
+    }
+
+    return { deleted: transactions.length };
   }
 
   private extractUpdateFields(dto: BulkUpdateDto): Partial<Transaction> {
@@ -192,7 +365,7 @@ export class TransactionBulkUpdateService {
   private async applyExclusions(
     userId: string,
     allIds: string[],
-    isUpdatingPayee: boolean,
+    _isUpdatingPayee: boolean,
     isUpdatingCategory: boolean,
   ): Promise<{
     eligibleIds: string[];
@@ -212,15 +385,10 @@ export class TransactionBulkUpdateService {
       .getMany();
 
     const skippedReasons: string[] = [];
-    let transferCount = 0;
     let splitCount = 0;
 
     const eligibleIds = transactions
       .filter((t) => {
-        if ((isUpdatingPayee || isUpdatingCategory) && t.isTransfer) {
-          transferCount++;
-          return false;
-        }
         if (isUpdatingCategory && t.isSplit) {
           splitCount++;
           return false;
@@ -229,18 +397,66 @@ export class TransactionBulkUpdateService {
       })
       .map((t) => t.id);
 
-    if (transferCount > 0) {
-      skippedReasons.push(`${transferCount} transfer`);
-    }
     if (splitCount > 0) {
-      skippedReasons.push(`${splitCount} split`);
+      const plural = splitCount !== 1 ? "s" : "";
+      skippedReasons.push(
+        `${splitCount} split transaction${plural} skipped (split categories must be updated individually)`,
+      );
     }
 
     return {
       eligibleIds,
-      skipped: transferCount + splitCount,
+      skipped: splitCount,
       skippedReasons,
     };
+  }
+
+  /**
+   * For transfer transactions in the batch, apply payee and description
+   * updates to their linked counterparts so both sides stay in sync.
+   * Category is NOT synced because each side of a transfer may use
+   * different categories (e.g. "Transfer In" vs "Transfer Out").
+   */
+  private async syncLinkedTransfers(
+    userId: string,
+    eligibleIds: string[],
+    updateFields: Partial<Transaction>,
+    queryRunner: import("typeorm").QueryRunner,
+  ): Promise<void> {
+    // Build the subset of fields that should sync to the linked side
+    const syncFields: Record<string, unknown> = {};
+    if ("payeeId" in updateFields) syncFields.payeeId = updateFields.payeeId;
+    if ("payeeName" in updateFields)
+      syncFields.payeeName = updateFields.payeeName;
+    if ("description" in updateFields)
+      syncFields.description = updateFields.description;
+
+    if (Object.keys(syncFields).length === 0) return;
+
+    // Find linked transaction IDs for transfers in the batch
+    const repo = queryRunner.manager.getRepository(Transaction);
+    const transfers = await repo
+      .createQueryBuilder("t")
+      .select(["t.linkedTransactionId"])
+      .where("t.id IN (:...ids)", { ids: eligibleIds })
+      .andWhere("t.userId = :userId", { userId })
+      .andWhere("t.isTransfer = true")
+      .andWhere("t.linkedTransactionId IS NOT NULL")
+      .getMany();
+
+    const linkedIds = transfers
+      .map((t) => t.linkedTransactionId)
+      .filter((id): id is string => id !== null);
+
+    if (linkedIds.length === 0) return;
+
+    await queryRunner.manager
+      .createQueryBuilder()
+      .update(Transaction)
+      .set(syncFields as Partial<Transaction>)
+      .where("id IN (:...ids)", { ids: linkedIds })
+      .andWhere("userId = :userId", { userId })
+      .execute();
   }
 
   private async handleStatusBalanceChanges(
@@ -350,7 +566,12 @@ export class TransactionBulkUpdateService {
     }
 
     if (filters.search && filters.search.trim()) {
-      const searchPattern = `%${filters.search.trim()}%`;
+      const escaped = filters.search
+        .trim()
+        .replace(/\\/g, "\\\\")
+        .replace(/%/g, "\\%")
+        .replace(/_/g, "\\_");
+      const searchPattern = `%${escaped}%`;
       if (!filters.categoryIds || filters.categoryIds.length === 0) {
         queryBuilder.leftJoin("transaction.splits", "searchSplits");
         queryBuilder.andWhere(

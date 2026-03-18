@@ -610,8 +610,8 @@ describe("BudgetsService", () => {
 
       const directQb = createMockQueryBuilder({
         getRawMany: jest.fn().mockResolvedValue([
-          { categoryId: "cat-1", total: "350" },
-          { categoryId: "cat-2", total: "1500" },
+          { categoryId: "cat-1", total: "-350" },
+          { categoryId: "cat-2", total: "-1500" },
           { categoryId: "cat-3", total: "3000" },
         ]),
       });
@@ -669,12 +669,12 @@ describe("BudgetsService", () => {
       const directQb = createMockQueryBuilder({
         getRawMany: jest
           .fn()
-          .mockResolvedValue([{ categoryId: "cat-1", total: "200" }]),
+          .mockResolvedValue([{ categoryId: "cat-1", total: "-200" }]),
       });
       const splitQb = createMockQueryBuilder({
         getRawMany: jest
           .fn()
-          .mockResolvedValue([{ categoryId: "cat-1", total: "100" }]),
+          .mockResolvedValue([{ categoryId: "cat-1", total: "-100" }]),
       });
       transactionsRepository.createQueryBuilder.mockReturnValue(directQb);
       splitsRepository.createQueryBuilder.mockReturnValue(splitQb);
@@ -708,7 +708,7 @@ describe("BudgetsService", () => {
       const directQb = createMockQueryBuilder({
         getRawMany: jest
           .fn()
-          .mockResolvedValue([{ categoryId: "cat-1", total: "200" }]),
+          .mockResolvedValue([{ categoryId: "cat-1", total: "-200" }]),
       });
       const splitQb = createMockQueryBuilder({
         getRawMany: jest.fn().mockResolvedValue([]),
@@ -747,7 +747,7 @@ describe("BudgetsService", () => {
       const directQb = createMockQueryBuilder({
         getRawMany: jest
           .fn()
-          .mockResolvedValue([{ categoryId: "cat-1", total: "150" }]),
+          .mockResolvedValue([{ categoryId: "cat-1", total: "-150" }]),
       });
       transactionsRepository.createQueryBuilder.mockReturnValue(directQb);
       splitsRepository.createQueryBuilder.mockReturnValue(
@@ -1116,10 +1116,10 @@ describe("BudgetsService", () => {
 
       const directQb = createMockQueryBuilder({
         getRawMany: jest.fn().mockResolvedValue([
-          { categoryId: "cat-1", total: "400" },
-          { categoryId: "cat-2", total: "950" },
-          { categoryId: "cat-3", total: "280" },
-          { categoryId: "cat-4", total: "50" },
+          { categoryId: "cat-1", total: "-400" },
+          { categoryId: "cat-2", total: "-950" },
+          { categoryId: "cat-3", total: "-280" },
+          { categoryId: "cat-4", total: "-50" },
           { categoryId: "cat-5", total: "5000" },
         ]),
       });
@@ -1170,7 +1170,7 @@ describe("BudgetsService", () => {
       const directQb = createMockQueryBuilder({
         getRawMany: jest
           .fn()
-          .mockResolvedValue([{ categoryId: "cat-1", total: "1000" }]),
+          .mockResolvedValue([{ categoryId: "cat-1", total: "-1000" }]),
       });
       const splitQb = createMockQueryBuilder({
         getRawMany: jest.fn().mockResolvedValue([]),
@@ -1271,8 +1271,8 @@ describe("BudgetsService", () => {
 
       const directQb = createMockQueryBuilder({
         getRawMany: jest.fn().mockResolvedValue([
-          { categoryId: "cat-1", total: "350" },
-          { categoryId: "cat-2", total: "900" },
+          { categoryId: "cat-1", total: "-350" },
+          { categoryId: "cat-2", total: "-900" },
         ]),
       });
       const splitQb = createMockQueryBuilder({
@@ -1329,7 +1329,7 @@ describe("BudgetsService", () => {
 
       const directQb = createMockQueryBuilder({
         getRawMany: jest.fn().mockResolvedValue([
-          { categoryId: "cat-1", total: "300" },
+          { categoryId: "cat-1", total: "-300" },
           { categoryId: "cat-2", total: "5000" },
         ]),
       });
@@ -1383,9 +1383,9 @@ describe("BudgetsService", () => {
 
       const directQb = createMockQueryBuilder({
         getRawMany: jest.fn().mockResolvedValue([
-          { categoryId: "cat-1", total: "200" },
-          { categoryId: "cat-2", total: "800" },
-          { categoryId: "cat-3", total: "150" },
+          { categoryId: "cat-1", total: "-200" },
+          { categoryId: "cat-2", total: "-800" },
+          { categoryId: "cat-3", total: "-150" },
         ]),
       });
       const splitQb = createMockQueryBuilder({
@@ -1443,8 +1443,8 @@ describe("BudgetsService", () => {
         getRawOne: jest.fn().mockResolvedValue({ total: "4000" }),
         getRawMany: jest.fn().mockResolvedValue([
           { categoryId: "cat-inc", total: "4000" },
-          { categoryId: "cat-1", total: "900" },
-          { categoryId: "cat-2", total: "1800" },
+          { categoryId: "cat-1", total: "-900" },
+          { categoryId: "cat-2", total: "-1800" },
         ]),
       });
       const splitQb = createMockQueryBuilder({
@@ -1497,7 +1497,7 @@ describe("BudgetsService", () => {
       const directQb = createMockQueryBuilder({
         getRawMany: jest
           .fn()
-          .mockResolvedValue([{ categoryId: "cat-1", total: "200" }]),
+          .mockResolvedValue([{ categoryId: "cat-1", total: "-200" }]),
       });
       const splitQb = createMockQueryBuilder({
         getRawMany: jest.fn().mockResolvedValue([]),
@@ -1620,7 +1620,7 @@ describe("BudgetsService", () => {
       const directQb = createMockQueryBuilder({
         getRawMany: jest
           .fn()
-          .mockResolvedValue([{ categoryId: "cat-1", total: "400" }]),
+          .mockResolvedValue([{ categoryId: "cat-1", total: "-400" }]),
       });
       const splitQb = createMockQueryBuilder({
         getRawMany: jest.fn().mockResolvedValue([]),
@@ -1674,7 +1674,7 @@ describe("BudgetsService", () => {
       const directQb = createMockQueryBuilder({
         getRawMany: jest
           .fn()
-          .mockResolvedValue([{ categoryId: "cat-1", total: "400" }]),
+          .mockResolvedValue([{ categoryId: "cat-1", total: "-400" }]),
       });
       const splitQb = createMockQueryBuilder({
         getRawMany: jest.fn().mockResolvedValue([]),

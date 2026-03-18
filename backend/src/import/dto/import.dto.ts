@@ -9,7 +9,9 @@ import {
   IsNotEmpty,
   IsIn,
   IsBoolean,
+  Matches,
   IsNumber,
+  IsInt,
   Min,
   Max,
   ArrayMaxSize,
@@ -48,6 +50,16 @@ export class CategoryMappingDto {
   @IsOptional()
   @IsUUID()
   parentCategoryId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "Name for a new parent category to create (used when parent does not exist yet)",
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  @SanitizeHtml()
+  createNewParentCategoryName?: string;
 
   @ApiPropertyOptional({
     description: "Whether this category represents a loan payment",
@@ -226,13 +238,23 @@ export class ImportQifDto {
       "Date format to use for parsing (MM/DD/YYYY, DD/MM/YYYY, YYYY-MM-DD, YYYY-DD-MM)",
   })
   @IsOptional()
-  @IsIn(["MM/DD/YYYY", "DD/MM/YYYY", "YYYY-MM-DD", "YYYY-DD-MM"])
+  @IsString()
+  @Matches(/^[YDMW/\-.]+$/, {
+    message:
+      "dateFormat must contain only date pattern characters (Y, M, D) and separators (/, -, .)",
+  })
+  @MaxLength(20)
   dateFormat?: string;
 }
 
 export class ParsedQifResponseDto {
   @ApiProperty()
   accountType: string;
+
+  @ApiPropertyOptional({
+    description: "Account name from QIF file, if present",
+  })
+  accountName: string;
 
   @ApiProperty()
   transactionCount: number;
@@ -305,4 +327,516 @@ export class ImportResultDto {
     loans: Record<string, string>;
     securities: Record<string, string>;
   };
+}
+
+// --- Multi-account QIF DTOs ---
+
+export class ImportQifMultiAccountDto {
+  @ApiProperty({ description: "QIF file content as string" })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(10_000_000)
+  content: string;
+
+  @ApiProperty({
+    description: "Currency code for new accounts (e.g., USD, CAD)",
+  })
+  @IsString()
+  @MaxLength(3)
+  currencyCode: string;
+
+  @ApiPropertyOptional({
+    description:
+      "Date format to use for parsing (MM/DD/YYYY, DD/MM/YYYY, YYYY-MM-DD, YYYY-DD-MM)",
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(/^[YDMW/\-.]+$/, {
+    message:
+      "dateFormat must contain only date pattern characters (Y, M, D) and separators (/, -, .)",
+  })
+  @MaxLength(20)
+  dateFormat?: string;
+
+  @ApiPropertyOptional({
+    description: "Security mappings for investment transactions",
+    type: [SecurityMappingDto],
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(500)
+  @ValidateNested({ each: true })
+  @Type(() => SecurityMappingDto)
+  securityMappings?: SecurityMappingDto[];
+}
+
+export class ParsedQifMultiAccountResponseDto {
+  @ApiProperty({ description: "Whether this is a multi-account QIF file" })
+  isMultiAccount: boolean;
+
+  @ApiProperty({
+    description: "Category definitions from !Type:Cat sections",
+  })
+  categoryDefs: Array<{
+    name: string;
+    description: string;
+    isIncome: boolean;
+  }>;
+
+  @ApiProperty({
+    description: "Tag definitions from !Type:Tag sections",
+  })
+  tagDefs: Array<{
+    name: string;
+    description: string;
+  }>;
+
+  @ApiProperty({ description: "Account blocks found in the file" })
+  accounts: Array<{
+    accountName: string;
+    accountType: string;
+    transactionCount: number;
+    dateRange: { start: string; end: string };
+  }>;
+
+  @ApiProperty()
+  totalTransactionCount: number;
+
+  @ApiProperty({
+    type: [String],
+    description: "Unique securities found across investment account blocks",
+  })
+  securities: string[];
+
+  @ApiProperty({ description: "Detected date format" })
+  detectedDateFormat: string;
+
+  @ApiProperty({ type: [String], description: "Sample dates from the file" })
+  sampleDates: string[];
+}
+
+// --- OFX DTOs ---
+
+export class ParseOfxDto {
+  @ApiProperty({ description: "OFX file content as string" })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(10_000_000)
+  content: string;
+}
+
+export class ImportOfxDto {
+  @ApiProperty({ description: "OFX file content as string" })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(10_000_000)
+  content: string;
+
+  @ApiProperty({ description: "Account ID to import transactions into" })
+  @IsUUID()
+  accountId: string;
+
+  @ApiProperty({ description: "Category mappings", type: [CategoryMappingDto] })
+  @IsArray()
+  @ArrayMaxSize(500)
+  @ValidateNested({ each: true })
+  @Type(() => CategoryMappingDto)
+  categoryMappings: CategoryMappingDto[];
+
+  @ApiProperty({
+    description: "Account mappings for transfers",
+    type: [AccountMappingDto],
+  })
+  @IsArray()
+  @ArrayMaxSize(500)
+  @ValidateNested({ each: true })
+  @Type(() => AccountMappingDto)
+  accountMappings: AccountMappingDto[];
+
+  @ApiPropertyOptional({
+    description: "Date format override",
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(/^[YDMW/\-.]+$/, {
+    message:
+      "dateFormat must contain only date pattern characters (Y, M, D) and separators (/, -, .)",
+  })
+  @MaxLength(20)
+  dateFormat?: string;
+}
+
+// --- CSV DTOs ---
+
+export class CsvColumnMappingConfigDto {
+  @ApiProperty({ description: "Column index for date field" })
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  date: number;
+
+  @ApiPropertyOptional({ description: "Column index for single amount field" })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  amount?: number;
+
+  @ApiPropertyOptional({
+    description: "Column index for debit amount (used with credit)",
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  debit?: number;
+
+  @ApiPropertyOptional({
+    description: "Column index for credit amount (used with debit)",
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  credit?: number;
+
+  @ApiPropertyOptional({ description: "Column index for payee field" })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  payee?: number;
+
+  @ApiPropertyOptional({ description: "Column index for category field" })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  category?: number;
+
+  @ApiPropertyOptional({ description: "Column index for subcategory field" })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  subcategory?: number;
+
+  @ApiPropertyOptional({ description: "Column index for memo field" })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  memo?: number;
+
+  @ApiPropertyOptional({
+    description: "Column index for reference number field",
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  referenceNumber?: number;
+
+  @ApiProperty({ description: "Date format for parsing" })
+  @IsString()
+  @Matches(/^[YDMW/\-.]+$/, {
+    message:
+      "dateFormat must contain only date pattern characters (Y, M, D) and separators (/, -, .)",
+  })
+  @MaxLength(20)
+  dateFormat: string;
+
+  @ApiPropertyOptional({
+    description:
+      "Reverse the sign of single-amount values (for credit card CSVs where debits are positive)",
+  })
+  @IsOptional()
+  @IsBoolean()
+  reverseSign?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      "Column index for transaction type indicator (income/expense/transfer)",
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  amountTypeColumn?: number;
+
+  @ApiPropertyOptional({
+    description:
+      "Values indicating income (force amount positive), case-insensitive match",
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @MaxLength(50, { each: true })
+  @ArrayMaxSize(20)
+  incomeValues?: string[];
+
+  @ApiPropertyOptional({
+    description:
+      "Values indicating expense (negate amount), case-insensitive match",
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @MaxLength(50, { each: true })
+  @ArrayMaxSize(20)
+  expenseValues?: string[];
+
+  @ApiPropertyOptional({
+    description:
+      "Values indicating transfer out (negate + mark as transfer), case-insensitive match",
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @MaxLength(50, { each: true })
+  @ArrayMaxSize(20)
+  transferOutValues?: string[];
+
+  @ApiPropertyOptional({
+    description:
+      "Values indicating transfer in (positive + mark as transfer), case-insensitive match",
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @MaxLength(50, { each: true })
+  @ArrayMaxSize(20)
+  transferInValues?: string[];
+
+  @ApiPropertyOptional({
+    description:
+      "Column index for transfer account name (defaults to category column if not set)",
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  transferAccountColumn?: number;
+
+  @ApiProperty({ description: "Whether the CSV has a header row" })
+  @IsBoolean()
+  hasHeader: boolean;
+
+  @ApiProperty({ description: "CSV delimiter character" })
+  @IsString()
+  @MaxLength(1)
+  delimiter: string;
+}
+
+export class CsvTransferRuleDto {
+  @ApiProperty({ description: "Match type: payee or category" })
+  @IsIn(["payee", "category"])
+  type: "payee" | "category";
+
+  @ApiProperty({ description: "Pattern to match (case-insensitive contains)" })
+  @IsString()
+  @MaxLength(255)
+  @SanitizeHtml()
+  pattern: string;
+
+  @ApiProperty({ description: "Transfer account name" })
+  @IsString()
+  @MaxLength(255)
+  @SanitizeHtml()
+  accountName: string;
+}
+
+export class ParseCsvHeadersDto {
+  @ApiProperty({ description: "CSV file content as string" })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(10_000_000)
+  content: string;
+
+  @ApiPropertyOptional({
+    description: "CSV delimiter (auto-detected if omitted)",
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(1)
+  delimiter?: string;
+}
+
+export class ParseCsvDto {
+  @ApiProperty({ description: "CSV file content as string" })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(10_000_000)
+  content: string;
+
+  @ApiProperty({
+    description: "Column mapping configuration",
+    type: CsvColumnMappingConfigDto,
+  })
+  @ValidateNested()
+  @Type(() => CsvColumnMappingConfigDto)
+  columnMapping: CsvColumnMappingConfigDto;
+
+  @ApiPropertyOptional({
+    description: "Transfer detection rules",
+    type: [CsvTransferRuleDto],
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(50)
+  @ValidateNested({ each: true })
+  @Type(() => CsvTransferRuleDto)
+  transferRules?: CsvTransferRuleDto[];
+}
+
+export class ImportCsvDto {
+  @ApiProperty({ description: "CSV file content as string" })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(10_000_000)
+  content: string;
+
+  @ApiProperty({ description: "Account ID to import transactions into" })
+  @IsUUID()
+  accountId: string;
+
+  @ApiProperty({
+    description: "Column mapping configuration",
+    type: CsvColumnMappingConfigDto,
+  })
+  @ValidateNested()
+  @Type(() => CsvColumnMappingConfigDto)
+  columnMapping: CsvColumnMappingConfigDto;
+
+  @ApiPropertyOptional({
+    description: "Transfer detection rules",
+    type: [CsvTransferRuleDto],
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(50)
+  @ValidateNested({ each: true })
+  @Type(() => CsvTransferRuleDto)
+  transferRules?: CsvTransferRuleDto[];
+
+  @ApiProperty({ description: "Category mappings", type: [CategoryMappingDto] })
+  @IsArray()
+  @ArrayMaxSize(500)
+  @ValidateNested({ each: true })
+  @Type(() => CategoryMappingDto)
+  categoryMappings: CategoryMappingDto[];
+
+  @ApiProperty({
+    description: "Account mappings for transfers",
+    type: [AccountMappingDto],
+  })
+  @IsArray()
+  @ArrayMaxSize(500)
+  @ValidateNested({ each: true })
+  @Type(() => AccountMappingDto)
+  accountMappings: AccountMappingDto[];
+
+  @ApiPropertyOptional({
+    description: "Date format override",
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(/^[YDMW/\-.]+$/, {
+    message:
+      "dateFormat must contain only date pattern characters (Y, M, D) and separators (/, -, .)",
+  })
+  @MaxLength(20)
+  dateFormat?: string;
+}
+
+// --- CSV Column Mapping CRUD DTOs ---
+
+export class CreateColumnMappingDto {
+  @ApiProperty({ description: "User-defined name for this mapping" })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(100)
+  @SanitizeHtml()
+  name: string;
+
+  @ApiProperty({
+    description: "Column mapping configuration",
+    type: CsvColumnMappingConfigDto,
+  })
+  @ValidateNested()
+  @Type(() => CsvColumnMappingConfigDto)
+  columnMappings: CsvColumnMappingConfigDto;
+
+  @ApiPropertyOptional({
+    description: "Transfer detection rules",
+    type: [CsvTransferRuleDto],
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(50)
+  @ValidateNested({ each: true })
+  @Type(() => CsvTransferRuleDto)
+  transferRules?: CsvTransferRuleDto[];
+}
+
+export class UpdateColumnMappingDto {
+  @ApiPropertyOptional({ description: "Updated name" })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  @SanitizeHtml()
+  name?: string;
+
+  @ApiPropertyOptional({
+    description: "Updated column mapping configuration",
+    type: CsvColumnMappingConfigDto,
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => CsvColumnMappingConfigDto)
+  columnMappings?: CsvColumnMappingConfigDto;
+
+  @ApiPropertyOptional({
+    description: "Updated transfer detection rules",
+    type: [CsvTransferRuleDto],
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(50)
+  @ValidateNested({ each: true })
+  @Type(() => CsvTransferRuleDto)
+  transferRules?: CsvTransferRuleDto[];
+}
+
+// --- Response DTOs ---
+
+export class CsvHeadersResponseDto {
+  @ApiProperty({ type: [String] })
+  headers: string[];
+
+  @ApiProperty({ description: "Sample data rows" })
+  sampleRows: string[][];
+
+  @ApiProperty()
+  rowCount: number;
+}
+
+export class ColumnMappingResponseDto {
+  @ApiProperty()
+  id: string;
+
+  @ApiProperty()
+  name: string;
+
+  @ApiProperty()
+  columnMappings: Record<string, unknown>;
+
+  @ApiProperty()
+  transferRules: Record<string, unknown>[];
+
+  @ApiProperty()
+  createdAt: Date;
+
+  @ApiProperty()
+  updatedAt: Date;
 }

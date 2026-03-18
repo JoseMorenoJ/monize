@@ -21,6 +21,7 @@ export interface UserPreferences {
   weekStartsOn: number;
   budgetDigestEnabled: boolean;
   budgetDigestDay: 'MONDAY' | 'FRIDAY';
+  favouriteReportIds: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -41,4 +42,5 @@ export interface UpdatePreferencesData {
   weekStartsOn?: number;
   budgetDigestEnabled?: boolean;
   budgetDigestDay?: 'MONDAY' | 'FRIDAY';
+  favouriteReportIds?: string[];
 }

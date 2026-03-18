@@ -55,6 +55,8 @@ services:
       AI_DEFAULT_MODEL: ${AI_DEFAULT_MODEL:-}
       AI_DEFAULT_API_KEY: ${AI_DEFAULT_API_KEY:-}
       AI_DEFAULT_BASE_URL: ${AI_DEFAULT_BASE_URL:-}
+      # HTTP mode (optional)
+      DISABLE_HTTPS_HEADERS: ${DISABLE_HTTPS_HEADERS:-false}
     networks:
       - monize-network
     healthcheck:
@@ -86,6 +88,7 @@ services:
       NODE_ENV: production
       INTERNAL_API_URL: http://backend:3000
       PUBLIC_APP_URL: ${PUBLIC_APP_URL}
+      DISABLE_HTTPS_HEADERS: ${DISABLE_HTTPS_HEADERS:-false}
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
     networks:

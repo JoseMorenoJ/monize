@@ -65,3 +65,7 @@ backup.sql
 # Sensitive data
 secrets/
 credentials/
+movements.csv
+movements.qif
+csv2qif.py
+categories.csv

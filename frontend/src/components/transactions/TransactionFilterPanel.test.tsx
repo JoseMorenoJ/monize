@@ -16,6 +16,7 @@ function createAccount(overrides: Partial<Account> = {}): Account {
     scheduledTransactionId: null, assetCategoryId: null, dateAcquired: null,
     isCanadianMortgage: false, isVariableRate: false, termMonths: null, termEndDate: null,
     amortizationMonths: null, originalPrincipal: null,
+    statementDueDay: null, statementSettlementDay: null,
     createdAt: '2024-01-01T00:00:00Z', updatedAt: '2024-01-01T00:00:00Z',
     ...overrides,
   };
@@ -77,6 +78,10 @@ describe('TransactionFilterPanel', () => {
     setFilterEndDate: vi.fn(),
     setFilterSearch: vi.fn(),
     setFilterTimePeriod: vi.fn(),
+    filterAmountFrom: '',
+    filterAmountTo: '',
+    setFilterAmountFrom: vi.fn(),
+    setFilterAmountTo: vi.fn(),
     filtersExpanded: false,
     setFiltersExpanded: vi.fn(),
     activeFilterCount: 0,
@@ -88,6 +93,10 @@ describe('TransactionFilterPanel', () => {
     categoryFilterOptions: [],
     payeeFilterOptions: [],
     formatDate: vi.fn((d: string) => d),
+    filterTagIds: [] as string[],
+    setFilterTagIds: vi.fn(),
+    selectedTags: [],
+    tagFilterOptions: [],
     onClearFilters: vi.fn(),
   };
 
@@ -1460,6 +1469,166 @@ describe('TransactionFilterPanel', () => {
 
       const select = screen.getByLabelText('Time Period');
       expect(select).toHaveValue('this_week');
+    });
+  });
+
+  // ----------------------------------------------------------------
+  // Amount filter tests
+  // ----------------------------------------------------------------
+
+  describe('amount filters', () => {
+    it('renders Amount From and Amount To inputs when expanded', () => {
+      render(
+        <TransactionFilterPanel
+          {...defaultProps}
+          filtersExpanded={true}
+        />
+      );
+
+      expect(screen.getByLabelText('Amount From')).toBeInTheDocument();
+      expect(screen.getByLabelText('Amount To')).toBeInTheDocument();
+    });
+
+    it('amount inputs are in overflow-hidden container when collapsed', () => {
+      const { container } = render(
+        <TransactionFilterPanel
+          {...defaultProps}
+          filtersExpanded={false}
+        />
+      );
+
+      // The inputs are in the DOM but inside a container with overflow-hidden
+      expect(screen.getByLabelText('Amount From')).toBeInTheDocument();
+      const overflowDiv = container.querySelector('.overflow-hidden');
+      expect(overflowDiv).toBeInTheDocument();
+    });
+
+    it('displays current amount filter values', () => {
+      render(
+        <TransactionFilterPanel
+          {...defaultProps}
+          filtersExpanded={true}
+          filterAmountFrom="10.50"
+          filterAmountTo="99.99"
+        />
+      );
+
+      expect(screen.getByLabelText('Amount From')).toHaveValue(10.5);
+      expect(screen.getByLabelText('Amount To')).toHaveValue(99.99);
+    });
+
+    it('calls handleFilterChange with setFilterAmountFrom when Amount From changes', () => {
+      render(
+        <TransactionFilterPanel
+          {...defaultProps}
+          filtersExpanded={true}
+        />
+      );
+
+      const amountFromInput = screen.getByLabelText('Amount From');
+      fireEvent.change(amountFromInput, { target: { value: '25' } });
+
+      expect(defaultProps.handleFilterChange).toHaveBeenCalledWith(
+        defaultProps.setFilterAmountFrom,
+        '25',
+      );
+    });
+
+    it('calls handleFilterChange with setFilterAmountTo when Amount To changes', () => {
+      render(
+        <TransactionFilterPanel
+          {...defaultProps}
+          filtersExpanded={true}
+        />
+      );
+
+      const amountToInput = screen.getByLabelText('Amount To');
+      fireEvent.change(amountToInput, { target: { value: '500' } });
+
+      expect(defaultProps.handleFilterChange).toHaveBeenCalledWith(
+        defaultProps.setFilterAmountTo,
+        '500',
+      );
+    });
+
+    it('shows amount range chip when collapsed with both amountFrom and amountTo', () => {
+      render(
+        <TransactionFilterPanel
+          {...defaultProps}
+          filtersExpanded={false}
+          activeFilterCount={2}
+          filterAmountFrom="10"
+          filterAmountTo="100"
+        />
+      );
+
+      expect(screen.getByText('10 - 100')).toBeInTheDocument();
+    });
+
+    it('shows "From" chip when only amountFrom is set', () => {
+      render(
+        <TransactionFilterPanel
+          {...defaultProps}
+          filtersExpanded={false}
+          activeFilterCount={1}
+          filterAmountFrom="50"
+          filterAmountTo=""
+        />
+      );
+
+      expect(screen.getByText('From 50')).toBeInTheDocument();
+    });
+
+    it('shows "Up to" chip when only amountTo is set', () => {
+      render(
+        <TransactionFilterPanel
+          {...defaultProps}
+          filtersExpanded={false}
+          activeFilterCount={1}
+          filterAmountFrom=""
+          filterAmountTo="200"
+        />
+      );
+
+      expect(screen.getByText('Up to 200')).toBeInTheDocument();
+    });
+
+    it('clears both amount filters when chip remove button is clicked', () => {
+      render(
+        <TransactionFilterPanel
+          {...defaultProps}
+          filtersExpanded={false}
+          activeFilterCount={2}
+          filterAmountFrom="10"
+          filterAmountTo="100"
+        />
+      );
+
+      const removeButton = screen.getByLabelText('Remove amount filter');
+      fireEvent.click(removeButton);
+
+      expect(defaultProps.handleFilterChange).toHaveBeenCalledWith(
+        defaultProps.setFilterAmountFrom,
+        '',
+      );
+      expect(defaultProps.handleFilterChange).toHaveBeenCalledWith(
+        defaultProps.setFilterAmountTo,
+        '',
+      );
+    });
+
+    it('does not show amount chip when both values are empty', () => {
+      render(
+        <TransactionFilterPanel
+          {...defaultProps}
+          filtersExpanded={false}
+          activeFilterCount={0}
+          filterAmountFrom=""
+          filterAmountTo=""
+        />
+      );
+
+      expect(screen.queryByLabelText('Remove amount filter')).not.toBeInTheDocument();
     });
   });
 });

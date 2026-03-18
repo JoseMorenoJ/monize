@@ -18,11 +18,11 @@ jobs:
       run:
         working-directory: backend
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
-          node-version: 20
-      - run: npm install
+          node-version: 24
+      - run: npm ci
       - run: npm run lint
       - run: npx tsc --noEmit
 
@@ -33,15 +33,15 @@ jobs:
       run:
         working-directory: backend
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
-          node-version: 20
-      - run: npm install
+          node-version: 24
+      - run: npm ci
       - run: npm run test:unit -- --coverage
       - name: Upload coverage
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: backend-unit-coverage
           path: backend/coverage/
@@ -75,11 +75,11 @@ jobs:
       JWT_SECRET: test-jwt-secret-for-ci-minimum-32-characters-long
       NODE_ENV: test
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
-          node-version: 20
-      - run: npm install
+          node-version: 24
+      - run: npm ci
       - run: npm run build
       - run: npm run test:integration
 
@@ -90,11 +90,11 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
-          node-version: 20
-      - run: npm install
+          node-version: 24
+      - run: npm ci
       - run: npm run lint
       - run: npm run type-check
 
@@ -105,18 +105,48 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
-          node-version: 20
-      - run: npm install
+          node-version: 24
+      - run: npm ci
       - run: npm run test:cov
       - name: Upload coverage
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: frontend-coverage
           path: frontend/coverage/
+
+  npm-audit:
+    name: NPM Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - run: cd backend && npm ci && npm audit --audit-level=high
+      - run: cd frontend && npm ci && npm audit --audit-level=high
+
+  bearer-scan:
+    name: Bearer Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Bearer
+        uses: bearer/bearer-action@v2
+        with:
+          # We explicitly don't provide HTTPS out-of-the-box since most users self-host in environments where HTTPS is terminated at a reverse proxy, and we provide guidance on how to securely configure this in our docs. 
+          # We also have some known exception messages that contain payee names which would otherwise be flagged as potential secrets, but we have determined that the risk of these being exploited is low and the value of having the full exception message in our logs outweighs the risk.
+          skip-rule: "javascript_lang_logger_leak,javascript_express_https_protocol_missing,javascript_lang_exception" 
+          # Exclude some false positives and low-risk findings that we are aware of and have accepted for now. We can re-evaluate these over time to see if any should be remediated.
+          # b65bd7b1a0585cd1d0a326cdb09ce40d_0 - Hard-coded secret used for demo site
+          # da119900eefffd8b84e7693e0388568a_0 - Hard-coded secret used for E2E tests
+          # 95857358158e4664c01c05441df9f2a9_0 - Hard-coded secret used for demo site
+          # 842822dd22cd4403ab5800ac89480c0a_0 - Insufficient randomness for inconsequential task
+          # aa2e6330aede1004652f740df19e1d86_0 - Insufficient randomness for inconsequential task
+          exclude-fingerprint: "b65bd7b1a0585cd1d0a326cdb09ce40d_0,da119900eefffd8b84e7693e0388568a_0,95857358158e4664c01c05441df9f2a9_0,842822dd22cd4403ab5800ac89480c0a_0,aa2e6330aede1004652f740df19e1d86_0"
 
   build-and-push:
     name: Build & Push Containers
@@ -129,18 +159,19 @@ jobs:
         backend-integration-tests,
         frontend-lint,
         frontend-unit-tests,
+        npm-audit,
       ]
     permissions:
       contents: write
       packages: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
 
       - name: Bump patch version
         id: version
@@ -240,10 +271,10 @@ jobs:
   #     NODE_ENV: development
   #     PUBLIC_APP_URL: http://localhost:3001
   #   steps:
-  #     - uses: actions/checkout@v4
-  #     - uses: actions/setup-node@v4
+  #     - uses: actions/checkout@v6
+  #     - uses: actions/setup-node@v6
   #       with:
-  #         node-version: 20
+  #         node-version: 24
   #     - name: Create .env for Docker Compose
   #       run: |
   #         cat > .env << 'EOF'
@@ -271,7 +302,7 @@ jobs:
   #       run: npx playwright test --project=chromium
   #     - name: Upload test report
   #       if: always()
-  #       uses: actions/upload-artifact@v4
+  #       uses: actions/upload-artifact@v7
   #       with:
   #         name: e2e-report
   #         path: e2e/playwright-report/

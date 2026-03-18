@@ -268,7 +268,7 @@ export class BudgetPeriodService {
       const directSpending = await this.transactionsRepository
         .createQueryBuilder("t")
         .select("t.category_id", "categoryId")
-        .addSelect("COALESCE(SUM(ABS(t.amount)), 0)", "total")
+        .addSelect("COALESCE(SUM(t.amount), 0)", "total")
         .where("t.user_id = :userId", { userId })
         .andWhere("t.category_id IN (:...categoryIds)", { categoryIds })
         .andWhere("t.transaction_date >= :periodStart", { periodStart })
@@ -286,7 +286,7 @@ export class BudgetPeriodService {
         .createQueryBuilder("s")
         .innerJoin("s.transaction", "t")
         .select("s.category_id", "categoryId")
-        .addSelect("COALESCE(SUM(ABS(s.amount)), 0)", "total")
+        .addSelect("COALESCE(SUM(s.amount), 0)", "total")
         .where("t.user_id = :userId", { userId })
         .andWhere("s.category_id IN (:...categoryIds)", { categoryIds })
         .andWhere("t.transaction_date >= :periodStart", { periodStart })
@@ -319,7 +319,7 @@ export class BudgetPeriodService {
         .createQueryBuilder("t")
         .innerJoin("t.linkedTransaction", "lt")
         .select("lt.account_id", "destinationAccountId")
-        .addSelect("COALESCE(SUM(ABS(t.amount)), 0)", "total")
+        .addSelect("COALESCE(ABS(SUM(t.amount)), 0)", "total")
         .where("t.user_id = :userId", { userId })
         .andWhere("t.is_transfer = true")
         .andWhere("t.amount < 0")
@@ -345,7 +345,8 @@ export class BudgetPeriodService {
         const amount = transferSpendingMap.get(bc.transferAccountId) || 0;
         result.set(bc.id, amount);
       } else if (bc.categoryId) {
-        const amount = spendingByCategoryId.get(bc.categoryId) || 0;
+        const raw = spendingByCategoryId.get(bc.categoryId) || 0;
+        const amount = bc.isIncome ? Math.max(raw, 0) : Math.max(-raw, 0);
         result.set(bc.id, amount);
       }
     }

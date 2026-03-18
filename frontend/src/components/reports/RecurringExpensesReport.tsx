@@ -14,6 +14,8 @@ import { builtInReportsApi } from '@/lib/built-in-reports';
 import { RecurringExpenseItem, RecurringExpensesResponse } from '@/types/built-in-reports';
 import { useNumberFormat } from '@/hooks/useNumberFormat';
 import { CHART_COLOURS } from '@/lib/chart-colours';
+import { exportToCsv } from '@/lib/csv-export';
+import { ExportDropdown } from '@/components/ui/ExportDropdown';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('RecurringExpensesReport');
@@ -48,6 +50,42 @@ export function RecurringExpensesReport() {
       color: CHART_COLOURS[index % CHART_COLOURS.length],
     }));
   }, [recurringData]);
+
+  const handleExportCsv = () => {
+    if (!recurringData) return;
+    const headers = ['Payee', 'Category', 'Frequency', 'Count', 'Avg Amount', '6-Mo Total', 'Last Paid'];
+    const rows = recurringData.data.map((e) => [
+      e.payeeName,
+      e.categoryName,
+      e.frequency,
+      e.occurrences,
+      e.averageAmount,
+      e.totalAmount,
+      format(new Date(e.lastTransactionDate), 'yyyy-MM-dd'),
+    ]);
+    exportToCsv('recurring-expenses', headers, rows);
+  };
+
+  const handleExportPdf = async () => {
+    if (!recurringData) return;
+    const { exportToPdf } = await import('@/lib/pdf-export');
+    const headers = ['Payee', 'Category', 'Frequency', 'Count', 'Avg Amount', '6-Mo Total', 'Last Paid'];
+    const rows = recurringData.data.map((e) => [
+      e.payeeName,
+      e.categoryName,
+      e.frequency,
+      e.occurrences,
+      e.averageAmount,
+      e.totalAmount,
+      format(new Date(e.lastTransactionDate), 'yyyy-MM-dd'),
+    ]);
+    await exportToPdf({
+      title: 'Recurring Expenses',
+      subtitle: `${recurringData.summary.uniquePayees} recurring payees identified`,
+      tableData: { headers, rows },
+      filename: 'recurring-expenses',
+    });
+  };
 
   const handlePayeeClick = (payeeId: string | null) => {
     if (payeeId) {
@@ -184,10 +222,11 @@ export function RecurringExpensesReport() {
 
           {/* Table */}
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+            <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
                 All Recurring Expenses
               </h3>
+              <ExportDropdown onExportCsv={handleExportCsv} onExportPdf={handleExportPdf} />
             </div>
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">

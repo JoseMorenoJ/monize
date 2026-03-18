@@ -14,6 +14,8 @@ import {
   BulkReconcileResult,
   BulkUpdateData,
   BulkUpdateResult,
+  BulkDeleteData,
+  BulkDeleteResult,
   MonthlyTotal,
 } from '@/types/transaction';
 import { invalidateCache } from './apiCache';
@@ -26,6 +28,7 @@ function buildFilterParams(params?: {
   categoryIds?: string[];
   payeeId?: string;
   payeeIds?: string[];
+  tagIds?: string[];
 }): Record<string, string | undefined> {
   const result: Record<string, string | undefined> = {};
 
@@ -45,6 +48,10 @@ function buildFilterParams(params?: {
     result.payeeIds = params.payeeIds.join(',');
   } else if (params?.payeeId) {
     result.payeeId = params.payeeId;
+  }
+
+  if (params?.tagIds && params.tagIds.length > 0) {
+    result.tagIds = params.tagIds.join(',');
   }
 
   return result;
@@ -73,6 +80,9 @@ export const transactionsApi = {
     limit?: number;
     search?: string;
     targetTransactionId?: string;
+    amountFrom?: number;
+    amountTo?: number;
+    tagIds?: string[];
   }): Promise<PaginatedTransactions> => {
     const apiParams = {
       ...buildFilterParams(params),
@@ -82,6 +92,8 @@ export const transactionsApi = {
       limit: params?.limit,
       search: params?.search,
       targetTransactionId: params?.targetTransactionId,
+      amountFrom: params?.amountFrom,
+      amountTo: params?.amountTo,
     };
 
     const response = await apiClient.get<PaginatedTransactions>('/transactions', {
@@ -153,12 +165,17 @@ export const transactionsApi = {
     payeeId?: string;
     payeeIds?: string[];
     search?: string;
+    amountFrom?: number;
+    amountTo?: number;
+    tagIds?: string[];
   }): Promise<TransactionSummary> => {
     const apiParams = {
       ...buildFilterParams(params),
       startDate: params?.startDate,
       endDate: params?.endDate,
       search: params?.search,
+      amountFrom: params?.amountFrom,
+      amountTo: params?.amountTo,
     };
 
     const response = await apiClient.get<TransactionSummary>('/transactions/summary', {
@@ -176,12 +193,17 @@ export const transactionsApi = {
     categoryIds?: string[];
     payeeIds?: string[];
     search?: string;
+    amountFrom?: number;
+    amountTo?: number;
+    tagIds?: string[];
   }): Promise<MonthlyTotal[]> => {
     const apiParams = {
       ...buildFilterParams(params),
       startDate: params?.startDate,
       endDate: params?.endDate,
       search: params?.search,
+      amountFrom: params?.amountFrom,
+      amountTo: params?.amountTo,
     };
 
     const response = await apiClient.get<MonthlyTotal[]>('/transactions/monthly-totals', {
@@ -305,6 +327,17 @@ export const transactionsApi = {
   bulkUpdate: async (data: BulkUpdateData): Promise<BulkUpdateResult> => {
     const response = await apiClient.post<BulkUpdateResult>(
       '/transactions/bulk-update',
+      data,
+    );
+    invalidateCache('accounts:');
+    invalidateCache('investments:');
+    return response.data;
+  },
+
+  // Bulk delete transactions
+  bulkDelete: async (data: BulkDeleteData): Promise<BulkDeleteResult> => {
+    const response = await apiClient.post<BulkDeleteResult>(
+      '/transactions/bulk-delete',
       data,
     );
     invalidateCache('accounts:');

@@ -12,7 +12,7 @@ describe('SelectAccountStep', () => {
       investmentTransactions: [],
       qifType: 'Bank' as const,
       accountType: 'Bank',
-      accountName: null,
+      accountName: '',
       transactionCount: 1,
       dateRange: { start: '2024-01-01', end: '2024-01-31' },
       categories: [],
@@ -248,6 +248,7 @@ describe('SelectAccountStep', () => {
       {
         fileName: 'file1.qif',
         fileContent: '',
+        fileType: 'qif' as const,
         parsedData: { ...defaultProps.parsedData, transactionCount: 5 },
         selectedAccountId: '',
         matchConfidence: 'none' as const,
@@ -268,6 +269,7 @@ describe('SelectAccountStep', () => {
       {
         fileName: 'checking.qif',
         fileContent: '',
+        fileType: 'qif' as const,
         parsedData: { ...defaultProps.parsedData, transactionCount: 10 },
         selectedAccountId: '',
         matchConfidence: 'none' as const,
@@ -275,6 +277,7 @@ describe('SelectAccountStep', () => {
       {
         fileName: 'savings.qif',
         fileContent: '',
+        fileType: 'qif' as const,
         parsedData: { ...defaultProps.parsedData, transactionCount: 3 },
         selectedAccountId: '',
         matchConfidence: 'none' as const,
@@ -299,6 +302,7 @@ describe('SelectAccountStep', () => {
       {
         fileName: 'file1.qif',
         fileContent: '',
+        fileType: 'qif' as const,
         parsedData: { ...defaultProps.parsedData, transactionCount: 7 },
         selectedAccountId: '',
         matchConfidence: 'none' as const,
@@ -306,6 +310,7 @@ describe('SelectAccountStep', () => {
       {
         fileName: 'file2.qif',
         fileContent: '',
+        fileType: 'qif' as const,
         parsedData: { ...defaultProps.parsedData, transactionCount: 3 },
         selectedAccountId: '',
         matchConfidence: 'none' as const,
@@ -327,6 +332,7 @@ describe('SelectAccountStep', () => {
       {
         fileName: 'file1.qif',
         fileContent: '',
+        fileType: 'qif' as const,
         parsedData: { ...defaultProps.parsedData, transactionCount: 5 },
         selectedAccountId: '',
         matchConfidence: 'none' as const,
@@ -348,6 +354,7 @@ describe('SelectAccountStep', () => {
       {
         fileName: 'file1.qif',
         fileContent: '',
+        fileType: 'qif' as const,
         parsedData: { ...defaultProps.parsedData, transactionCount: 5 },
         selectedAccountId: 'acc-1',
         matchConfidence: 'exact' as const,
@@ -369,6 +376,7 @@ describe('SelectAccountStep', () => {
       {
         fileName: 'file1.qif',
         fileContent: '',
+        fileType: 'qif' as const,
         parsedData: { ...defaultProps.parsedData, transactionCount: 5 },
         selectedAccountId: 'acc-1',
         matchConfidence: 'exact' as const,
@@ -390,6 +398,7 @@ describe('SelectAccountStep', () => {
       {
         fileName: 'file1.qif',
         fileContent: '',
+        fileType: 'qif' as const,
         parsedData: { ...defaultProps.parsedData, transactionCount: 5 },
         selectedAccountId: 'acc-1',
         matchConfidence: 'partial' as const,
@@ -411,6 +420,7 @@ describe('SelectAccountStep', () => {
       {
         fileName: 'file1.qif',
         fileContent: '',
+        fileType: 'qif' as const,
         parsedData: { ...defaultProps.parsedData, transactionCount: 5 },
         selectedAccountId: '',
         matchConfidence: 'none' as const,
@@ -431,6 +441,7 @@ describe('SelectAccountStep', () => {
       {
         fileName: 'file1.qif',
         fileContent: '',
+        fileType: 'qif' as const,
         parsedData: { ...defaultProps.parsedData, transactionCount: 5 },
         selectedAccountId: '',
         matchConfidence: 'none' as const,
@@ -454,6 +465,7 @@ describe('SelectAccountStep', () => {
       {
         fileName: 'portfolio.qif',
         fileContent: '',
+        fileType: 'qif' as const,
         parsedData: { ...defaultProps.parsedData, accountType: 'INVESTMENT', transactionCount: 5 },
         selectedAccountId: '',
         matchConfidence: 'none' as const,
