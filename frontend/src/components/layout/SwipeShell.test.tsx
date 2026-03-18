@@ -16,7 +16,16 @@ vi.mock('./AppHeader', () => ({
 
 // Mock BackendDownBanner
 vi.mock('./BackendDownBanner', () => ({
-  BackendDownBanner: () => <div data-testid="backend-down-banner">BackendDownBanner</div>,
+  BackendDownBanner: (props: any) => (
+    <div data-testid="backend-down-banner" data-https-active={props.httpsHeadersActive}>BackendDownBanner</div>
+  ),
+}));
+
+// Mock HttpWarningBanner
+vi.mock('./HttpWarningBanner', () => ({
+  HttpWarningBanner: (props: any) => (
+    <div data-testid="http-warning-banner" data-https-active={props.httpsHeadersActive}>HttpWarningBanner</div>
+  ),
 }));
 
 // Mock SwipeIndicator
@@ -79,5 +88,31 @@ describe('SwipeShell', () => {
     mockPathname = '/login';
     render(<SwipeShell><p>Login form</p></SwipeShell>);
     expect(screen.getByTestId('backend-down-banner')).toBeInTheDocument();
+  });
+
+  it('renders HttpWarningBanner on app pages', () => {
+    mockPathname = '/dashboard';
+    render(<SwipeShell><p>Content</p></SwipeShell>);
+    expect(screen.getByTestId('http-warning-banner')).toBeInTheDocument();
+  });
+
+  it('renders HttpWarningBanner on auth routes', () => {
+    mockPathname = '/login';
+    render(<SwipeShell><p>Login form</p></SwipeShell>);
+    expect(screen.getByTestId('http-warning-banner')).toBeInTheDocument();
+  });
+
+  it('passes httpsHeadersActive to banners', () => {
+    mockPathname = '/dashboard';
+    render(<SwipeShell httpsHeadersActive={true}><p>Content</p></SwipeShell>);
+    expect(screen.getByTestId('backend-down-banner')).toHaveAttribute('data-https-active', 'true');
+    expect(screen.getByTestId('http-warning-banner')).toHaveAttribute('data-https-active', 'true');
+  });
+
+  it('defaults httpsHeadersActive to false', () => {
+    mockPathname = '/dashboard';
+    render(<SwipeShell><p>Content</p></SwipeShell>);
+    expect(screen.getByTestId('backend-down-banner')).toHaveAttribute('data-https-active', 'false');
+    expect(screen.getByTestId('http-warning-banner')).toHaveAttribute('data-https-active', 'false');
   });
 });

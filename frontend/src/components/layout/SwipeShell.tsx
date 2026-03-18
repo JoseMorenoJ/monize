@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { AppHeader } from './AppHeader';
 import { BackendDownBanner } from './BackendDownBanner';
 import { DemoModeBanner } from './DemoModeBanner';
+import { HttpWarningBanner } from './HttpWarningBanner';
 import { SwipeIndicator } from './SwipeIndicator';
 import { useSwipeNavigation } from '@/hooks/useSwipeNavigation';
 
@@ -12,9 +13,10 @@ const AUTH_ROUTES = ['/login', '/register', '/forgot-password', '/reset-password
 
 interface SwipeShellProps {
   children: ReactNode;
+  httpsHeadersActive?: boolean;
 }
 
-export function SwipeShell({ children }: SwipeShellProps) {
+export function SwipeShell({ children, httpsHeadersActive = false }: SwipeShellProps) {
   const pathname = usePathname();
   const { contentRef, currentIndex, totalPages, isSwipePage } = useSwipeNavigation();
 
@@ -23,7 +25,8 @@ export function SwipeShell({ children }: SwipeShellProps) {
   if (isAuthRoute) {
     return (
       <>
-        <BackendDownBanner />
+        <HttpWarningBanner httpsHeadersActive={httpsHeadersActive} />
+        <BackendDownBanner httpsHeadersActive={httpsHeadersActive} />
         {children}
       </>
     );
@@ -32,7 +35,8 @@ export function SwipeShell({ children }: SwipeShellProps) {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 overflow-x-hidden">
       <AppHeader />
-      <BackendDownBanner />
+      <HttpWarningBanner httpsHeadersActive={httpsHeadersActive} />
+      <BackendDownBanner httpsHeadersActive={httpsHeadersActive} />
       <DemoModeBanner />
       <SwipeIndicator currentIndex={currentIndex} totalPages={totalPages} isSwipePage={isSwipePage} />
       <div ref={contentRef}>

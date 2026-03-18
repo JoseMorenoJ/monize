@@ -31,7 +31,7 @@ import { UpdateSplitsDto } from "./dto/update-splits.dto";
 import { CreateTransferDto } from "./dto/create-transfer.dto";
 import { UpdateTransferDto } from "./dto/update-transfer.dto";
 import { BulkReconcileDto } from "./dto/bulk-reconcile.dto";
-import { BulkUpdateDto } from "./dto/bulk-update.dto";
+import { BulkUpdateDto, BulkDeleteDto } from "./dto/bulk-update.dto";
 import { MarkClearedDto } from "./dto/mark-cleared.dto";
 import { UpdateTransactionStatusDto } from "./dto/update-transaction-status.dto";
 import {
@@ -137,6 +137,11 @@ export class TransactionsController {
     description: "Filter by maximum amount (inclusive)",
   })
   @ApiQuery({
+    name: "tagIds",
+    required: false,
+    description: "Filter by tag IDs (comma-separated)",
+  })
+  @ApiQuery({
     name: "targetTransactionId",
     required: false,
     description:
@@ -165,6 +170,7 @@ export class TransactionsController {
     @Query("targetTransactionId") targetTransactionId?: string,
     @Query("amountFrom") amountFrom?: string,
     @Query("amountTo") amountTo?: string,
+    @Query("tagIds") tagIdsParam?: string,
   ) {
     // Validate pagination parameters
     if (page !== undefined) {
@@ -220,6 +226,7 @@ export class TransactionsController {
       targetTransactionId,
       parsedAmountFrom,
       parsedAmountTo,
+      parseUuids(tagIdsParam),
     );
   }
 
@@ -387,6 +394,7 @@ export class TransactionsController {
     @Query("search") search?: string,
     @Query("amountFrom") amountFrom?: string,
     @Query("amountTo") amountTo?: string,
+    @Query("tagIds") tagIdsParam?: string,
   ) {
     validateDateParam(startDate, "startDate");
     validateDateParam(endDate, "endDate");
@@ -413,6 +421,7 @@ export class TransactionsController {
       search,
       parsedAmountFrom,
       parsedAmountTo,
+      parseUuids(tagIdsParam),
     );
   }
 
@@ -513,6 +522,18 @@ export class TransactionsController {
   @ApiResponse({ status: 401, description: "Unauthorized" })
   bulkUpdate(@Request() req, @Body() bulkUpdateDto: BulkUpdateDto) {
     return this.transactionsService.bulkUpdate(req.user.id, bulkUpdateDto);
+  }
+
+  @Post("bulk-delete")
+  @ApiOperation({ summary: "Bulk delete transactions by IDs or filters" })
+  @ApiResponse({
+    status: 200,
+    description: "Transactions deleted successfully",
+  })
+  @ApiResponse({ status: 400, description: "Bad request" })
+  @ApiResponse({ status: 401, description: "Unauthorized" })
+  bulkDelete(@Request() req, @Body() bulkDeleteDto: BulkDeleteDto) {
+    return this.transactionsService.bulkDelete(req.user.id, bulkDeleteDto);
   }
 
   // ==================== Single Transaction CRUD (:id param routes) ====================

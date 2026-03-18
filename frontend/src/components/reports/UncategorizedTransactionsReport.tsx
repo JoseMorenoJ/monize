@@ -9,6 +9,8 @@ import { parseLocalDate } from '@/lib/utils';
 import { useNumberFormat } from '@/hooks/useNumberFormat';
 import { useDateRange } from '@/hooks/useDateRange';
 import { DateRangeSelector } from '@/components/ui/DateRangeSelector';
+import { exportToCsv } from '@/lib/csv-export';
+import { ExportDropdown } from '@/components/ui/ExportDropdown';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('UncategorizedTransactionsReport');
@@ -97,6 +99,36 @@ export function UncategorizedTransactionsReport() {
       setSortField(field);
       setSortOrder('desc');
     }
+  };
+
+  const handleExportCsv = () => {
+    const headers = ['Date', 'Payee', 'Description', 'Account', 'Amount'];
+    const rows = filteredAndSortedTransactions.map((tx) => [
+      format(parseLocalDate(tx.transactionDate), 'yyyy-MM-dd'),
+      tx.payeeName || 'Unknown',
+      tx.description || '',
+      tx.accountName || 'Unknown',
+      tx.amount,
+    ]);
+    exportToCsv('uncategorized-transactions', headers, rows);
+  };
+
+  const handleExportPdf = async () => {
+    const { exportToPdf } = await import('@/lib/pdf-export');
+    const headers = ['Date', 'Payee', 'Description', 'Account', 'Amount'];
+    const rows = filteredAndSortedTransactions.map((tx) => [
+      format(parseLocalDate(tx.transactionDate), 'yyyy-MM-dd'),
+      tx.payeeName || 'Unknown',
+      tx.description || '',
+      tx.accountName || 'Unknown',
+      tx.amount,
+    ]);
+    await exportToPdf({
+      title: 'Uncategorized Transactions',
+      subtitle: `${filteredAndSortedTransactions.length} transactions`,
+      tableData: { headers, rows },
+      filename: 'uncategorized-transactions',
+    });
   };
 
   const SortIcon = ({ field }: { field: SortField }) => {
@@ -233,13 +265,16 @@ export function UncategorizedTransactionsReport() {
         </div>
       ) : (
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-              Uncategorized Transactions
-            </h3>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-              Click a transaction to view it in the transactions page
-            </p>
+          <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                Uncategorized Transactions
+              </h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                Click a transaction to view it in the transactions page
+              </p>
+            </div>
+            <ExportDropdown onExportCsv={handleExportCsv} onExportPdf={handleExportPdf} />
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">

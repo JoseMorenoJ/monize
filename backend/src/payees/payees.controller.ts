@@ -25,9 +25,12 @@ import { AuthGuard } from "@nestjs/passport";
 import { PayeesService } from "./payees.service";
 import { CreatePayeeDto } from "./dto/create-payee.dto";
 import { UpdatePayeeDto } from "./dto/update-payee.dto";
+import { CreatePayeeAliasDto } from "./dto/create-payee-alias.dto";
+import { MergePayeeDto } from "./dto/merge-payee.dto";
 import { ApplyCategorySuggestionsDto } from "./dto/apply-category-suggestions.dto";
 import { DeactivatePayeesDto } from "./dto/deactivate-payees.dto";
 import { Payee } from "./entities/payee.entity";
+import { PayeeAlias } from "./entities/payee-alias.entity";
 
 @ApiTags("Payees")
 @ApiBearerAuth()
@@ -149,6 +152,57 @@ export class PayeesController {
     return this.payeesService.getSummary(req.user.id);
   }
 
+  @Get("aliases")
+  @ApiOperation({ summary: "Get all aliases for the user" })
+  @ApiResponse({
+    status: 200,
+    description: "List of all aliases",
+    type: [PayeeAlias],
+  })
+  getAllAliases(@Request() req): Promise<PayeeAlias[]> {
+    return this.payeesService.getAllAliases(req.user.id);
+  }
+
+  @Post("aliases")
+  @ApiOperation({ summary: "Create a new payee alias" })
+  @ApiResponse({
+    status: 201,
+    description: "Alias created successfully",
+    type: PayeeAlias,
+  })
+  @ApiResponse({
+    status: 409,
+    description: "Alias conflicts with existing alias",
+  })
+  createAlias(
+    @Request() req,
+    @Body() dto: CreatePayeeAliasDto,
+  ): Promise<PayeeAlias> {
+    return this.payeesService.createAlias(req.user.id, dto);
+  }
+
+  @Delete("aliases/:aliasId")
+  @ApiOperation({ summary: "Delete a payee alias" })
+  @ApiResponse({ status: 200, description: "Alias deleted successfully" })
+  @ApiResponse({ status: 404, description: "Alias not found" })
+  removeAlias(
+    @Request() req,
+    @Param("aliasId", ParseUUIDPipe) aliasId: string,
+  ): Promise<void> {
+    return this.payeesService.removeAlias(req.user.id, aliasId);
+  }
+
+  @Post("merge")
+  @ApiOperation({
+    summary:
+      "Merge one payee into another (reassign transactions, optionally add alias, delete source)",
+  })
+  @ApiResponse({ status: 200, description: "Payees merged successfully" })
+  @ApiResponse({ status: 404, description: "Payee not found" })
+  mergePayees(@Request() req, @Body() dto: MergePayeeDto) {
+    return this.payeesService.mergePayees(req.user.id, dto);
+  }
+
   @Get("category-suggestions/preview")
   @ApiOperation({
     summary:
@@ -265,6 +319,21 @@ export class PayeesController {
     @Param("id", ParseUUIDPipe) id: string,
   ): Promise<Payee> {
     return this.payeesService.reactivatePayee(req.user.id, id);
+  }
+
+  @Get(":id/aliases")
+  @ApiOperation({ summary: "Get all aliases for a specific payee" })
+  @ApiResponse({
+    status: 200,
+    description: "List of aliases for the payee",
+    type: [PayeeAlias],
+  })
+  @ApiResponse({ status: 404, description: "Payee not found" })
+  getAliases(
+    @Request() req,
+    @Param("id", ParseUUIDPipe) id: string,
+  ): Promise<PayeeAlias[]> {
+    return this.payeesService.getAliases(req.user.id, id);
   }
 
   @Get("inactive/match")

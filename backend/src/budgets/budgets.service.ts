@@ -861,7 +861,7 @@ export class BudgetsService {
     const [directResult, splitResult] = await Promise.all([
       this.transactionsRepository
         .createQueryBuilder("t")
-        .select("COALESCE(SUM(ABS(t.amount)), 0)", "total")
+        .select("COALESCE(SUM(t.amount), 0)", "total")
         .where("t.user_id = :userId", { userId })
         .andWhere("t.category_id IN (:...incomeCategoryIds)", {
           incomeCategoryIds,
@@ -874,7 +874,7 @@ export class BudgetsService {
       this.splitsRepository
         .createQueryBuilder("s")
         .innerJoin("s.transaction", "t")
-        .select("COALESCE(SUM(ABS(s.amount)), 0)", "total")
+        .select("COALESCE(SUM(s.amount), 0)", "total")
         .where("t.user_id = :userId", { userId })
         .andWhere("s.category_id IN (:...incomeCategoryIds)", {
           incomeCategoryIds,
@@ -885,9 +885,10 @@ export class BudgetsService {
         .getRawOne(),
     ]);
 
-    return (
+    return Math.max(
       parseFloat(directResult?.total || "0") +
-      parseFloat(splitResult?.total || "0")
+        parseFloat(splitResult?.total || "0"),
+      0,
     );
   }
 

@@ -363,7 +363,7 @@ export class BudgetHealthReportsService {
             "TO_CHAR(DATE_TRUNC('month', t.transaction_date), 'YYYY-MM')",
             "month",
           )
-          .addSelect("COALESCE(SUM(ABS(t.amount)), 0)", "total")
+          .addSelect("COALESCE(ABS(SUM(t.amount)), 0)", "total")
           .where("t.user_id = :userId", { userId })
           .andWhere("t.category_id IN (:...expenseCategoryIds)", {
             expenseCategoryIds,
@@ -396,7 +396,7 @@ export class BudgetHealthReportsService {
             "TO_CHAR(DATE_TRUNC('month', t.transaction_date), 'YYYY-MM')",
             "month",
           )
-          .addSelect("COALESCE(SUM(ABS(s.amount)), 0)", "total")
+          .addSelect("COALESCE(ABS(SUM(s.amount)), 0)", "total")
           .where("t.user_id = :userId", { userId })
           .andWhere("s.category_id IN (:...expenseCategoryIds)", {
             expenseCategoryIds,
@@ -491,7 +491,7 @@ export class BudgetHealthReportsService {
     const [directResult, splitResult] = await Promise.all([
       this.transactionsRepository
         .createQueryBuilder("t")
-        .select("COALESCE(SUM(ABS(t.amount)), 0)", "total")
+        .select("COALESCE(SUM(t.amount), 0)", "total")
         .where("t.user_id = :userId", { userId })
         .andWhere("t.category_id = :categoryId", { categoryId })
         .andWhere("t.transaction_date >= :start", { start: periodStart })
@@ -502,7 +502,7 @@ export class BudgetHealthReportsService {
       this.splitsRepository
         .createQueryBuilder("s")
         .innerJoin("s.transaction", "t")
-        .select("COALESCE(SUM(ABS(s.amount)), 0)", "total")
+        .select("COALESCE(SUM(s.amount), 0)", "total")
         .where("t.user_id = :userId", { userId })
         .andWhere("s.category_id = :categoryId", { categoryId })
         .andWhere("t.transaction_date >= :start", { start: periodStart })
@@ -511,9 +511,13 @@ export class BudgetHealthReportsService {
         .getRawOne(),
     ]);
 
-    return (
-      parseFloat(directResult?.total || "0") +
-      parseFloat(splitResult?.total || "0")
+    // Expenses are negative; negate to get positive spending, clamp to 0
+    return Math.max(
+      -(
+        parseFloat(directResult?.total || "0") +
+        parseFloat(splitResult?.total || "0")
+      ),
+      0,
     );
   }
 

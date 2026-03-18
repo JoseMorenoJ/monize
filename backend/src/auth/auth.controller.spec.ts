@@ -10,6 +10,7 @@ import { AuthService } from "./auth.service";
 import { OidcService } from "./oidc/oidc.service";
 import { EmailService } from "../notifications/email.service";
 import { DemoModeService } from "../common/demo-mode.service";
+import { TokenService } from "./token.service";
 
 jest.mock("openid-client", () => ({}));
 
@@ -53,7 +54,6 @@ describe("AuthController", () => {
     authService = {
       register: jest.fn(),
       login: jest.fn(),
-      validateUser: jest.fn(),
       getUserById: jest.fn(),
       generateResetToken: jest.fn(),
       resetPassword: jest.fn(),
@@ -72,6 +72,7 @@ describe("AuthController", () => {
       checkForgotPasswordEmailLimit: jest.fn().mockReturnValue(true),
       generateBackupCodes: jest.fn(),
       confirmOidcLink: jest.fn(),
+      getCsrfKey: jest.fn().mockReturnValue("test-csrf-key"),
       sanitizeUser: jest.fn().mockImplementation((user) => {
         const {
           passwordHash,
@@ -126,6 +127,14 @@ describe("AuthController", () => {
         { provide: ConfigService, useValue: configService },
         { provide: EmailService, useValue: emailService },
         { provide: DemoModeService, useValue: demoModeService },
+        {
+          provide: TokenService,
+          useValue: {
+            getRefreshExpiryMs: jest
+              .fn()
+              .mockReturnValue(7 * 24 * 60 * 60 * 1000),
+          },
+        },
       ],
     }).compile();
 
@@ -159,6 +168,14 @@ describe("AuthController", () => {
           { provide: ConfigService, useValue: configService },
           { provide: EmailService, useValue: emailService },
           { provide: DemoModeService, useValue: demoModeService },
+          {
+            provide: TokenService,
+            useValue: {
+              getRefreshExpiryMs: jest
+                .fn()
+                .mockReturnValue(7 * 24 * 60 * 60 * 1000),
+            },
+          },
         ],
       }).compile();
 
@@ -196,6 +213,14 @@ describe("AuthController", () => {
           { provide: ConfigService, useValue: configService },
           { provide: EmailService, useValue: emailService },
           { provide: DemoModeService, useValue: demoModeService },
+          {
+            provide: TokenService,
+            useValue: {
+              getRefreshExpiryMs: jest
+                .fn()
+                .mockReturnValue(7 * 24 * 60 * 60 * 1000),
+            },
+          },
         ],
       }).compile();
 
@@ -265,6 +290,14 @@ describe("AuthController", () => {
           { provide: ConfigService, useValue: configService },
           { provide: EmailService, useValue: emailService },
           { provide: DemoModeService, useValue: demoModeService },
+          {
+            provide: TokenService,
+            useValue: {
+              getRefreshExpiryMs: jest
+                .fn()
+                .mockReturnValue(7 * 24 * 60 * 60 * 1000),
+            },
+          },
         ],
       }).compile();
 
@@ -284,7 +317,10 @@ describe("AuthController", () => {
         tempToken: "temp-2fa-token",
       });
       const res = mockRes();
-      const expressReq = { cookies: {} } as any;
+      const expressReq = {
+        cookies: {},
+        headers: { "user-agent": "TestBrowser/1.0" },
+      } as any;
       const dto = { email: "test@example.com", password: "password" };
 
       await controller.login(dto as any, expressReq, res as any);
@@ -308,7 +344,10 @@ describe("AuthController", () => {
       };
       authService.login.mockResolvedValue(loginResult);
       const res = mockRes();
-      const expressReq = { cookies: {} } as any;
+      const expressReq = {
+        cookies: {},
+        headers: { "user-agent": "TestBrowser/1.0" },
+      } as any;
       const dto = { email: "test@example.com", password: "password" };
 
       await controller.login(dto as any, expressReq, res as any);
@@ -324,6 +363,34 @@ describe("AuthController", () => {
         expect.any(Object),
       );
       expect(res.json).toHaveBeenCalledWith({ user: loginResult.user });
+    });
+
+    it("passes rememberMe from login result to refresh cookie options", async () => {
+      const loginResult = {
+        accessToken: "access-token",
+        refreshToken: "refresh-token",
+        user: { id: "user-1", email: "test@example.com" },
+        rememberMe: true,
+      };
+      authService.login.mockResolvedValue(loginResult);
+      const res = mockRes();
+      const expressReq = {
+        cookies: {},
+        headers: { "user-agent": "TestBrowser/1.0" },
+      } as any;
+      const dto = {
+        email: "test@example.com",
+        password: "password",
+        rememberMe: true,
+      };
+
+      await controller.login(dto as any, expressReq, res as any);
+
+      // refresh_token cookie should have maxAge set
+      const refreshCookieCall = res.cookie.mock.calls.find(
+        (call: any[]) => call[0] === "refresh_token",
+      );
+      expect(refreshCookieCall[2]).toHaveProperty("maxAge");
     });
   });
 
@@ -454,6 +521,14 @@ describe("AuthController", () => {
           { provide: ConfigService, useValue: configService },
           { provide: EmailService, useValue: emailService },
           { provide: DemoModeService, useValue: demoModeService },
+          {
+            provide: TokenService,
+            useValue: {
+              getRefreshExpiryMs: jest
+                .fn()
+                .mockReturnValue(7 * 24 * 60 * 60 * 1000),
+            },
+          },
         ],
       }).compile();
 
@@ -608,8 +683,10 @@ describe("AuthController", () => {
         name: "OIDC User",
       });
       authService.findOrCreateOidcUser.mockResolvedValue({
-        id: "user-oidc",
-        email: "oidc@example.com",
+        user: {
+          id: "user-oidc",
+          email: "oidc@example.com",
+        },
       });
       authService.generateTokenPair.mockResolvedValue({
         accessToken: "oidc-jwt",
@@ -624,8 +701,16 @@ describe("AuthController", () => {
 
       await controller.oidcCallback(query, expressReq, res as any);
 
-      expect(res.clearCookie).toHaveBeenCalledWith("oidc_state");
-      expect(res.clearCookie).toHaveBeenCalledWith("oidc_nonce");
+      expect(res.clearCookie).toHaveBeenCalledWith("oidc_state", {
+        httpOnly: true,
+        secure: false,
+        sameSite: "lax",
+      });
+      expect(res.clearCookie).toHaveBeenCalledWith("oidc_nonce", {
+        httpOnly: true,
+        secure: false,
+        sameSite: "lax",
+      });
       expect(oidcService.handleCallback).toHaveBeenCalledWith(
         query,
         "valid-state",
@@ -1181,12 +1266,17 @@ describe("AuthController", () => {
       const res = mockRes();
       const expressReq = {
         cookies: { trusted_device: "my-trusted-token" },
+        headers: { "user-agent": "TestBrowser/1.0" },
       } as any;
       const dto = { email: "test@example.com", password: "password" };
 
       await controller.login(dto as any, expressReq, res as any);
 
-      expect(authService.login).toHaveBeenCalledWith(dto, "my-trusted-token");
+      expect(authService.login).toHaveBeenCalledWith(
+        dto,
+        "my-trusted-token",
+        "TestBrowser/1.0",
+      );
     });
 
     it("passes undefined when no trusted_device cookie exists", async () => {
@@ -1197,12 +1287,135 @@ describe("AuthController", () => {
       };
       authService.login.mockResolvedValue(loginResult);
       const res = mockRes();
-      const expressReq = { cookies: {} } as any;
+      const expressReq = {
+        cookies: {},
+        headers: { "user-agent": "TestBrowser/1.0" },
+      } as any;
       const dto = { email: "test@example.com", password: "password" };
 
       await controller.login(dto as any, expressReq, res as any);
 
-      expect(authService.login).toHaveBeenCalledWith(dto, undefined);
+      expect(authService.login).toHaveBeenCalledWith(
+        dto,
+        undefined,
+        "TestBrowser/1.0",
+      );
+    });
+  });
+
+  describe("cookie secure flag with DISABLE_HTTPS_HEADERS", () => {
+    it("sets secure cookies in production when DISABLE_HTTPS_HEADERS is not set", async () => {
+      configService.get.mockImplementation(
+        (key: string, defaultValue?: string) => {
+          const config: Record<string, string> = {
+            LOCAL_AUTH_ENABLED: "true",
+            REGISTRATION_ENABLED: "true",
+            FORCE_2FA: "false",
+            NODE_ENV: "production",
+          };
+          return config[key] ?? defaultValue;
+        },
+      );
+
+      const module: TestingModule = await Test.createTestingModule({
+        controllers: [AuthController],
+        providers: [
+          { provide: AuthService, useValue: authService },
+          { provide: OidcService, useValue: oidcService },
+          { provide: ConfigService, useValue: configService },
+          { provide: EmailService, useValue: emailService },
+          { provide: DemoModeService, useValue: demoModeService },
+          {
+            provide: TokenService,
+            useValue: {
+              getRefreshExpiryMs: jest
+                .fn()
+                .mockReturnValue(7 * 24 * 60 * 60 * 1000),
+            },
+          },
+        ],
+      }).compile();
+
+      const prodController = module.get<AuthController>(AuthController);
+      authService.login.mockResolvedValue({
+        accessToken: "at",
+        refreshToken: "rt",
+        user: mockUser,
+      });
+      const res = mockRes();
+      const expressReq = { cookies: {}, headers: {} } as any;
+
+      await prodController.login(
+        { email: "test@example.com", password: "Password1!" } as any,
+        expressReq,
+        res as any,
+      );
+
+      expect(res.cookie).toHaveBeenCalledWith(
+        "auth_token",
+        "at",
+        expect.objectContaining({ secure: true }),
+      );
+    });
+
+    it("disables secure cookies in production when DISABLE_HTTPS_HEADERS=true", async () => {
+      configService.get.mockImplementation(
+        (key: string, defaultValue?: string) => {
+          const config: Record<string, string> = {
+            LOCAL_AUTH_ENABLED: "true",
+            REGISTRATION_ENABLED: "true",
+            FORCE_2FA: "false",
+            NODE_ENV: "production",
+            DISABLE_HTTPS_HEADERS: "true",
+          };
+          return config[key] ?? defaultValue;
+        },
+      );
+
+      const module: TestingModule = await Test.createTestingModule({
+        controllers: [AuthController],
+        providers: [
+          { provide: AuthService, useValue: authService },
+          { provide: OidcService, useValue: oidcService },
+          { provide: ConfigService, useValue: configService },
+          { provide: EmailService, useValue: emailService },
+          { provide: DemoModeService, useValue: demoModeService },
+          {
+            provide: TokenService,
+            useValue: {
+              getRefreshExpiryMs: jest
+                .fn()
+                .mockReturnValue(7 * 24 * 60 * 60 * 1000),
+            },
+          },
+        ],
+      }).compile();
+
+      const httpController = module.get<AuthController>(AuthController);
+      authService.login.mockResolvedValue({
+        accessToken: "at",
+        refreshToken: "rt",
+        user: mockUser,
+      });
+      const res = mockRes();
+      const expressReq = { cookies: {}, headers: {} } as any;
+
+      await httpController.login(
+        { email: "test@example.com", password: "Password1!" } as any,
+        expressReq,
+        res as any,
+      );
+
+      expect(res.cookie).toHaveBeenCalledWith(
+        "auth_token",
+        "at",
+        expect.objectContaining({ secure: false }),
+      );
+      expect(res.cookie).toHaveBeenCalledWith(
+        "refresh_token",
+        "rt",
+        expect.objectContaining({ secure: false }),
+      );
     });
   });
 });

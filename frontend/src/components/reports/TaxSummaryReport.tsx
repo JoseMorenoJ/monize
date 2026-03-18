@@ -4,6 +4,8 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { builtInReportsApi } from '@/lib/built-in-reports';
 import { TaxSummaryResponse } from '@/types/built-in-reports';
 import { useNumberFormat } from '@/hooks/useNumberFormat';
+import { exportToCsv } from '@/lib/csv-export';
+import { ExportDropdown } from '@/components/ui/ExportDropdown';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('TaxSummaryReport');
@@ -51,23 +53,71 @@ export function TaxSummaryReport() {
   const allExpenses = taxData?.allExpenses ?? [];
   const totals = taxData?.totals ?? { income: 0, expenses: 0, deductible: 0 };
 
+  const handleExportCsv = () => {
+    const headers = ['Section', 'Category', 'Amount'];
+    const rows: (string | number)[][] = [];
+    for (const item of incomeBySource) {
+      rows.push(['Income', item.name, item.total]);
+    }
+    for (const item of deductibleExpenses) {
+      rows.push(['Potential Deductions', item.name, item.total]);
+    }
+    for (const item of allExpenses) {
+      rows.push(['Expenses', item.name, item.total]);
+    }
+    rows.push(['Totals', 'Total Income', totals.income]);
+    rows.push(['Totals', 'Total Expenses', totals.expenses]);
+    rows.push(['Totals', 'Total Deductions', totals.deductible]);
+    exportToCsv(`tax-summary-${selectedYear}`, headers, rows);
+  };
+
+  const getExportData = () => {
+    const headers = ['Section', 'Category', 'Amount'];
+    const rows: (string | number)[][] = [];
+    for (const item of incomeBySource) {
+      rows.push(['Income', item.name, item.total]);
+    }
+    for (const item of deductibleExpenses) {
+      rows.push(['Potential Deductions', item.name, item.total]);
+    }
+    for (const item of allExpenses) {
+      rows.push(['Expenses', item.name, item.total]);
+    }
+    return { headers, rows };
+  };
+
+  const handleExportPdf = async () => {
+    const { exportToPdf } = await import('@/lib/pdf-export');
+    const { headers, rows } = getExportData();
+    const totalRow: (string | number)[] = ['Totals', '', ''];
+    await exportToPdf({
+      title: `Tax Summary - ${selectedYear}`,
+      subtitle: `Income: ${totals.income} | Expenses: ${totals.expenses} | Deductions: ${totals.deductible}`,
+      tableData: { headers, rows, totalRow },
+      filename: `tax-summary-${selectedYear}`,
+    });
+  };
+
   return (
     <div className="space-y-6">
       {/* Year Selector */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-4">
-        <div className="flex items-center gap-4">
-          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-            Tax Year:
-          </label>
-          <select
-            value={selectedYear}
-            onChange={(e) => setSelectedYear(Number(e.target.value))}
-            className="rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
-          >
-            {years.map((year) => (
-              <option key={year} value={year}>{year}</option>
-            ))}
-          </select>
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              Tax Year:
+            </label>
+            <select
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(Number(e.target.value))}
+              className="rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+            >
+              {years.map((year) => (
+                <option key={year} value={year}>{year}</option>
+              ))}
+            </select>
+          </div>
+          <ExportDropdown onExportCsv={handleExportCsv} onExportPdf={handleExportPdf} />
         </div>
       </div>
 

@@ -25,7 +25,11 @@
 
 A comprehensive personal finance management application built with NestJS and Next.js. Designed as a replacement for Microsoft Money. 100% built using farm-fresh, free-range Claude Code.
 
-**[Live Demo](https://monize-demo.ucdialplans.com)**
+<div align="center">
+
+### [**Live Demo**](https://monize-demo.ucdialplans.com) | [**Wiki**](https://github.com/kenlasko/monize/wiki)
+
+</div>
 
 ## Why This Exists?
 The personal finance ecosystem is flooded with personal finance platforms. I've tried many of them, but every single one of them had deal-breakers I couldn't work with. I finally decided to try my hand at creating my own platform that met all my criteria by using  "vibe-coding", which is a dirty word in the self-hosting community. I just wanted to see what was possible with the current state of AI. It turned out to be more successful than I ever could have imagined, which is why I'm making this available for others.
@@ -45,7 +49,7 @@ My perfect product to replace MS Money needed the following features:
   - Line of Credit
   - Brokerage accounts
   - Asset accounts
-- Must support importing from QIF (the only export option available for MS Money)
+- Must support importing from QIF (the export format used by MS Money and Quicken)
 - Must be self-hostable via containerization
 - Must support multiple currencies
 - Must support pulling currency exchange rates and stock prices on a regular basis
@@ -58,33 +62,33 @@ Monize is running in my [Kubernetes cluster](https://github.com/kenlasko/k8s).
 
 
 ## Features
-Before you look at the list of features, you should know what it DOESN'T include:
-- automated downloading of transactions from any platform
-- importing transactions via anything other than QIF
-
-My reason for this is because I still believe in manually tracking everything. If there is interest from the community, I will add it at some point.
-
-I could easily add import capabilities for other filetypes, but I would need examples.
-
 ### Account Management
 - Multiple account types: Chequing, Savings, Credit Cards, Loans, Mortgages, Line of Credit
 - Investment accounts with brokerage support
 - Support for multiple currencies per account
 - Track balances, credit limits, and interest rates
+- Credit card statement dates: configurable due date and settlement date (billing cycle closing date)
+- Favourite accounts on dashboard with credit card date indicators
 - Account reconciliation
 
 ### Transaction Management
 - Full transaction tracking with categories and payees
 - Split transaction support for complex transactions
+- Transaction tags for flexible cross-category labelling
 - Transaction reconciliation and clearing
-- Payees with auto-categorization rules
+- Bulk update and bulk delete operations with filter-based selection
+- Payees with auto-categorization rules, aliases with wildcard patterns, and merge capability
 - Multi-currency transactions with automatic exchange rate tracking
-- QIF file import support
+- Import from CSV, OFX/QFX, and QIF (Quicken and Microsoft Money) with smart column auto-matching
+- Quicken full-file import: import all accounts, categories, and tags from a single QIF export
+- Data reset: wipe financial data and re-import without losing your user account or settings
 
 ### Investment Features
 - Track stocks, bonds, ETFs, and mutual funds
 - Support for US and Canadian exchanges (NYSE, NASDAQ, TSX, TSXV)
 - Daily price updates from Yahoo Finance
+- Manual price management: add, edit, and delete individual price entries
+- Price backfill from transaction history (uses buy/sell prices when market data unavailable)
 - Investment transactions: buy, sell, dividend, interest, splits, transfers
 - Portfolio tracking with real-time valuations
 - Historical price backfill
@@ -143,13 +147,14 @@ I could easily add import capabilities for other filetypes, but I would need exa
 - OIDC (OpenID Connect) authentication (Authentik, Authelia, Pocket-ID, etc.)
 - Local credential authentication with bcrypt hashing
 - JWT-based session management with httpOnly cookies
+- "Remember Me" option with configurable extended session duration (default 30 days)
 - TOTP two-factor authentication with trusted device support
 - Personal access tokens (PAT) for API and MCP access
 - Admin user management with role-based access (admin/user)
 - Password reset via email with temporary passwords
 - Forced password change and forced 2FA policies
 - Rate limiting and request throttling
-- Helmet security headers
+- Helmet security headers (with `DISABLE_HTTPS_HEADERS` option for plain HTTP deployments)
 - CORS protection
 - Demo mode with sample data and daily resets
 
@@ -173,8 +178,9 @@ I could easily add import capabilities for other filetypes, but I would need exa
 - **Date Handling**: date-fns
 
 ### DevOps
+- **Runtime**: Node.js 24
 - **Containerization**: Docker & Docker Compose
-- **Orchestration**: Kubernetes-ready
+- **Orchestration**: Kubernetes-ready (Helm charts included)
 - **Output**: Next.js standalone build for minimal container size
 
 ## Project Structure
@@ -200,7 +206,8 @@ monize/
 │   │   ├── reports/           # User-defined custom reports
 │   │   ├── ai/                # AI assistant (providers, query engine, usage tracking)
 │   │   ├── mcp/               # Model Context Protocol server
-│   │   ├── import/            # QIF file import
+│   │   ├── tags/               # Transaction tags
+│   │   ├── import/            # QIF, CSV, OFX/QFX file import
 │   │   ├── health/            # Health check endpoints
 │   │   └── main.ts            # Application entry point
 │   └── Dockerfile
@@ -336,6 +343,8 @@ npm run dev
 | `AI_DEFAULT_API_KEY` | System-wide AI API key | - |
 | `AI_DEFAULT_BASE_URL` | Base URL for Ollama or compatible endpoints | - |
 | `JWT_EXPIRATION` | JWT token expiration time | `15m` |
+| `REMEMBER_ME_DAYS` | Duration for "Remember Me" sessions (days) | `30` |
+| `DISABLE_HTTPS_HEADERS` | Disable HSTS and COOP headers for plain HTTP | `false` |
 | `DEMO_MODE` | Enable demo mode with sample data | `false` |
 | `SMTP_SECURE` | Use TLS for SMTP | `false` |
 

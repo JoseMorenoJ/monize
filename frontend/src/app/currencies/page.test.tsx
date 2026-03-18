@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { useState } from 'react';
 import { render, screen, waitFor, fireEvent } from '@/test/render';
 import CurrenciesPage from './page';
 import toast from 'react-hot-toast';
@@ -120,8 +121,11 @@ vi.mock('@/components/currencies/CurrencyForm', () => ({
 }));
 
 vi.mock('@/components/currencies/CurrencyList', () => ({
-  CurrencyList: ({ currencies, onToggleActive }: any) => (
+  CurrencyList: ({ currencies, onToggleActive, sortField, sortDirection, onSort }: any) => (
     <div data-testid="currency-list">
+      {sortField && <span data-testid="sort-field">{sortField}</span>}
+      {sortDirection && <span data-testid="sort-direction">{sortDirection}</span>}
+      {onSort && <button data-testid="sort-trigger" onClick={() => onSort('name')}>Sort</button>}
       {currencies.map((c: any) => (
         <div key={c.code} data-testid={`currency-row-${c.code}`}>
           {c.name}
@@ -169,7 +173,7 @@ vi.mock('@/components/layout/PageHeader', () => ({
 }));
 
 vi.mock('@/hooks/useLocalStorage', () => ({
-  useLocalStorage: (key: string, defaultValue: any) => [defaultValue, vi.fn()],
+  useLocalStorage: (_key: string, defaultValue: any) => useState(defaultValue),
 }));
 
 describe('CurrenciesPage', () => {
@@ -286,10 +290,12 @@ describe('CurrenciesPage', () => {
     });
   });
 
-  it('renders show inactive checkbox', async () => {
+  it('renders filter buttons for All, Active, Inactive with counts', async () => {
     render(<CurrenciesPage />);
     await waitFor(() => {
-      expect(screen.getByText('Show inactive currencies')).toBeInTheDocument();
+      expect(screen.getByText(/All \(3\)/)).toBeInTheDocument();
+      expect(screen.getByText(/Active \(2\)/)).toBeInTheDocument();
+      expect(screen.getByText(/Inactive \(1\)/)).toBeInTheDocument();
     });
   });
 
@@ -298,6 +304,51 @@ describe('CurrenciesPage', () => {
     await waitFor(() => {
       // Only active currencies are shown by default (2 out of 3)
       expect(screen.getByText(/2 currencies/i)).toBeInTheDocument();
+    });
+  });
+
+  it('shows all currencies when All button is clicked', async () => {
+    render(<CurrenciesPage />);
+    await waitFor(() => {
+      expect(screen.getByTestId('currency-list')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText(/All \(3\)/));
+    await waitFor(() => {
+      expect(screen.getByTestId('currency-row-CAD')).toBeInTheDocument();
+      expect(screen.getByTestId('currency-row-USD')).toBeInTheDocument();
+      expect(screen.getByTestId('currency-row-EUR')).toBeInTheDocument();
+    });
+  });
+
+  it('shows only inactive currencies when Inactive button is clicked', async () => {
+    render(<CurrenciesPage />);
+    await waitFor(() => {
+      expect(screen.getByTestId('currency-list')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText(/Inactive \(1\)/));
+    await waitFor(() => {
+      expect(screen.queryByTestId('currency-row-CAD')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('currency-row-USD')).not.toBeInTheDocument();
+      expect(screen.getByTestId('currency-row-EUR')).toBeInTheDocument();
+    });
+  });
+
+  it('passes sort props to CurrencyList', async () => {
+    render(<CurrenciesPage />);
+    await waitFor(() => {
+      expect(screen.getByTestId('sort-field')).toHaveTextContent('code');
+      expect(screen.getByTestId('sort-direction')).toHaveTextContent('asc');
+    });
+  });
+
+  it('passes onSort callback to CurrencyList', async () => {
+    render(<CurrenciesPage />);
+    await waitFor(() => {
+      expect(screen.getByTestId('sort-trigger')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId('sort-trigger'));
+    await waitFor(() => {
+      expect(screen.getByTestId('sort-field')).toHaveTextContent('name');
     });
   });
 
@@ -404,6 +455,85 @@ describe('CurrenciesPage', () => {
     await waitFor(() => {
       expect(mockDeactivateCurrency).toHaveBeenCalledWith('USD');
     });
+  });
+
+  it('updates currency state inline after deactivation without reloading', async () => {
+    mockDeactivateCurrency.mockResolvedValue(undefined);
+    render(<CurrenciesPage />);
+    await waitFor(() => {
+      expect(screen.getByTestId('currency-list')).toBeInTheDocument();
+    });
+
+    // Clear mock call counts from initial load
+    mockGetCurrencies.mockClear();
+    mockGetCurrencyUsage.mockClear();
+
+    fireEvent.click(screen.getByTestId('toggle-USD'));
+    await waitFor(() => {
+      expect(mockDeactivateCurrency).toHaveBeenCalledWith('USD');
+    });
+
+    // Should NOT re-fetch data from API (inline update)
+    expect(mockGetCurrencies).not.toHaveBeenCalled();
+    expect(mockGetCurrencyUsage).not.toHaveBeenCalled();
+  });
+
+  it('updates summary counts after inline deactivation', async () => {
+    mockDeactivateCurrency.mockResolvedValue(undefined);
+    render(<CurrenciesPage />);
+    await waitFor(() => {
+      expect(screen.getByTestId('summary-Active')).toHaveTextContent('2');
+      expect(screen.getByTestId('summary-Inactive')).toHaveTextContent('1');
+    });
+
+    // Deactivate USD: active goes from 2 to 1, inactive from 1 to 2
+    fireEvent.click(screen.getByTestId('toggle-USD'));
+    await waitFor(() => {
+      expect(screen.getByTestId('summary-Active')).toHaveTextContent('1');
+      expect(screen.getByTestId('summary-Inactive')).toHaveTextContent('2');
+    });
+  });
+
+  it('activates an inactive currency inline', async () => {
+    mockActivateCurrency.mockResolvedValue(undefined);
+    render(<CurrenciesPage />);
+    await waitFor(() => {
+      expect(screen.getByTestId('currency-list')).toBeInTheDocument();
+    });
+
+    // Switch to All view to see inactive EUR
+    fireEvent.click(screen.getByText(/All \(3\)/));
+    await waitFor(() => {
+      expect(screen.getByTestId('currency-row-EUR')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTestId('toggle-EUR'));
+    await waitFor(() => {
+      expect(mockActivateCurrency).toHaveBeenCalledWith('EUR');
+    });
+
+    // Summary should update: active 3, inactive 0
+    await waitFor(() => {
+      expect(screen.getByTestId('summary-Active')).toHaveTextContent('3');
+      expect(screen.getByTestId('summary-Inactive')).toHaveTextContent('0');
+    });
+  });
+
+  it('does not update state when toggle fails', async () => {
+    mockDeactivateCurrency.mockRejectedValue(new Error('API error'));
+    render(<CurrenciesPage />);
+    await waitFor(() => {
+      expect(screen.getByTestId('currency-list')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTestId('toggle-USD'));
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('Failed to update currency status');
+    });
+
+    // Summary counts should remain unchanged
+    expect(screen.getByTestId('summary-Active')).toHaveTextContent('2');
+    expect(screen.getByTestId('summary-Inactive')).toHaveTextContent('1');
   });
 
   it('shows singular "currency" for count of 1', async () => {

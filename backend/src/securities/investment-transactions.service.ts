@@ -16,6 +16,7 @@ import { AccountsService } from "../accounts/accounts.service";
 import { TransactionsService } from "../transactions/transactions.service";
 import { HoldingsService } from "./holdings.service";
 import { SecuritiesService } from "./securities.service";
+import { SecurityPriceService } from "./security-price.service";
 import { NetWorthService } from "../net-worth/net-worth.service";
 import {
   Transaction,
@@ -38,8 +39,54 @@ export class InvestmentTransactionsService {
     private transactionsService: TransactionsService,
     private holdingsService: HoldingsService,
     private securitiesService: SecuritiesService,
+    private securityPriceService: SecurityPriceService,
     private netWorthService: NetWorthService,
   ) {}
+
+  private static readonly PRICE_ACTIONS: ReadonlySet<InvestmentAction> =
+    new Set([
+      InvestmentAction.BUY,
+      InvestmentAction.SELL,
+      InvestmentAction.REINVEST,
+      InvestmentAction.TRANSFER_IN,
+      InvestmentAction.TRANSFER_OUT,
+    ]);
+
+  /**
+   * Trigger net worth recalc for the given account and its linked cash account.
+   * Investment transactions affect both the brokerage (holdings) and the linked
+   * cash account (cash balance), so both need their snapshots updated.
+   */
+  private triggerRecalcWithCashAccount(
+    accountId: string,
+    userId: string,
+    fundingAccountId?: string | null,
+  ): void {
+    this.netWorthService.triggerDebouncedRecalc(accountId, userId);
+
+    if (fundingAccountId) {
+      this.netWorthService.triggerDebouncedRecalc(fundingAccountId, userId);
+    } else {
+      this.accountsService
+        .findOne(userId, accountId)
+        .then((account) => {
+          if (
+            account.accountSubType === AccountSubType.INVESTMENT_BROKERAGE &&
+            account.linkedAccountId
+          ) {
+            this.netWorthService.triggerDebouncedRecalc(
+              account.linkedAccountId,
+              userId,
+            );
+          }
+        })
+        .catch((err) =>
+          this.logger.warn(
+            `Failed to trigger cash account recalc for ${accountId}: ${err.message}`,
+          ),
+        );
+    }
+  }
 
   private async findCashAccount(
     userId: string,
@@ -252,7 +299,24 @@ export class InvestmentTransactionsService {
       await queryRunner.release();
     }
 
-    this.netWorthService.triggerDebouncedRecalc(createDto.accountId, userId);
+    this.triggerRecalcWithCashAccount(
+      createDto.accountId,
+      userId,
+      createDto.fundingAccountId,
+    );
+
+    if (
+      createDto.securityId &&
+      InvestmentTransactionsService.PRICE_ACTIONS.has(createDto.action)
+    ) {
+      this.securityPriceService
+        .upsertTransactionPrice(createDto.securityId, createDto.transactionDate)
+        .catch((err) =>
+          this.logger.warn(
+            `Failed to update transaction-derived price: ${err.message}`,
+          ),
+        );
+    }
 
     return this.findOne(userId, savedId);
   }
@@ -570,6 +634,9 @@ export class InvestmentTransactionsService {
   ): Promise<InvestmentTransaction> {
     const transaction = await this.findOne(userId, id);
     const accountId = transaction.accountId;
+    const oldSecurityId = transaction.securityId;
+    const oldTransactionDate = transaction.transactionDate;
+    const oldAction = transaction.action;
 
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
@@ -657,10 +724,43 @@ export class InvestmentTransactionsService {
       await queryRunner.release();
     }
 
-    this.netWorthService.triggerDebouncedRecalc(
+    this.triggerRecalcWithCashAccount(
       updateDto.accountId ?? accountId,
       userId,
     );
+
+    // Update transaction-derived prices for the new security/date
+    const newSecurityId = transaction.securityId;
+    const newTransactionDate = transaction.transactionDate;
+    const newAction = transaction.action;
+    if (
+      newSecurityId &&
+      InvestmentTransactionsService.PRICE_ACTIONS.has(newAction)
+    ) {
+      this.securityPriceService
+        .upsertTransactionPrice(newSecurityId, newTransactionDate)
+        .catch((err) =>
+          this.logger.warn(
+            `Failed to update transaction-derived price: ${err.message}`,
+          ),
+        );
+    }
+
+    // Clean up old security/date if it changed
+    if (
+      oldSecurityId &&
+      InvestmentTransactionsService.PRICE_ACTIONS.has(oldAction) &&
+      (oldSecurityId !== newSecurityId ||
+        oldTransactionDate !== newTransactionDate)
+    ) {
+      this.securityPriceService
+        .upsertTransactionPrice(oldSecurityId, oldTransactionDate)
+        .catch((err) =>
+          this.logger.warn(
+            `Failed to clean up old transaction-derived price: ${err.message}`,
+          ),
+        );
+    }
 
     return this.findOne(userId, savedId);
   }
@@ -812,7 +912,27 @@ export class InvestmentTransactionsService {
       await queryRunner.release();
     }
 
-    this.netWorthService.triggerDebouncedRecalc(accountId, userId);
+    this.triggerRecalcWithCashAccount(
+      accountId,
+      userId,
+      transaction.fundingAccountId,
+    );
+
+    if (
+      transaction.securityId &&
+      InvestmentTransactionsService.PRICE_ACTIONS.has(transaction.action)
+    ) {
+      this.securityPriceService
+        .upsertTransactionPrice(
+          transaction.securityId,
+          transaction.transactionDate,
+        )
+        .catch((err) =>
+          this.logger.warn(
+            `Failed to update transaction-derived price after removal: ${err.message}`,
+          ),
+        );
+    }
   }
 
   async getSummary(userId: string, accountIds?: string[]) {

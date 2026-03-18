@@ -416,9 +416,9 @@ describe("Budget Period Lifecycle Integration", () => {
 
       const directQb = createMockQueryBuilder({
         getRawMany: jest.fn().mockResolvedValue([
-          { categoryId: "cat-groceries", total: "450" },
-          { categoryId: "cat-rent", total: "1500" },
-          { categoryId: "cat-travel", total: "50" },
+          { categoryId: "cat-groceries", total: "-450" },
+          { categoryId: "cat-rent", total: "-1500" },
+          { categoryId: "cat-travel", total: "-50" },
           { categoryId: "cat-income", total: "5200" },
         ]),
       });
@@ -610,7 +610,7 @@ describe("Budget Period Lifecycle Integration", () => {
       const directQb = createMockQueryBuilder({
         getRawMany: jest
           .fn()
-          .mockResolvedValue([{ categoryId: "cat-groceries", total: "400" }]),
+          .mockResolvedValue([{ categoryId: "cat-groceries", total: "-400" }]),
       });
       transactionsRepository.createQueryBuilder.mockReturnValue(directQb);
       splitsRepository.createQueryBuilder.mockReturnValue(
@@ -858,12 +858,12 @@ describe("Budget Period Lifecycle Integration", () => {
       const directQb = createMockQueryBuilder({
         getRawMany: jest
           .fn()
-          .mockResolvedValue([{ categoryId: "cat-groceries", total: "300" }]),
+          .mockResolvedValue([{ categoryId: "cat-groceries", total: "-300" }]),
       });
       const splitQb = createMockQueryBuilder({
         getRawMany: jest
           .fn()
-          .mockResolvedValue([{ categoryId: "cat-groceries", total: "100" }]),
+          .mockResolvedValue([{ categoryId: "cat-groceries", total: "-100" }]),
       });
 
       transactionsRepository.createQueryBuilder.mockReturnValue(directQb);

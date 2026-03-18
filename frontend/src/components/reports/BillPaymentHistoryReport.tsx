@@ -18,6 +18,8 @@ import { parseLocalDate } from '@/lib/utils';
 import { useNumberFormat } from '@/hooks/useNumberFormat';
 import { useDateRange } from '@/hooks/useDateRange';
 import { DateRangeSelector } from '@/components/ui/DateRangeSelector';
+import { exportToCsv } from '@/lib/csv-export';
+import { ExportDropdown } from '@/components/ui/ExportDropdown';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('BillPaymentHistoryReport');
@@ -51,6 +53,40 @@ export function BillPaymentHistoryReport() {
 
   const handleBillClick = () => {
     router.push('/bills');
+  };
+
+  const handleExportCsv = () => {
+    if (!billData) return;
+    const headers = ['Bill', 'Payee', 'Payments', 'Average', 'Total Paid', 'Last Payment'];
+    const rows = billData.billPayments.map((bp) => [
+      bp.scheduledTransactionName,
+      bp.payeeName || '',
+      bp.paymentCount,
+      bp.averagePayment,
+      bp.totalPaid,
+      bp.lastPaymentDate ? format(parseLocalDate(bp.lastPaymentDate), 'yyyy-MM-dd') : '',
+    ]);
+    exportToCsv('bill-payment-history', headers, rows);
+  };
+
+  const handleExportPdf = async () => {
+    if (!billData) return;
+    const { exportToPdf } = await import('@/lib/pdf-export');
+    const headers = ['Bill', 'Payee', 'Payments', 'Average', 'Total Paid', 'Last Payment'];
+    const rows = billData.billPayments.map((bp) => [
+      bp.scheduledTransactionName,
+      bp.payeeName || '',
+      bp.paymentCount,
+      bp.averagePayment,
+      bp.totalPaid,
+      bp.lastPaymentDate ? format(parseLocalDate(bp.lastPaymentDate), 'yyyy-MM-dd') : '',
+    ]);
+    await exportToPdf({
+      title: 'Bill Payment History',
+      subtitle: `${billData.summary.uniqueBills} bills, ${billData.summary.totalPayments} payments`,
+      tableData: { headers, rows },
+      filename: 'bill-payment-history',
+    });
   };
 
   const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?: Array<{ value: number }>; label?: string }) => {
@@ -179,10 +215,11 @@ export function BillPaymentHistoryReport() {
       ) : (
         /* By Bill Table */
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+          <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
               Payment History by Bill
             </h3>
+            <ExportDropdown onExportCsv={handleExportCsv} onExportPdf={handleExportPdf} />
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">

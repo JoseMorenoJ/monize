@@ -14,6 +14,7 @@ function createAccount(overrides: Partial<Account> = {}): Account {
     scheduledTransactionId: null, assetCategoryId: null, dateAcquired: null,
     isCanadianMortgage: false, isVariableRate: false, termMonths: null, termEndDate: null,
     amortizationMonths: null, originalPrincipal: null,
+    statementDueDay: null, statementSettlementDay: null,
     createdAt: '2024-01-01T00:00:00Z', updatedAt: '2024-01-01T00:00:00Z',
     ...overrides,
   };
@@ -97,12 +98,13 @@ describe('CompleteStep', () => {
       {
         fileName: 'portfolio.qif',
         fileContent: '',
+        fileType: 'qif' as const,
         parsedData: {
           transactions: [],
           investmentTransactions: [],
           qifType: 'Bank' as const,
           accountType: 'INVESTMENT',
-          accountName: null,
+          accountName: '',
           transactionCount: 5,
           dateRange: { start: '2024-01-01', end: '2024-01-31' },
           categories: [],

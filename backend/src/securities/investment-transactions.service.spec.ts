@@ -15,6 +15,7 @@ import { AccountsService } from "../accounts/accounts.service";
 import { TransactionsService } from "../transactions/transactions.service";
 import { HoldingsService } from "./holdings.service";
 import { SecuritiesService } from "./securities.service";
+import { SecurityPriceService } from "./security-price.service";
 import { NetWorthService } from "../net-worth/net-worth.service";
 import { DataSource } from "typeorm";
 import { isTransactionInFuture } from "../common/date-utils";
@@ -34,6 +35,7 @@ describe("InvestmentTransactionsService", () => {
   let transactionsService: Record<string, jest.Mock>;
   let holdingsService: Record<string, jest.Mock>;
   let securitiesService: Record<string, jest.Mock>;
+  let securityPriceService: Record<string, jest.Mock>;
   let netWorthService: Record<string, jest.Mock>;
   let dataSource: Record<string, jest.Mock>;
   let mockQueryRunner: Record<string, any>;
@@ -220,6 +222,10 @@ describe("InvestmentTransactionsService", () => {
       findOne: jest.fn().mockResolvedValue(mockSecurity),
     };
 
+    securityPriceService = {
+      upsertTransactionPrice: jest.fn().mockResolvedValue(undefined),
+    };
+
     netWorthService = {
       recalculateAccount: jest.fn().mockResolvedValue(undefined),
       triggerDebouncedRecalc: jest.fn(),
@@ -300,6 +306,10 @@ describe("InvestmentTransactionsService", () => {
         {
           provide: SecuritiesService,
           useValue: securitiesService,
+        },
+        {
+          provide: SecurityPriceService,
+          useValue: securityPriceService,
         },
         {
           provide: NetWorthService,
@@ -1056,11 +1066,32 @@ describe("InvestmentTransactionsService", () => {
       );
     });
 
-    it("triggers net worth recalculation after create", async () => {
+    it("triggers net worth recalculation for brokerage and cash accounts after create", async () => {
       await service.create(userId, createBuyDto);
 
       expect(netWorthService.triggerDebouncedRecalc).toHaveBeenCalledWith(
         accountId,
+        userId,
+      );
+      expect(netWorthService.triggerDebouncedRecalc).toHaveBeenCalledWith(
+        cashAccountId,
+        userId,
+      );
+    });
+
+    it("triggers net worth recalculation for funding account when specified", async () => {
+      const dtoWithFunding = {
+        ...createBuyDto,
+        fundingAccountId,
+      };
+      await service.create(userId, dtoWithFunding);
+
+      expect(netWorthService.triggerDebouncedRecalc).toHaveBeenCalledWith(
+        accountId,
+        userId,
+      );
+      expect(netWorthService.triggerDebouncedRecalc).toHaveBeenCalledWith(
+        fundingAccountId,
         userId,
       );
     });
@@ -1623,7 +1654,7 @@ describe("InvestmentTransactionsService", () => {
       expect(transactionRepository.remove).toHaveBeenCalled();
     });
 
-    it("triggers net worth recalculation after update", async () => {
+    it("triggers net worth recalculation for brokerage and cash accounts after update", async () => {
       const existingTx = { ...mockBuyTransaction, transactionId: null };
       const firstFindQB = createMockQueryBuilder(existingTx);
       const secondFindQB = createMockQueryBuilder(existingTx);
@@ -1636,6 +1667,10 @@ describe("InvestmentTransactionsService", () => {
 
       expect(netWorthService.triggerDebouncedRecalc).toHaveBeenCalledWith(
         accountId,
+        userId,
+      );
+      expect(netWorthService.triggerDebouncedRecalc).toHaveBeenCalledWith(
+        cashAccountId,
         userId,
       );
     });
@@ -1908,7 +1943,7 @@ describe("InvestmentTransactionsService", () => {
       expect(transactionRepository.remove).not.toHaveBeenCalled();
     });
 
-    it("triggers net worth recalculation after remove", async () => {
+    it("triggers net worth recalculation for brokerage and cash accounts after remove", async () => {
       const tx = { ...mockBuyTransaction, transactionId: null };
       const mockQB = createMockQueryBuilder(tx);
       investmentTransactionsRepository.createQueryBuilder.mockReturnValue(
@@ -1919,6 +1954,10 @@ describe("InvestmentTransactionsService", () => {
 
       expect(netWorthService.triggerDebouncedRecalc).toHaveBeenCalledWith(
         accountId,
+        userId,
+      );
+      expect(netWorthService.triggerDebouncedRecalc).toHaveBeenCalledWith(
+        cashAccountId,
         userId,
       );
     });

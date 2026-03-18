@@ -110,6 +110,9 @@ CREATE TABLE accounts (
     current_balance NUMERIC(20, 4) DEFAULT 0,
     credit_limit NUMERIC(20, 4), -- for credit cards
     interest_rate NUMERIC(8, 4), -- for loans, mortgages, savings
+    -- Credit card statement fields
+    statement_due_day INTEGER CHECK (statement_due_day IS NULL OR (statement_due_day >= 1 AND statement_due_day <= 31)) CHECK (account_type = 'CREDIT_CARD' OR statement_due_day IS NULL), -- day of month payment is due (credit cards only)
+    statement_settlement_day INTEGER CHECK (statement_settlement_day IS NULL OR (statement_settlement_day >= 1 AND statement_settlement_day <= 31)) CHECK (account_type = 'CREDIT_CARD' OR statement_settlement_day IS NULL), -- last day of billing cycle (credit cards only)
     is_closed BOOLEAN DEFAULT false,
     closed_date DATE,
     is_favourite BOOLEAN DEFAULT false,
@@ -179,6 +182,19 @@ CREATE TABLE payees (
 CREATE INDEX idx_payees_user ON payees(user_id);
 CREATE INDEX idx_payees_user_active ON payees(user_id, is_active);
 
+-- Payee Aliases (for mapping imported payee names to canonical payees)
+CREATE TABLE payee_aliases (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    payee_id UUID NOT NULL REFERENCES payees(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    alias VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_payee_aliases_payee ON payee_aliases(payee_id);
+CREATE INDEX idx_payee_aliases_user ON payee_aliases(user_id);
+CREATE UNIQUE INDEX idx_payee_aliases_user_alias ON payee_aliases(user_id, LOWER(alias));
+
 -- Transactions
 CREATE TABLE transactions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -233,6 +249,40 @@ CREATE INDEX idx_transaction_splits_category ON transaction_splits(category_id);
 CREATE INDEX idx_transaction_splits_transfer_account ON transaction_splits(transfer_account_id);
 CREATE INDEX idx_transaction_splits_linked ON transaction_splits(linked_transaction_id);
 
+-- Tags
+CREATE TABLE tags (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name VARCHAR(100) NOT NULL,
+    color VARCHAR(7),
+    icon VARCHAR(50),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE UNIQUE INDEX idx_tags_user_name ON tags(user_id, LOWER(name));
+CREATE INDEX idx_tags_user ON tags(user_id);
+
+-- Transaction Tags (many-to-many)
+CREATE TABLE transaction_tags (
+    transaction_id UUID NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
+    tag_id UUID NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+    PRIMARY KEY (transaction_id, tag_id)
+);
+
+CREATE INDEX idx_transaction_tags_tag ON transaction_tags(tag_id);
+CREATE INDEX idx_transaction_tags_transaction ON transaction_tags(transaction_id);
+
+-- Transaction Split Tags (many-to-many)
+CREATE TABLE transaction_split_tags (
+    transaction_split_id UUID NOT NULL REFERENCES transaction_splits(id) ON DELETE CASCADE,
+    tag_id UUID NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+    PRIMARY KEY (transaction_split_id, tag_id)
+);
+
+CREATE INDEX idx_transaction_split_tags_tag ON transaction_split_tags(tag_id);
+CREATE INDEX idx_transaction_split_tags_split ON transaction_split_tags(transaction_split_id);
+
 -- Scheduled Transactions (recurring payments / bills & deposits)
 CREATE TABLE scheduled_transactions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -258,6 +308,7 @@ CREATE TABLE scheduled_transactions (
     is_split BOOLEAN DEFAULT false, -- indicates amounts are split across categories
     is_transfer BOOLEAN DEFAULT false, -- indicates this is an account-to-account transfer
     transfer_account_id UUID REFERENCES accounts(id) ON DELETE SET NULL, -- destination account for transfers
+    tag_ids JSONB DEFAULT '[]'::jsonb, -- array of tag UUIDs to apply when posting
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -341,12 +392,12 @@ CREATE TABLE security_prices (
     id BIGSERIAL PRIMARY KEY,
     security_id UUID NOT NULL REFERENCES securities(id) ON DELETE CASCADE,
     price_date DATE NOT NULL,
-    open_price NUMERIC(20, 4),
-    high_price NUMERIC(20, 4),
-    low_price NUMERIC(20, 4),
-    close_price NUMERIC(20, 4) NOT NULL,
+    open_price NUMERIC(20, 6),
+    high_price NUMERIC(20, 6),
+    low_price NUMERIC(20, 6),
+    close_price NUMERIC(20, 6) NOT NULL,
     volume BIGINT,
-    source VARCHAR(50), -- API source
+    source VARCHAR(50), -- yahoo_finance, manual, or transaction action (buy, sell, reinvest, transfer_in, transfer_out)
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(security_id, price_date)
 );
@@ -360,7 +411,7 @@ CREATE TABLE holdings (
     account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
     security_id UUID NOT NULL REFERENCES securities(id),
     quantity NUMERIC(20, 8) NOT NULL DEFAULT 0,
-    average_cost NUMERIC(20, 4), -- average cost per unit
+    average_cost NUMERIC(20, 6), -- average cost per unit
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(account_id, security_id)
@@ -394,7 +445,7 @@ CREATE TABLE investment_transactions (
     action investment_action NOT NULL,
     transaction_date DATE NOT NULL,
     quantity NUMERIC(20, 8),
-    price NUMERIC(20, 4),
+    price NUMERIC(20, 6),
     commission NUMERIC(20, 4) DEFAULT 0,
     total_amount NUMERIC(20, 4) NOT NULL,
     description TEXT,
@@ -435,6 +486,7 @@ CREATE TABLE trusted_devices (
     token_hash VARCHAR(64) NOT NULL,
     device_name VARCHAR(255) NOT NULL,
     ip_address INET,
+    user_agent_hash VARCHAR(64),
     last_used_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     expires_at TIMESTAMP NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -451,6 +503,7 @@ CREATE TABLE refresh_tokens (
     token_hash VARCHAR(64) NOT NULL,
     family_id UUID NOT NULL,
     is_revoked BOOLEAN NOT NULL DEFAULT false,
+    remember_me BOOLEAN NOT NULL DEFAULT false,
     expires_at TIMESTAMP NOT NULL,
     replaced_by_hash VARCHAR(64),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -766,3 +819,22 @@ CREATE TRIGGER update_budgets_updated_at BEFORE UPDATE ON budgets FOR EACH ROW E
 CREATE TRIGGER update_budget_categories_updated_at BEFORE UPDATE ON budget_categories FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_budget_periods_updated_at BEFORE UPDATE ON budget_periods FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_budget_period_categories_updated_at BEFORE UPDATE ON budget_period_categories FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Import Column Mappings (for CSV imports)
+CREATE TABLE import_column_mappings (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name VARCHAR(100) NOT NULL,
+    column_mappings JSONB NOT NULL,
+    transfer_rules JSONB NOT NULL DEFAULT '[]'::jsonb,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, name)
+);
+
+CREATE INDEX idx_import_column_mappings_user ON import_column_mappings(user_id);
+
+CREATE TRIGGER update_import_column_mappings_updated_at BEFORE UPDATE ON import_column_mappings FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Trigger for tags updated_at
+CREATE TRIGGER update_tags_updated_at BEFORE UPDATE ON tags FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

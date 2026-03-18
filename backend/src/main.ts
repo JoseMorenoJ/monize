@@ -36,7 +36,14 @@ async function bootstrap() {
   // Trust first proxy (Docker/nginx) so req.ip reflects the real client IP
   app.getHttpAdapter().getInstance().set("trust proxy", 1);
 
-  // Increase body size limit for large QIF file imports
+  // Backup restore accepts gzip-compressed binary (compressed on the client
+  // to avoid multi-minute uploads of 100mb+ JSON files).
+  app.use(
+    "/api/v1/backup/restore",
+    express.raw({ limit: "100mb", type: "application/gzip" }),
+  );
+
+  // Default body size limit for regular endpoints (QIF imports, etc.)
   app.use(express.json({ limit: "10mb" }));
   app.use(express.urlencoded({ limit: "10mb", extended: true }));
 
@@ -44,11 +51,16 @@ async function bootstrap() {
   app.use(cookieParser());
 
   // Security middleware
+  const disableHttpsHeaders = process.env.DISABLE_HTTPS_HEADERS === "true";
   app.use(
     helmet({
       frameguard: { action: "deny" },
-      hsts: { maxAge: 63072000, includeSubDomains: true, preload: true },
-      crossOriginOpenerPolicy: { policy: "same-origin" },
+      hsts: disableHttpsHeaders
+        ? false
+        : { maxAge: 63072000, includeSubDomains: true, preload: true },
+      crossOriginOpenerPolicy: disableHttpsHeaders
+        ? false
+        : { policy: "same-origin" },
       crossOriginResourcePolicy: { policy: "same-origin" },
       contentSecurityPolicy: {
         directives: {
@@ -94,6 +106,8 @@ async function bootstrap() {
       "Authorization",
       "Accept",
       "X-CSRF-Token",
+      "X-Restore-Password",
+      "X-Restore-OIDC-Token",
       "Mcp-Session-Id",
     ],
     exposedHeaders: ["Mcp-Session-Id"],
@@ -126,6 +140,14 @@ async function bootstrap() {
   const logger = new Logger("Bootstrap");
   const port = process.env.PORT || 3001;
   await app.listen(port);
+
+  // Increase HTTP server timeouts for large backup uploads (100mb+).
+  // Default requestTimeout is 5 min which may not be enough when uploading
+  // through multiple proxy layers on slower connections.
+  const server = app.getHttpServer();
+  server.requestTimeout = 600000; // 10 minutes
+  server.headersTimeout = 605000; // must be > requestTimeout
+
   logger.log(`Application is running on: http://localhost:${port}`);
   if (process.env.NODE_ENV !== "production") {
     logger.log(`API Documentation: http://localhost:${port}/api/docs`);

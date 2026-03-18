@@ -10,6 +10,10 @@ import {
   DeactivationPreviewParams,
   DeactivationCandidate,
   PayeeStatusFilter,
+  PayeeAlias,
+  CreatePayeeAliasData,
+  MergePayeeData,
+  MergePayeeResult,
 } from '@/types/payee';
 import { getCached, setCache, invalidateCache } from './apiCache';
 
@@ -163,6 +167,42 @@ export const payeesApi = {
     const response = await apiClient.get<Payee | null>('/payees/inactive/match', {
       params: { name },
     });
+    return response.data;
+  },
+
+  // ===== Alias Methods =====
+
+  // Get aliases for a specific payee
+  getAliases: async (payeeId: string): Promise<PayeeAlias[]> => {
+    const response = await apiClient.get<PayeeAlias[]>(`/payees/${payeeId}/aliases`);
+    return response.data;
+  },
+
+  // Get all aliases for the user
+  getAllAliases: async (): Promise<PayeeAlias[]> => {
+    const response = await apiClient.get<PayeeAlias[]>('/payees/aliases');
+    return response.data;
+  },
+
+  // Create alias
+  createAlias: async (data: CreatePayeeAliasData): Promise<PayeeAlias> => {
+    const response = await apiClient.post<PayeeAlias>('/payees/aliases', data);
+    invalidateCache('payees:');
+    return response.data;
+  },
+
+  // Delete alias
+  deleteAlias: async (aliasId: string): Promise<void> => {
+    await apiClient.delete(`/payees/aliases/${aliasId}`);
+    invalidateCache('payees:');
+  },
+
+  // ===== Merge Methods =====
+
+  // Merge one payee into another
+  mergePayees: async (data: MergePayeeData): Promise<MergePayeeResult> => {
+    const response = await apiClient.post<MergePayeeResult>('/payees/merge', data);
+    invalidateCache('payees:');
     return response.data;
   },
 };

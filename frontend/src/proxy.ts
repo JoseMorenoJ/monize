@@ -28,6 +28,9 @@ function nextWithCsp(request: NextRequest): NextResponse {
 
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set('x-nonce', nonce);
+  if (process.env.DISABLE_HTTPS_HEADERS !== 'true') {
+    requestHeaders.set('x-https-headers-active', 'true');
+  }
 
   const response = NextResponse.next({ request: { headers: requestHeaders } });
   response.headers.set('Content-Security-Policy', csp);

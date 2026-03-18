@@ -12,6 +12,7 @@ import {
 import { Type } from "class-transformer";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { TransactionStatus } from "../entities/transaction.entity";
+import { SanitizeHtml } from "../../common/decorators/sanitize-html.decorator";
 
 export class BulkUpdateFilterDto {
   @ApiPropertyOptional({ description: "Filter by account IDs" })
@@ -85,6 +86,7 @@ export class BulkUpdateDto {
   @IsOptional()
   @IsString()
   @MaxLength(100)
+  @SanitizeHtml()
   payeeName?: string | null;
 
   @ApiPropertyOptional({ description: "Set category ID (null to clear)" })
@@ -96,6 +98,7 @@ export class BulkUpdateDto {
   @IsOptional()
   @IsString()
   @MaxLength(500)
+  @SanitizeHtml()
   description?: string | null;
 
   @ApiPropertyOptional({
@@ -105,4 +108,41 @@ export class BulkUpdateDto {
   @IsOptional()
   @IsEnum(TransactionStatus)
   status?: TransactionStatus;
+
+  @ApiPropertyOptional({
+    description: "Set tag IDs (empty array to clear all tags)",
+    type: [String],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsUUID("4", { each: true })
+  tagIds?: string[];
+}
+
+export class BulkDeleteDto {
+  @ApiProperty({
+    description:
+      'Selection mode: "ids" for explicit IDs, "filter" for filter-based',
+    enum: ["ids", "filter"],
+  })
+  @IsEnum(["ids", "filter"])
+  mode: "ids" | "filter";
+
+  @ApiPropertyOptional({
+    description: 'Transaction IDs (required when mode is "ids")',
+    type: [String],
+  })
+  @ValidateIf((o) => o.mode === "ids")
+  @IsArray()
+  @IsUUID("4", { each: true })
+  transactionIds?: string[];
+
+  @ApiPropertyOptional({
+    description: 'Filters (used when mode is "filter")',
+  })
+  @ValidateIf((o) => o.mode === "filter")
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => BulkUpdateFilterDto)
+  filters?: BulkUpdateFilterDto;
 }

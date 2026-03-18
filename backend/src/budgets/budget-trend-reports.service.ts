@@ -231,7 +231,7 @@ export class BudgetTrendReportsService {
       queries.push(
         this.transactionsRepository
           .createQueryBuilder("t")
-          .select("COALESCE(SUM(ABS(t.amount)), 0)", "total")
+          .select("COALESCE(SUM(t.amount), 0)", "total")
           .where("t.user_id = :userId", { userId })
           .andWhere("t.category_id IN (:...categoryIds)", { categoryIds })
           .andWhere("t.transaction_date >= :start", {
@@ -247,7 +247,7 @@ export class BudgetTrendReportsService {
         this.splitsRepository
           .createQueryBuilder("s")
           .innerJoin("s.transaction", "t")
-          .select("COALESCE(SUM(ABS(s.amount)), 0)", "total")
+          .select("COALESCE(SUM(s.amount), 0)", "total")
           .where("t.user_id = :userId", { userId })
           .andWhere("s.category_id IN (:...categoryIds)", { categoryIds })
           .andWhere("t.transaction_date >= :start", {
@@ -264,7 +264,7 @@ export class BudgetTrendReportsService {
         this.transactionsRepository
           .createQueryBuilder("t")
           .innerJoin("t.linkedTransaction", "lt")
-          .select("COALESCE(SUM(ABS(t.amount)), 0)", "total")
+          .select("COALESCE(SUM(t.amount), 0)", "total")
           .where("t.user_id = :userId", { userId })
           .andWhere("t.is_transfer = true")
           .andWhere("t.amount < 0")
@@ -286,7 +286,10 @@ export class BudgetTrendReportsService {
       total += parseFloat(result?.total || "0");
     }
 
-    return total;
+    // All queries return signed sums (expenses and transfers are negative);
+    // negate to get positive spending.  Clamp to 0 so net-refund periods
+    // don't show negative spending.
+    return Math.max(-total, 0);
   }
 
   private async computeCategoryActual(
@@ -298,7 +301,7 @@ export class BudgetTrendReportsService {
     const [directResult, splitResult] = await Promise.all([
       this.transactionsRepository
         .createQueryBuilder("t")
-        .select("COALESCE(SUM(ABS(t.amount)), 0)", "total")
+        .select("COALESCE(SUM(t.amount), 0)", "total")
         .where("t.user_id = :userId", { userId })
         .andWhere("t.category_id = :categoryId", { categoryId })
         .andWhere("t.transaction_date >= :start", { start: periodStart })
@@ -309,7 +312,7 @@ export class BudgetTrendReportsService {
       this.splitsRepository
         .createQueryBuilder("s")
         .innerJoin("s.transaction", "t")
-        .select("COALESCE(SUM(ABS(s.amount)), 0)", "total")
+        .select("COALESCE(SUM(s.amount), 0)", "total")
         .where("t.user_id = :userId", { userId })
         .andWhere("s.category_id = :categoryId", { categoryId })
         .andWhere("t.transaction_date >= :start", { start: periodStart })
@@ -318,9 +321,13 @@ export class BudgetTrendReportsService {
         .getRawOne(),
     ]);
 
-    return (
-      parseFloat(directResult?.total || "0") +
-      parseFloat(splitResult?.total || "0")
+    // Expenses are negative; negate to get positive spending, clamp to 0
+    return Math.max(
+      -(
+        parseFloat(directResult?.total || "0") +
+        parseFloat(splitResult?.total || "0")
+      ),
+      0,
     );
   }
 
@@ -372,7 +379,7 @@ export class BudgetTrendReportsService {
           "TO_CHAR(DATE_TRUNC('month', t.transaction_date), 'YYYY-MM')",
           "month",
         )
-        .addSelect("COALESCE(SUM(ABS(t.amount)), 0)", "total")
+        .addSelect("COALESCE(ABS(SUM(t.amount)), 0)", "total")
         .where("t.user_id = :userId", { userId })
         .andWhere("t.category_id IN (:...filteredCategoryIds)", {
           filteredCategoryIds,
@@ -394,7 +401,7 @@ export class BudgetTrendReportsService {
           "TO_CHAR(DATE_TRUNC('month', t.transaction_date), 'YYYY-MM')",
           "month",
         )
-        .addSelect("COALESCE(SUM(ABS(s.amount)), 0)", "total")
+        .addSelect("COALESCE(ABS(SUM(s.amount)), 0)", "total")
         .where("t.user_id = :userId", { userId })
         .andWhere("s.category_id IN (:...filteredCategoryIds)", {
           filteredCategoryIds,
@@ -512,7 +519,7 @@ export class BudgetTrendReportsService {
             "TO_CHAR(DATE_TRUNC('month', t.transaction_date), 'YYYY-MM')",
             "month",
           )
-          .addSelect("COALESCE(SUM(ABS(t.amount)), 0)", "total")
+          .addSelect("COALESCE(ABS(SUM(t.amount)), 0)", "total")
           .where("t.user_id = :userId", { userId })
           .andWhere("t.category_id IN (:...categoryIds)", { categoryIds })
           .andWhere("t.transaction_date >= :start", { start: rangeStart })
@@ -542,7 +549,7 @@ export class BudgetTrendReportsService {
             "TO_CHAR(DATE_TRUNC('month', t.transaction_date), 'YYYY-MM')",
             "month",
           )
-          .addSelect("COALESCE(SUM(ABS(s.amount)), 0)", "total")
+          .addSelect("COALESCE(ABS(SUM(s.amount)), 0)", "total")
           .where("t.user_id = :userId", { userId })
           .andWhere("s.category_id IN (:...categoryIds)", { categoryIds })
           .andWhere("t.transaction_date >= :start", { start: rangeStart })
@@ -573,7 +580,7 @@ export class BudgetTrendReportsService {
             "TO_CHAR(DATE_TRUNC('month', t.transaction_date), 'YYYY-MM')",
             "month",
           )
-          .addSelect("COALESCE(SUM(ABS(t.amount)), 0)", "total")
+          .addSelect("COALESCE(ABS(SUM(t.amount)), 0)", "total")
           .where("t.user_id = :userId", { userId })
           .andWhere("t.is_transfer = true")
           .andWhere("t.amount < 0")

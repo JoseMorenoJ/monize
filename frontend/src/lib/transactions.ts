@@ -14,6 +14,8 @@ import {
   BulkReconcileResult,
   BulkUpdateData,
   BulkUpdateResult,
+  BulkDeleteData,
+  BulkDeleteResult,
   MonthlyTotal,
 } from '@/types/transaction';
 import { invalidateCache } from './apiCache';
@@ -26,6 +28,7 @@ function buildFilterParams(params?: {
   categoryIds?: string[];
   payeeId?: string;
   payeeIds?: string[];
+  tagIds?: string[];
 }): Record<string, string | undefined> {
   const result: Record<string, string | undefined> = {};
 
@@ -45,6 +48,10 @@ function buildFilterParams(params?: {
     result.payeeIds = params.payeeIds.join(',');
   } else if (params?.payeeId) {
     result.payeeId = params.payeeId;
+  }
+
+  if (params?.tagIds && params.tagIds.length > 0) {
+    result.tagIds = params.tagIds.join(',');
   }
 
   return result;
@@ -75,6 +82,7 @@ export const transactionsApi = {
     targetTransactionId?: string;
     amountFrom?: number;
     amountTo?: number;
+    tagIds?: string[];
   }): Promise<PaginatedTransactions> => {
     const apiParams = {
       ...buildFilterParams(params),
@@ -159,6 +167,7 @@ export const transactionsApi = {
     search?: string;
     amountFrom?: number;
     amountTo?: number;
+    tagIds?: string[];
   }): Promise<TransactionSummary> => {
     const apiParams = {
       ...buildFilterParams(params),
@@ -186,6 +195,7 @@ export const transactionsApi = {
     search?: string;
     amountFrom?: number;
     amountTo?: number;
+    tagIds?: string[];
   }): Promise<MonthlyTotal[]> => {
     const apiParams = {
       ...buildFilterParams(params),
@@ -317,6 +327,17 @@ export const transactionsApi = {
   bulkUpdate: async (data: BulkUpdateData): Promise<BulkUpdateResult> => {
     const response = await apiClient.post<BulkUpdateResult>(
       '/transactions/bulk-update',
+      data,
+    );
+    invalidateCache('accounts:');
+    invalidateCache('investments:');
+    return response.data;
+  },
+
+  // Bulk delete transactions
+  bulkDelete: async (data: BulkDeleteData): Promise<BulkDeleteResult> => {
+    const response = await apiClient.post<BulkDeleteResult>(
+      '/transactions/bulk-delete',
       data,
     );
     invalidateCache('accounts:');

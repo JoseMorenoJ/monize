@@ -16,6 +16,7 @@ function createAccount(overrides: Partial<Account> = {}): Account {
     scheduledTransactionId: null, assetCategoryId: null, dateAcquired: null,
     isCanadianMortgage: false, isVariableRate: false, termMonths: null, termEndDate: null,
     amortizationMonths: null, originalPrincipal: null,
+    statementDueDay: null, statementSettlementDay: null,
     createdAt: '2024-01-01T00:00:00Z', updatedAt: '2024-01-01T00:00:00Z',
     ...overrides,
   };
@@ -92,6 +93,10 @@ describe('TransactionFilterPanel', () => {
     categoryFilterOptions: [],
     payeeFilterOptions: [],
     formatDate: vi.fn((d: string) => d),
+    filterTagIds: [] as string[],
+    setFilterTagIds: vi.fn(),
+    selectedTags: [],
+    tagFilterOptions: [],
     onClearFilters: vi.fn(),
   };
 

@@ -129,7 +129,8 @@ describe('PayeeList', () => {
     ];
 
     render(<PayeeList payees={payees} onEdit={onEdit} onRefresh={onRefresh} />);
-    expect(screen.getByText('0')).toBeInTheDocument();
+    const zeros = screen.getAllByText('0');
+    expect(zeros.length).toBeGreaterThanOrEqual(1);
   });
 
   it('displays notes when available', () => {
@@ -147,7 +148,7 @@ describe('PayeeList', () => {
     ];
 
     render(<PayeeList payees={payees} onEdit={onEdit} onRefresh={onRefresh} />);
-    expect(screen.getByText('-')).toBeInTheDocument();
+    expect(screen.getAllByText('-').length).toBeGreaterThan(0);
   });
 
   // Edit

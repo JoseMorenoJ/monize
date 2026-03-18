@@ -935,7 +935,7 @@ describe("BudgetAlertService", () => {
         groupBy: jest.fn().mockReturnThis(),
         getRawMany: jest
           .fn()
-          .mockResolvedValue([{ categoryId: "cat-1", total: "550" }]),
+          .mockResolvedValue([{ categoryId: "cat-1", total: "-550" }]),
       };
 
       transactionsRepository.createQueryBuilder.mockReturnValue(qb);
@@ -981,7 +981,7 @@ describe("BudgetAlertService", () => {
         groupBy: jest.fn().mockReturnThis(),
         getRawMany: jest
           .fn()
-          .mockResolvedValue([{ categoryId: "cat-1", total: "600" }]),
+          .mockResolvedValue([{ categoryId: "cat-1", total: "-600" }]),
       };
 
       transactionsRepository.createQueryBuilder.mockReturnValue(qb);
@@ -1027,7 +1027,7 @@ describe("BudgetAlertService", () => {
         groupBy: jest.fn().mockReturnThis(),
         getRawMany: jest
           .fn()
-          .mockResolvedValue([{ categoryId: "cat-1", total: "600" }]),
+          .mockResolvedValue([{ categoryId: "cat-1", total: "-600" }]),
       };
 
       transactionsRepository.createQueryBuilder.mockReturnValue(qb);
@@ -1068,7 +1068,7 @@ describe("BudgetAlertService", () => {
         groupBy: jest.fn().mockReturnThis(),
         getRawMany: jest
           .fn()
-          .mockResolvedValue([{ categoryId: "cat-1", total: "600" }]),
+          .mockResolvedValue([{ categoryId: "cat-1", total: "-600" }]),
       };
 
       transactionsRepository.createQueryBuilder.mockReturnValue(qb);
@@ -1122,7 +1122,7 @@ describe("BudgetAlertService", () => {
         groupBy: jest.fn().mockReturnThis(),
         getRawMany: jest
           .fn()
-          .mockResolvedValue([{ categoryId: "cat-1", total: "600" }]),
+          .mockResolvedValue([{ categoryId: "cat-1", total: "-600" }]),
       };
 
       transactionsRepository.createQueryBuilder.mockReturnValue(qb);

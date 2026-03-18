@@ -323,10 +323,10 @@ describe("BudgetReportsService", () => {
       periodsRepository.findOne.mockResolvedValueOnce(openPeriod);
 
       const directQb = createMockQueryBuilder({
-        getRawOne: jest.fn().mockResolvedValue({ total: "400" }),
+        getRawOne: jest.fn().mockResolvedValue({ total: "-400" }),
       });
       const splitQb = createMockQueryBuilder({
-        getRawOne: jest.fn().mockResolvedValue({ total: "50" }),
+        getRawOne: jest.fn().mockResolvedValue({ total: "-50" }),
       });
 
       transactionsRepository.createQueryBuilder.mockReturnValueOnce(directQb);
@@ -526,10 +526,10 @@ describe("BudgetReportsService", () => {
       periodsRepository.find.mockResolvedValueOnce(periods);
 
       const directQb = createMockQueryBuilder({
-        getRawOne: jest.fn().mockResolvedValue({ total: "300" }),
+        getRawOne: jest.fn().mockResolvedValue({ total: "-300" }),
       });
       const splitQb = createMockQueryBuilder({
-        getRawOne: jest.fn().mockResolvedValue({ total: "25" }),
+        getRawOne: jest.fn().mockResolvedValue({ total: "-25" }),
       });
 
       transactionsRepository.createQueryBuilder.mockReturnValueOnce(directQb);

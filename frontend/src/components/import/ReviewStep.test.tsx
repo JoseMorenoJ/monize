@@ -14,6 +14,7 @@ function createAccount(overrides: Partial<Account> = {}): Account {
     scheduledTransactionId: null, assetCategoryId: null, dateAcquired: null,
     isCanadianMortgage: false, isVariableRate: false, termMonths: null, termEndDate: null,
     amortizationMonths: null, originalPrincipal: null,
+    statementDueDay: null, statementSettlementDay: null,
     createdAt: '2024-01-01T00:00:00Z', updatedAt: '2024-01-01T00:00:00Z',
     ...overrides,
   };
@@ -30,7 +31,7 @@ describe('ReviewStep', () => {
       investmentTransactions: [],
       qifType: 'Bank' as const,
       accountType: 'Bank',
-      accountName: null,
+      accountName: '',
       transactionCount: 5,
       dateRange: { start: '2024-01-01', end: '2024-01-31' },
       categories: [],
@@ -182,6 +183,7 @@ describe('ReviewStep', () => {
       {
         fileName: 'file1.qif',
         fileContent: '',
+        fileType: 'qif' as const,
         parsedData: { ...defaultProps.parsedData, transactionCount: 10 },
         selectedAccountId: 'acc-1',
         matchConfidence: 'exact',
@@ -202,6 +204,7 @@ describe('ReviewStep', () => {
       {
         fileName: 'checking.qif',
         fileContent: '',
+        fileType: 'qif' as const,
         parsedData: { ...defaultProps.parsedData, transactionCount: 10 },
         selectedAccountId: 'acc-1',
         matchConfidence: 'exact',
@@ -209,6 +212,7 @@ describe('ReviewStep', () => {
       {
         fileName: 'savings.qif',
         fileContent: '',
+        fileType: 'qif' as const,
         parsedData: { ...defaultProps.parsedData, transactionCount: 5 },
         selectedAccountId: 'acc-1',
         matchConfidence: 'exact',

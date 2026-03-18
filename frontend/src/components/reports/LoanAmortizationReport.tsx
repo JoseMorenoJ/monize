@@ -7,6 +7,8 @@ import { transactionsApi } from '@/lib/transactions';
 import { Account } from '@/types/account';
 import { Transaction } from '@/types/transaction';
 import { useNumberFormat } from '@/hooks/useNumberFormat';
+import { exportToCsv } from '@/lib/csv-export';
+import { ExportDropdown } from '@/components/ui/ExportDropdown';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('LoanAmortizationReport');
@@ -305,6 +307,42 @@ export function LoanAmortizationReport() {
     };
   }, [paymentHistory, selectedAccount, historicalCount, hasProjection]);
 
+  const handleExportCsv = () => {
+    const headers = ['#', 'Date', 'Payment', 'Principal', 'Interest', 'Balance', 'Type'];
+    const rows = paymentHistory.map((row) => [
+      row.paymentNumber,
+      format(parseISO(row.date), 'yyyy-MM-dd'),
+      row.payment,
+      row.principal,
+      row.interest,
+      row.balance,
+      row.isProjected ? 'Projected' : 'Actual',
+    ]);
+    const accountName = selectedAccount?.name?.replace(/[^a-zA-Z0-9]/g, '-') || 'loan';
+    exportToCsv(`amortization-${accountName}`, headers, rows);
+  };
+
+  const handleExportPdf = async () => {
+    const { exportToPdf } = await import('@/lib/pdf-export');
+    const headers = ['#', 'Date', 'Payment', 'Principal', 'Interest', 'Balance', 'Type'];
+    const rows = paymentHistory.map((row) => [
+      row.paymentNumber,
+      format(parseISO(row.date), 'yyyy-MM-dd'),
+      row.payment,
+      row.principal,
+      row.interest,
+      row.balance,
+      row.isProjected ? 'Projected' : 'Actual',
+    ]);
+    const accountName = selectedAccount?.name?.replace(/[^a-zA-Z0-9]/g, '-') || 'loan';
+    await exportToPdf({
+      title: `Loan Amortization - ${selectedAccount?.name || 'Loan'}`,
+      subtitle: summary ? `${historicalCount} payments made, ${formatCurrency(summary.totalInterest)} total interest` : undefined,
+      tableData: { headers, rows },
+      filename: `amortization-${accountName}`,
+    });
+  };
+
   const displayedRows = showAllRows
     ? paymentHistory
     : paymentHistory.slice(0, 24);
@@ -439,16 +477,21 @@ export function LoanAmortizationReport() {
 
       {/* Payment History Table */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-            Payment {hasProjection ? 'History & Projection' : 'History'}
-          </h3>
-          {summary && (
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-              {historicalCount} payments made
-              {hasProjection && ` + ${paymentHistory.length - historicalCount} projected`}
-              {' '}totaling {formatCurrency(summary.totalPayments)}
-            </p>
+        <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+              Payment {hasProjection ? 'History & Projection' : 'History'}
+            </h3>
+            {summary && (
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                {historicalCount} payments made
+                {hasProjection && ` + ${paymentHistory.length - historicalCount} projected`}
+                {' '}totaling {formatCurrency(summary.totalPayments)}
+              </p>
+            )}
+          </div>
+          {paymentHistory.length > 0 && (
+            <ExportDropdown onExportCsv={handleExportCsv} onExportPdf={handleExportPdf} />
           )}
         </div>
 

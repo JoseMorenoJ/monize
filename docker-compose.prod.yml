@@ -49,6 +49,7 @@ services:
       LOCAL_AUTH_ENABLED: ${LOCAL_AUTH_ENABLED:-true}
       REGISTRATION_ENABLED: ${REGISTRATION_ENABLED:-true}
       FORCE_2FA: ${FORCE_2FA:-false}
+      REMEMBER_ME_DAYS: ${REMEMBER_ME_DAYS:-30}
       # Demo mode (optional)
       DEMO_MODE: ${DEMO_MODE:-false}
       # OIDC (optional)
@@ -69,6 +70,8 @@ services:
       AI_DEFAULT_MODEL: ${AI_DEFAULT_MODEL:-}
       AI_DEFAULT_API_KEY: ${AI_DEFAULT_API_KEY:-}
       AI_DEFAULT_BASE_URL: ${AI_DEFAULT_BASE_URL:-}
+      # HTTP mode (optional)
+      DISABLE_HTTPS_HEADERS: ${DISABLE_HTTPS_HEADERS:-false}
     networks:
       - monize-network
     healthcheck:
@@ -97,6 +100,7 @@ services:
       NODE_ENV: production
       INTERNAL_API_URL: http://backend:3000
       PUBLIC_APP_URL: ${PUBLIC_APP_URL}
+      DISABLE_HTTPS_HEADERS: ${DISABLE_HTTPS_HEADERS:-false}
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
     networks:

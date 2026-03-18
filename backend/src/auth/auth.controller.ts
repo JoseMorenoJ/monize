@@ -27,6 +27,7 @@ import { Throttle } from "@nestjs/throttler";
 import { Response, Request as ExpressRequest } from "express";
 
 import { AuthService } from "./auth.service";
+import { TokenService } from "./token.service";
 import { OidcService } from "./oidc/oidc.service";
 import { EmailService } from "../notifications/email.service";
 import { RegisterDto } from "./dto/register.dto";
@@ -50,7 +51,7 @@ export class AuthController {
   private localAuthEnabled: boolean;
   private registrationEnabled: boolean;
   private force2fa: boolean;
-  private isProduction: boolean;
+  private useSecureCookies: boolean;
 
   constructor(
     private authService: AuthService,
@@ -58,6 +59,7 @@ export class AuthController {
     private configService: ConfigService,
     private emailService: EmailService,
     private demoModeService: DemoModeService,
+    private tokenService: TokenService,
   ) {
     // Default to true if not explicitly set to 'false'
     const localAuthSetting = this.configService.get<string>(
@@ -75,26 +77,31 @@ export class AuthController {
       "false",
     );
     this.force2fa = force2faSetting.toLowerCase() === "true";
-    this.isProduction =
-      this.configService.get<string>("NODE_ENV") === "production";
+    const disableHttpsHeaders =
+      this.configService
+        .get<string>("DISABLE_HTTPS_HEADERS", "false")
+        .toLowerCase() === "true";
+    this.useSecureCookies =
+      this.configService.get<string>("NODE_ENV") === "production" &&
+      !disableHttpsHeaders;
   }
 
   private getAccessCookieOptions() {
     return {
       httpOnly: true,
-      secure: this.isProduction,
+      secure: this.useSecureCookies,
       sameSite: "lax" as const,
       maxAge: 15 * 60 * 1000, // 15 minutes (matches JWT expiry)
       path: "/",
     };
   }
 
-  private getRefreshCookieOptions() {
+  private getRefreshCookieOptions(rememberMe?: boolean) {
     return {
       httpOnly: true,
-      secure: this.isProduction,
+      secure: this.useSecureCookies,
       sameSite: "strict" as const,
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      maxAge: this.tokenService.getRefreshExpiryMs(rememberMe),
       path: "/",
     };
   }
@@ -104,32 +111,36 @@ export class AuthController {
     accessToken: string,
     refreshToken: string,
     userId: string,
+    rememberMe?: boolean,
   ) {
-    const jwtSecret = this.configService.get<string>("JWT_SECRET");
     res.cookie("auth_token", accessToken, this.getAccessCookieOptions());
-    res.cookie("refresh_token", refreshToken, this.getRefreshCookieOptions());
+    res.cookie(
+      "refresh_token",
+      refreshToken,
+      this.getRefreshCookieOptions(rememberMe),
+    );
     res.cookie(
       "csrf_token",
-      generateCsrfToken(userId, jwtSecret),
-      getCsrfCookieOptions(this.isProduction),
+      generateCsrfToken(userId, this.authService.getCsrfKey()),
+      getCsrfCookieOptions(this.useSecureCookies),
     );
   }
 
   private clearAuthCookies(res: Response) {
     res.clearCookie("auth_token", {
       httpOnly: true,
-      secure: this.isProduction,
+      secure: this.useSecureCookies,
       sameSite: "lax" as const,
       path: "/",
     });
     res.clearCookie("refresh_token", {
       httpOnly: true,
-      secure: this.isProduction,
+      secure: this.useSecureCookies,
       sameSite: "strict" as const,
       path: "/",
     });
     res.clearCookie("csrf_token", {
-      secure: this.isProduction,
+      secure: this.useSecureCookies,
       sameSite: "lax" as const,
       path: "/",
     });
@@ -179,7 +190,12 @@ export class AuthController {
       );
     }
     const trustedDeviceToken = req.cookies?.["trusted_device"];
-    const result = await this.authService.login(loginDto, trustedDeviceToken);
+    const userAgent = req.headers?.["user-agent"];
+    const result = await this.authService.login(
+      loginDto,
+      trustedDeviceToken,
+      userAgent,
+    );
 
     // If 2FA is required, return temp token without setting cookie
     if (result.requires2FA) {
@@ -191,6 +207,7 @@ export class AuthController {
       result.accessToken!,
       result.refreshToken!,
       result.user!.id,
+      result.rememberMe,
     );
     res.json({ user: result.user });
   }
@@ -210,7 +227,7 @@ export class AuthController {
     // Store state/nonce in secure cookies for validation
     const cookieOptions = {
       httpOnly: true,
-      secure: this.isProduction,
+      secure: this.useSecureCookies,
       sameSite: "lax" as const,
       maxAge: 600000, // 10 minutes
     };
@@ -234,13 +251,27 @@ export class AuthController {
       "http://localhost:3000",
     );
 
+    const clearOidcCookieOptions = {
+      httpOnly: true,
+      secure: this.useSecureCookies,
+      sameSite: "lax" as const,
+    };
+
     try {
+      // Check for OIDC provider error response before processing
+      if (query.error) {
+        this.logger.warn(
+          `OIDC provider returned error: ${query.error} - ${query.error_description || "no description"}`,
+        );
+        throw new Error(`OIDC provider error: ${query.error}`);
+      }
+
       const state = req.cookies?.["oidc_state"];
       const nonce = req.cookies?.["oidc_nonce"];
 
-      // Clear OIDC cookies
-      res.clearCookie("oidc_state");
-      res.clearCookie("oidc_nonce");
+      // Clear OIDC cookies with matching options
+      res.clearCookie("oidc_state", clearOidcCookieOptions);
+      res.clearCookie("oidc_nonce", clearOidcCookieOptions);
 
       if (!state || !nonce) {
         throw new Error(
@@ -262,18 +293,28 @@ export class AuthController {
       );
 
       // Find or create user
-      const user = await this.authService.findOrCreateOidcUser(
+      const result = await this.authService.findOrCreateOidcUser(
         userInfo,
         this.registrationEnabled,
       );
 
+      // SECURITY: If an existing local account needs confirmation before linking,
+      // do NOT issue tokens. Redirect with a message instead.
+      if (result.linkPending) {
+        res.redirect(`${frontendUrl}/auth/callback?link=pending`);
+        return;
+      }
+
       // Generate token pair
       const { accessToken, refreshToken } =
-        await this.authService.generateTokenPair(user);
+        await this.authService.generateTokenPair(result.user);
 
-      this.setAuthCookies(res, accessToken, refreshToken, user.id);
+      this.setAuthCookies(res, accessToken, refreshToken, result.user.id);
       res.redirect(`${frontendUrl}/auth/callback?success=true`);
     } catch (error) {
+      // Clear OIDC cookies on error path as well
+      res.clearCookie("oidc_state", clearOidcCookieOptions);
+      res.clearCookie("oidc_nonce", clearOidcCookieOptions);
       // SECURITY: Log detailed error server-side only, don't expose to client
       this.logger.error(
         "OIDC callback error",
@@ -315,11 +356,10 @@ export class AuthController {
   @ApiBearerAuth()
   @ApiOperation({ summary: "Refresh CSRF token cookie" })
   async csrfRefresh(@Request() req, @Res() res: Response) {
-    const jwtSecret = this.configService.get<string>("JWT_SECRET");
     res.cookie(
       "csrf_token",
-      generateCsrfToken(req.user.id, jwtSecret),
-      getCsrfCookieOptions(this.isProduction),
+      generateCsrfToken(req.user.id, this.authService.getCsrfKey()),
+      getCsrfCookieOptions(this.useSecureCookies),
     );
     res.json({ message: "CSRF token refreshed" });
   }
@@ -417,12 +457,13 @@ export class AuthController {
       result.accessToken,
       result.refreshToken,
       result.user.id,
+      result.rememberMe,
     );
 
     if (result.trustedDeviceToken) {
       res.cookie("trusted_device", result.trustedDeviceToken, {
         httpOnly: true,
-        secure: this.isProduction,
+        secure: this.useSecureCookies,
         sameSite: "lax",
         maxAge: 14 * 24 * 60 * 60 * 1000, // M5: 14 days (reduced from 30)
       });
