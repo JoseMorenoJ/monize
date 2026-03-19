@@ -1528,7 +1528,7 @@ describe("TransactionsService", () => {
       expect(result.startingBalance).toBe(1000);
     });
 
-    it("does not compute starting balance for multiple accounts", async () => {
+    it("does not compute starting balance for multiple accounts without filters", async () => {
       const mockQb = createMockQueryBuilder();
       mockQb.getManyAndCount.mockResolvedValue([[], 0]);
       transactionsRepository.createQueryBuilder.mockReturnValue(mockQb);
@@ -1539,7 +1539,7 @@ describe("TransactionsService", () => {
       expect(result.startingBalance).toBeUndefined();
     });
 
-    it("does not compute starting balance when no accounts specified", async () => {
+    it("does not compute starting balance when no accounts specified without filters", async () => {
       const mockQb = createMockQueryBuilder();
       mockQb.getManyAndCount.mockResolvedValue([[], 0]);
       transactionsRepository.createQueryBuilder.mockReturnValue(mockQb);
@@ -2238,6 +2238,114 @@ describe("TransactionsService", () => {
           "bf.transactionDate <= :bfEndDate",
           { bfEndDate: "2026-03-31" },
         );
+      });
+    });
+
+    describe("multi-account content-filtered starting balance", () => {
+      const mockTx = {
+        id: "tx-1",
+        userId: "user-1",
+        accountId: "account-1",
+        amount: -50,
+        status: TransactionStatus.UNRECONCILED,
+        isCleared: false,
+        isReconciled: false,
+        isVoid: false,
+        splits: [],
+      };
+
+      it("computes zero-based balance for multiple accounts with payee filter", async () => {
+        const mockQb = createMockQueryBuilder();
+        mockQb.getManyAndCount.mockResolvedValue([[mockTx], 1]);
+
+        const idsQb = createMockQueryBuilder();
+        const totalSumQb = createMockQueryBuilder({
+          setParameters: jest.fn().mockReturnThis(),
+        });
+        totalSumQb.getRawOne.mockResolvedValue({ totalSum: -800 });
+
+        transactionsRepository.createQueryBuilder
+          .mockReturnValueOnce(mockQb)
+          .mockReturnValueOnce(idsQb)
+          .mockReturnValueOnce(totalSumQb);
+
+        investmentTxRepository.find.mockResolvedValue([]);
+
+        const result = await service.findAll(
+          "user-1",
+          ["acc-1", "acc-2"],
+          undefined,
+          undefined,
+          undefined,
+          ["payee-1"],
+        );
+
+        expect(result.startingBalance).toBe(-800);
+        // Should filter by multiple account IDs
+        expect(idsQb.andWhere).toHaveBeenCalledWith(
+          "bf.accountId IN (:...bfAccountIds)",
+          { bfAccountIds: ["acc-1", "acc-2"] },
+        );
+      });
+
+      it("computes zero-based balance when no accounts selected with payee filter", async () => {
+        const mockQb = createMockQueryBuilder();
+        mockQb.getManyAndCount.mockResolvedValue([[mockTx], 1]);
+
+        const idsQb = createMockQueryBuilder();
+        const totalSumQb = createMockQueryBuilder({
+          setParameters: jest.fn().mockReturnThis(),
+        });
+        totalSumQb.getRawOne.mockResolvedValue({ totalSum: -1200 });
+
+        transactionsRepository.createQueryBuilder
+          .mockReturnValueOnce(mockQb)
+          .mockReturnValueOnce(idsQb)
+          .mockReturnValueOnce(totalSumQb);
+
+        investmentTxRepository.find.mockResolvedValue([]);
+
+        const result = await service.findAll(
+          "user-1",
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          ["payee-1"],
+        );
+
+        expect(result.startingBalance).toBe(-1200);
+        // Should NOT filter by account at all
+        expect(idsQb.andWhere).not.toHaveBeenCalledWith(
+          "bf.accountId = :bfAccountId",
+          expect.anything(),
+        );
+        expect(idsQb.andWhere).not.toHaveBeenCalledWith(
+          "bf.accountId IN (:...bfAccountIds)",
+          expect.anything(),
+        );
+      });
+
+      it("does not compute balance for multiple accounts without content filters", async () => {
+        const mockQb = createMockQueryBuilder();
+        mockQb.getManyAndCount.mockResolvedValue([[], 0]);
+        transactionsRepository.createQueryBuilder.mockReturnValue(mockQb);
+        investmentTxRepository.find.mockResolvedValue([]);
+
+        const result = await service.findAll("user-1", ["acc-1", "acc-2"]);
+
+        expect(result.startingBalance).toBeUndefined();
+      });
+
+      it("does not compute balance for no accounts without content filters", async () => {
+        const mockQb = createMockQueryBuilder();
+        mockQb.getManyAndCount.mockResolvedValue([[], 0]);
+        transactionsRepository.createQueryBuilder.mockReturnValue(mockQb);
+        investmentTxRepository.find.mockResolvedValue([]);
+
+        const result = await service.findAll("user-1");
+
+        expect(result.startingBalance).toBeUndefined();
       });
     });
 
