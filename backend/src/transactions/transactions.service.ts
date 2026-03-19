@@ -394,6 +394,27 @@ export class TransactionsService {
           amountTo,
         },
       );
+    } else if (
+      (!accountIds || accountIds.length === 0) &&
+      hasContentFilters &&
+      data.length > 0
+    ) {
+      startingBalance = await this.calculateMultiAccountContentFilteredBalance(
+        userId,
+        undefined,
+        safePage,
+        skip,
+        {
+          startDate,
+          endDate,
+          categoryIds,
+          payeeIds,
+          tagIds,
+          search,
+          amountFrom,
+          amountTo,
+        },
+      );
     }
 
     const enrichedData = await this.enrichWithInvestmentLinks(data);
@@ -700,7 +721,7 @@ export class TransactionsService {
    */
   private async calculateMultiAccountContentFilteredBalance(
     userId: string,
-    accountIds: string[],
+    accountIds: string[] | undefined,
     safePage: number,
     skip: number,
     filters: {
@@ -845,7 +866,7 @@ export class TransactionsService {
    */
   private async computeFilteredPrevPagesSum(
     userId: string,
-    accountId: string | string[],
+    accountId: string | string[] | undefined,
     skip: number,
     filters: {
       startDate?: string;
@@ -891,7 +912,7 @@ export class TransactionsService {
    */
   private async buildFilteredIdsSubquery(
     userId: string,
-    accountId: string | string[],
+    accountId: string | string[] | undefined,
     filters: {
       startDate?: string;
       endDate?: string;
@@ -912,7 +933,7 @@ export class TransactionsService {
       qb.andWhere("bf.accountId IN (:...bfAccountIds)", {
         bfAccountIds: accountId,
       });
-    } else {
+    } else if (accountId) {
       qb.andWhere("bf.accountId = :bfAccountId", { bfAccountId: accountId });
     }
 
