@@ -1629,6 +1629,29 @@ describe("ReportsService", () => {
         expect(hasBracketsCall).toBe(true);
       });
 
+      it("applies filterGroups with tag field", async () => {
+        const { qb } = setupExecuteMocks({
+          filters: {
+            filterGroups: [
+              {
+                conditions: [{ field: "tag", value: ["tag-1", "tag-2"] }],
+              },
+            ],
+          },
+          config: { ...defaultConfig },
+        });
+
+        await service.execute("user-1", "report-1");
+
+        // filterGroups should be applied via Brackets
+        const andWhereCalls = qb.andWhere.mock.calls;
+        const hasBracketsCall = andWhereCalls.some(
+          (c: unknown[]) =>
+            c[0] && typeof c[0] === "object" && c[0].constructor !== String,
+        );
+        expect(hasBracketsCall).toBe(true);
+      });
+
       it("skips empty filterGroups", async () => {
         const { qb } = setupExecuteMocks({
           filters: {
