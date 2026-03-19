@@ -375,7 +375,7 @@ export function TransactionList({
           <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
             {transactions.map((transaction, index) => {
               const isFuture = index < futureBoundaryIndex;
-              const colCount = 8
+              const colCount = 9
                 + (selectionMode ? 1 : 0)
                 + (isSingleAccountView ? 1 : 0);
               return (
