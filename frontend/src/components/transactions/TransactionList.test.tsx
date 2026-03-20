@@ -2195,4 +2195,119 @@ describe('TransactionList', () => {
       });
     });
   });
+
+  // =========================================================================
+  // Export button
+  // =========================================================================
+
+  describe('export button', () => {
+    it('does not render Export button when onExport is not provided', async () => {
+      render(
+        <TransactionList
+          transactions={[createTransaction()]}
+          onEdit={mockOnEdit}
+          onRefresh={mockOnRefresh}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.queryByTitle('Export transactions to CSV')).not.toBeInTheDocument();
+      });
+    });
+
+    it('renders Export button when onExport is provided', async () => {
+      const mockOnExport = vi.fn();
+      render(
+        <TransactionList
+          transactions={[createTransaction()]}
+          onEdit={mockOnEdit}
+          onRefresh={mockOnRefresh}
+          onExport={mockOnExport}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTitle('Export transactions to CSV')).toBeInTheDocument();
+        expect(screen.getByText('Export')).toBeInTheDocument();
+      });
+    });
+
+    it('calls onExport when Export button is clicked', async () => {
+      const mockOnExport = vi.fn();
+      render(
+        <TransactionList
+          transactions={[createTransaction()]}
+          onEdit={mockOnEdit}
+          onRefresh={mockOnRefresh}
+          onExport={mockOnExport}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTitle('Export transactions to CSV')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByTitle('Export transactions to CSV'));
+      expect(mockOnExport).toHaveBeenCalledTimes(1);
+    });
+
+    it('shows Exporting... text when isExporting is true', async () => {
+      const mockOnExport = vi.fn();
+      render(
+        <TransactionList
+          transactions={[createTransaction()]}
+          onEdit={mockOnEdit}
+          onRefresh={mockOnRefresh}
+          onExport={mockOnExport}
+          isExporting={true}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('Exporting...')).toBeInTheDocument();
+      });
+    });
+
+    it('disables Export button when isExporting is true', async () => {
+      const mockOnExport = vi.fn();
+      render(
+        <TransactionList
+          transactions={[createTransaction()]}
+          onEdit={mockOnEdit}
+          onRefresh={mockOnRefresh}
+          onExport={mockOnExport}
+          isExporting={true}
+        />
+      );
+
+      await waitFor(() => {
+        const exportButton = screen.getByTitle('Export transactions to CSV');
+        expect(exportButton).toBeDisabled();
+      });
+    });
+
+    it('renders Export button to the left of Density button', async () => {
+      const mockOnExport = vi.fn();
+      render(
+        <TransactionList
+          transactions={[createTransaction()]}
+          onEdit={mockOnEdit}
+          onRefresh={mockOnRefresh}
+          onExport={mockOnExport}
+        />
+      );
+
+      await waitFor(() => {
+        const exportButton = screen.getByTitle('Export transactions to CSV');
+        const densityButton = screen.getByTitle('Toggle row density');
+        const parent = exportButton.parentElement;
+        expect(parent).toBe(densityButton.parentElement);
+
+        const children = Array.from(parent!.children);
+        const exportIndex = children.indexOf(exportButton);
+        const densityIndex = children.indexOf(densityButton);
+        expect(exportIndex).toBeLessThan(densityIndex);
+      });
+    });
+  });
 });
