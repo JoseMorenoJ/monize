@@ -284,32 +284,19 @@ export function TransactionList({
     return map;
   }, [transactions]);
 
-  // Calculate running balances.  When some split transactions show
-  // partial (filtered) amounts, adjust the starting balance so the
-  // running total stays consistent with the displayed amounts.
+  // Calculate running balances using the backend-provided starting
+  // balance and display amounts (which may be filtered split totals).
   const runningBalances = useMemo(() => {
     if (startingBalance === undefined || transactions.length === 0) {
       return new Map<string, number>();
     }
-
-    // Compute the difference between full and filtered amounts for all
-    // partial split transactions on this page so we can adjust the
-    // starting balance the backend gave us.
-    let adjustment = 0;
-    for (const tx of transactions) {
-      const filtered = displayAmounts.get(tx.id);
-      if (filtered !== undefined) {
-        adjustment += filtered - Number(tx.amount);
-      }
-    }
-    const adjustedStart = startingBalance + adjustment;
 
     const balances = new Map<string, number>();
     let cumulativeSum = 0;
 
     for (const tx of transactions) {
       const amount = displayAmounts.get(tx.id) ?? Number(tx.amount);
-      balances.set(tx.id, adjustedStart - cumulativeSum);
+      balances.set(tx.id, startingBalance - cumulativeSum);
       cumulativeSum += amount;
     }
 

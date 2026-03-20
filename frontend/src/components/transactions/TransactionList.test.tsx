@@ -1983,12 +1983,11 @@ describe('TransactionList', () => {
       );
 
       await waitFor(() => {
-        // Adjustment: filtered(-50) - full(-200) = +150
-        // adjustedStart = 500 + 150 = 650
-        // First tx: balance = 650
-        // Second tx: balance = 650 - (-50) = 700
-        expect(screen.getByText('$650.00')).toBeInTheDocument();
-        expect(screen.getByText('$700.00')).toBeInTheDocument();
+        // Backend provides split-aware startingBalance (500).
+        // First tx: balance = 500
+        // Second tx: balance = 500 - (-50) = 550
+        expect(screen.getByText('$500.00')).toBeInTheDocument();
+        expect(screen.getByText('$550.00')).toBeInTheDocument();
       });
     });
 
