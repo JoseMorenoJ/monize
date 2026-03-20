@@ -878,6 +878,18 @@ export class BackupService {
     };
     const columnsToDefer = deferredFkColumns[table] ?? [];
 
+    // Detect native PostgreSQL array columns (e.g. TEXT[]) so we can pass
+    // JS arrays directly to the pg driver instead of JSON-stringifying them.
+    // JSONB columns still need JSON.stringify; only native array columns differ.
+    const arrayColResult = await queryRunner.query(
+      `SELECT column_name FROM information_schema.columns
+       WHERE table_name = $1 AND data_type = 'ARRAY'`,
+      [table],
+    );
+    const pgArrayColumns = new Set<string>(
+      arrayColResult.map((r: { column_name: string }) => r.column_name),
+    );
+
     let count = 0;
     for (const row of rows) {
       const filteredRow = { ...row };
@@ -897,11 +909,15 @@ export class BackupService {
       }
 
       const columns = Object.keys(filteredRow);
-      // Stringify any array/object values for JSONB columns -- PostgreSQL
-      // requires JSON text, not native JS objects, in parameterised queries.
-      const values = Object.values(filteredRow).map((v) =>
+      // Stringify object/array values for JSONB columns -- PostgreSQL requires
+      // JSON text, not native JS objects, in parameterised queries. Native
+      // PostgreSQL array columns (TEXT[], etc.) are left as JS arrays so the
+      // pg driver serialises them in the correct {val1,val2} format.
+      const values = Object.values(filteredRow).map((v, idx) =>
         v !== null && typeof v === "object" && !(v instanceof Date)
-          ? JSON.stringify(v)
+          ? Array.isArray(v) && pgArrayColumns.has(columns[idx])
+            ? v
+            : JSON.stringify(v)
           : v,
       );
 

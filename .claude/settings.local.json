@@ -24,7 +24,9 @@
       "WebSearch",
       "WebFetch(domain:github.com)",
       "WebFetch(domain:raw.githubusercontent.com)",
-      "WebFetch(domain:cycode.com)"
+      "WebFetch(domain:cycode.com)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)"
     ]
   }
 }
