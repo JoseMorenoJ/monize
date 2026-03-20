@@ -147,7 +147,7 @@ describe("McpHttpController", () => {
         (controller as any).transports.set(sid, mockTransport);
         (controller as any).servers.set(sid, {});
         (controller as any).sessionUsers.set(sid, {
-          userId: "user-flood",
+          userId: "user-1",
           scopes: "read,write,reports",
         });
         (controller as any).sessionCreatedAt.set(sid, Date.now());
@@ -288,10 +288,10 @@ describe("McpHttpController", () => {
       (controller as any).sessionCreatedAt.set(sessionId, Date.now());
 
       // Now try GET with a different user
-      usersService.findById.mockResolvedValue({ id: "user-1" });
+      usersService.findById.mockResolvedValue({ id: "user-2" });
 
       const req = {
-        signedCookies: { profile_session: "user-1" }, headers: { "mcp-session-id": sessionId, },
+        signedCookies: { profile_session: "user-2" }, headers: { "mcp-session-id": sessionId, },
       } as any;
       const res = {
         status: jest.fn().mockReturnThis(),
@@ -404,10 +404,10 @@ describe("McpHttpController", () => {
       (controller as any).sessionCreatedAt.set(sessionId, Date.now());
 
       // Now try DELETE with a different user
-      usersService.findById.mockResolvedValue({ id: "user-1" });
+      usersService.findById.mockResolvedValue({ id: "user-2" });
 
       const req = {
-        signedCookies: { profile_session: "user-1" }, headers: { "mcp-session-id": sessionId, },
+        signedCookies: { profile_session: "user-2" }, headers: { "mcp-session-id": sessionId, },
       } as any;
       const res = {
         status: jest.fn().mockReturnThis(),

@@ -2,6 +2,7 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { BadRequestException } from "@nestjs/common";
 import { BackupController } from "./backup.controller";
 import { BackupService } from "./backup.service";
+import { SessionGuard } from "../common/guards/session.guard";
 
 describe("BackupController", () => {
   let controller: BackupController;
@@ -28,7 +29,7 @@ describe("BackupController", () => {
           useValue: mockBackupService,
         },
       ],
-    }).compile();
+    }).overrideGuard(SessionGuard).useValue({ canActivate: () => true }).compile();
 
     controller = module.get<BackupController>(BackupController);
   });
@@ -57,7 +58,7 @@ describe("BackupController", () => {
   });
 
   describe("restoreBackup", () => {
-    it("should pass compressed body and auth headers to service", async () => {
+    it("should pass compressed body to service", async () => {
       const mockResult = {
         message: "Backup restored successfully",
         restored: { categories: 5 },
@@ -67,42 +68,15 @@ describe("BackupController", () => {
       const req = {
         user: { id: userId },
         body: Buffer.from("gzip-data"),
-        headers: {
-          "x-restore-password": "mypassword",
-        },
+        headers: {},
       };
 
       const result = await controller.restoreBackup(req);
 
       expect(mockBackupService.restoreData).toHaveBeenCalledWith(userId, {
         compressedData: req.body,
-        password: "mypassword",
-        oidcIdToken: undefined,
       });
       expect(result).toEqual(mockResult);
-    });
-
-    it("should pass OIDC token header to service", async () => {
-      mockBackupService.restoreData.mockResolvedValue({
-        message: "ok",
-        restored: {},
-      });
-
-      const req = {
-        user: { id: userId },
-        body: Buffer.from("gzip-data"),
-        headers: {
-          "x-restore-oidc-token": "oidc-token-value",
-        },
-      };
-
-      await controller.restoreBackup(req);
-
-      expect(mockBackupService.restoreData).toHaveBeenCalledWith(userId, {
-        compressedData: req.body,
-        password: undefined,
-        oidcIdToken: "oidc-token-value",
-      });
     });
 
     it("should throw BadRequestException if body is not a buffer", async () => {

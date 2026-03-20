@@ -1,6 +1,7 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import { ImportController } from "./import.controller";
 import { ImportService } from "./import.service";
+import { SessionGuard } from "../common/guards/session.guard";
 
 describe("ImportController", () => {
   let controller: ImportController;
@@ -32,7 +33,7 @@ describe("ImportController", () => {
           useValue: mockImportService,
         },
       ],
-    }).compile();
+    }).overrideGuard(SessionGuard).useValue({ canActivate: () => true }).compile();
 
     controller = module.get<ImportController>(ImportController);
   });

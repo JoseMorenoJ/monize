@@ -49,14 +49,58 @@ export const DEFAULT_EXPENSE_CATEGORIES: DefaultCategoryDefinition[] = [
   },
   {
     name: "Travel",
-    subcategories: ["Rentals", "Petrol", "Tickets", "Hotels", "Lunch", "Toll"],
+    subcategories: ["Rentals", "Petrol", "Tickets", "Hotels", "Lunch", "Toll", "Parking"],
   },
   {
     name: "Equipement",
     subcategories: ["Furniture", "Hardware", "Software"],
   },
   {
+    name: "Household",
+    subcategories: [
+      "Rent",
+      "Clothing",
+      "Care",
+      "Things for the house",
+      "Loans",
+      "Insurance",
+      "Shopping",
+    ],
+  },
+  {
+    name: "Food outside",
+    subcategories: ["Restaurant", "Cafe", "Delivery", "Vending", "Drinks"],
+  },
+  {
+    name: "Car",
+    subcategories: ["Fuel", "Maintenance", "Parking", "Insurance"],
+  },
+  {
+    name: "House bills",
+    subcategories: ["Electricity", "Telecom", "Water", "Community"],
+  },
+  {
+    name: "Entertainment",
+    subcategories: [],
+  },
+  {
+    name: "Children",
+    subcategories: [],
+  },
+  {
+    name: "Gifts",
+    subcategories: [],
+  },
+  {
+    name: "Pets",
+    subcategories: ["Food"],
+  },
+  {
+    name: "Transport",
+    subcategories: [],
+  },
+  {
     name: "Other",
-    subcategories: ["Other"],
+    subcategories: ["Transfers", "ATM", "Uncategorized"],
   },
 ];

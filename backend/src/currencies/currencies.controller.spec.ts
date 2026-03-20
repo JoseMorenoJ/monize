@@ -2,6 +2,7 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { CurrenciesController } from "./currencies.controller";
 import { ExchangeRateService } from "./exchange-rate.service";
 import { CurrenciesService } from "./currencies.service";
+import { SessionGuard } from "../common/guards/session.guard";
 
 describe("CurrenciesController", () => {
   let controller: CurrenciesController;
@@ -47,7 +48,7 @@ describe("CurrenciesController", () => {
           useValue: mockCurrenciesService,
         },
       ],
-    }).compile();
+    }).overrideGuard(SessionGuard).useValue({ canActivate: () => true }).compile();
 
     controller = module.get<CurrenciesController>(CurrenciesController);
   });

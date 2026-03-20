@@ -1,6 +1,7 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import { AiQueryController } from "./ai-query.controller";
 import { AiQueryService, QueryResult } from "./ai-query.service";
+import { SessionGuard } from "../../common/guards/session.guard";
 
 describe("AiQueryController", () => {
   let controller: AiQueryController;
@@ -32,7 +33,7 @@ describe("AiQueryController", () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [AiQueryController],
       providers: [{ provide: AiQueryService, useValue: mockQueryService }],
-    }).compile();
+    }).overrideGuard(SessionGuard).useValue({ canActivate: () => true }).compile();
 
     controller = module.get<AiQueryController>(AiQueryController);
   });

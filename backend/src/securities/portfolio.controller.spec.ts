@@ -3,6 +3,7 @@ import { BadRequestException } from "@nestjs/common";
 import { PortfolioController } from "./portfolio.controller";
 import { PortfolioService } from "./portfolio.service";
 import { SectorWeightingService } from "./sector-weighting.service";
+import { SessionGuard } from "../common/guards/session.guard";
 
 describe("PortfolioController", () => {
   let controller: PortfolioController;
@@ -40,7 +41,7 @@ describe("PortfolioController", () => {
           useValue: sectorWeightingService,
         },
       ],
-    }).compile();
+    }).overrideGuard(SessionGuard).useValue({ canActivate: () => true }).compile();
 
     controller = module.get<PortfolioController>(PortfolioController);
   });

@@ -4,6 +4,7 @@ import { BudgetsService } from "./budgets.service";
 import { BudgetPeriodService } from "./budget-period.service";
 import { BudgetGeneratorService } from "./budget-generator.service";
 import { BudgetReportsService } from "./budget-reports.service";
+import { SessionGuard } from "../common/guards/session.guard";
 
 describe("BudgetsController", () => {
   let controller: BudgetsController;
@@ -70,7 +71,7 @@ describe("BudgetsController", () => {
           useValue: mockBudgetReportsService,
         },
       ],
-    }).compile();
+    }).overrideGuard(SessionGuard).useValue({ canActivate: () => true }).compile();
 
     controller = module.get<BudgetsController>(BudgetsController);
   });

@@ -1,6 +1,7 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import { PayeesController } from "./payees.controller";
 import { PayeesService } from "./payees.service";
+import { SessionGuard } from "../common/guards/session.guard";
 
 describe("PayeesController", () => {
   let controller: PayeesController;
@@ -40,7 +41,7 @@ describe("PayeesController", () => {
           useValue: mockPayeesService,
         },
       ],
-    }).compile();
+    }).overrideGuard(SessionGuard).useValue({ canActivate: () => true }).compile();
 
     controller = module.get<PayeesController>(PayeesController);
   });

@@ -12,8 +12,6 @@ import { Account } from "@/accounts/entities/account.entity";
 import { ScheduledTransactionsService } from "@/scheduled-transactions/scheduled-transactions.service";
 import { ScheduledTransactionOverrideService } from "@/scheduled-transactions/scheduled-transaction-override.service";
 import { ScheduledTransactionLoanService } from "@/scheduled-transactions/scheduled-transaction-loan.service";
-import * as bcrypt from "bcryptjs";
-
 /**
  * Creates a NestJS TestingModule wired to a real PostgreSQL database.
  * Uses `synchronize: true` and `dropSchema: true` so each test suite
@@ -102,29 +100,21 @@ export async function cleanTables(
 }
 
 /**
- * Inserts a user directly via DataSource, bypassing AuthModule.
+ * Inserts a profile directly via DataSource.
  * Returns the saved User entity with a generated UUID.
  */
 export async function createTestUserDirect(
   dataSource: DataSource,
   overrides: Partial<{
-    email: string;
     firstName: string;
     lastName: string;
-    role: string;
+    avatarColor: string;
   }> = {},
 ): Promise<User> {
-  const passwordHash = await bcrypt.hash("TestPassword123!", 4); // low rounds for speed
   const user = dataSource.manager.create(User, {
-    email:
-      overrides.email ||
-      `test-${Date.now()}-${Math.random().toString(36).slice(2)}@example.com`,
     firstName: overrides.firstName || "Test",
     lastName: overrides.lastName || "User",
-    passwordHash,
-    authProvider: "local",
-    role: overrides.role || "user",
-    isActive: true,
+    avatarColor: overrides.avatarColor || "#6366f1",
   });
   return dataSource.manager.save(user);
 }

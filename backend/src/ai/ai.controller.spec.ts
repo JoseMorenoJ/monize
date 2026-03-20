@@ -1,6 +1,7 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import { AiController } from "./ai.controller";
 import { AiService } from "./ai.service";
+import { SessionGuard } from "../common/guards/session.guard";
 
 describe("AiController", () => {
   let controller: AiController;
@@ -25,7 +26,7 @@ describe("AiController", () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [AiController],
       providers: [{ provide: AiService, useValue: mockAiService }],
-    }).compile();
+    }).overrideGuard(SessionGuard).useValue({ canActivate: () => true }).compile();
 
     controller = module.get<AiController>(AiController);
   });

@@ -1,6 +1,7 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import { AiInsightsController } from "./ai-insights.controller";
 import { AiInsightsService } from "./ai-insights.service";
+import { SessionGuard } from "../../common/guards/session.guard";
 
 describe("AiInsightsController", () => {
   let controller: AiInsightsController;
@@ -31,7 +32,7 @@ describe("AiInsightsController", () => {
       providers: [
         { provide: AiInsightsService, useValue: mockInsightsService },
       ],
-    }).compile();
+    }).overrideGuard(SessionGuard).useValue({ canActivate: () => true }).compile();
 
     controller = module.get<AiInsightsController>(AiInsightsController);
   });

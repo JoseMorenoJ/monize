@@ -2,6 +2,7 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { AiForecastController } from "./ai-forecast.controller";
 import { AiForecastService } from "./ai-forecast.service";
 import { ForecastResponse } from "./dto/ai-forecast.dto";
+import { SessionGuard } from "../../common/guards/session.guard";
 
 describe("AiForecastController", () => {
   let controller: AiForecastController;
@@ -44,7 +45,7 @@ describe("AiForecastController", () => {
           useValue: mockForecastService,
         },
       ],
-    }).compile();
+    }).overrideGuard(SessionGuard).useValue({ canActivate: () => true }).compile();
 
     controller = module.get<AiForecastController>(AiForecastController);
   });

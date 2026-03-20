@@ -1,6 +1,7 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import { ReportsController } from "./reports.controller";
 import { ReportsService } from "./reports.service";
+import { SessionGuard } from "../common/guards/session.guard";
 
 describe("ReportsController", () => {
   let controller: ReportsController;
@@ -25,7 +26,7 @@ describe("ReportsController", () => {
           useValue: mockReportsService,
         },
       ],
-    }).compile();
+    }).overrideGuard(SessionGuard).useValue({ canActivate: () => true }).compile();
 
     controller = module.get<ReportsController>(ReportsController);
   });

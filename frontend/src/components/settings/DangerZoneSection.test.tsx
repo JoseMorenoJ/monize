@@ -51,17 +51,14 @@ describe('DangerZoneSection', () => {
     expect(screen.getByPlaceholderText('Type DELETE')).toBeInTheDocument();
   });
 
-  it('shows error when confirmation text is wrong', async () => {
+  it('disables confirm button when confirmation text is wrong', () => {
     render(<DangerZoneSection />);
     fireEvent.click(screen.getByRole('button', { name: 'Delete Profile' }));
 
     const input = screen.getByPlaceholderText('Type DELETE');
     fireEvent.change(input, { target: { value: 'wrong' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm Delete' }));
 
-    await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith('Please type DELETE to confirm');
-    });
+    expect(screen.getByRole('button', { name: 'Confirm Delete' })).toBeDisabled();
   });
 
   it('deletes profile when confirmed', async () => {

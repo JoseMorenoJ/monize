@@ -1,6 +1,7 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import { ScheduledTransactionsController } from "./scheduled-transactions.controller";
 import { ScheduledTransactionsService } from "./scheduled-transactions.service";
+import { SessionGuard } from "../common/guards/session.guard";
 
 describe("ScheduledTransactionsController", () => {
   let controller: ScheduledTransactionsController;
@@ -36,7 +37,7 @@ describe("ScheduledTransactionsController", () => {
           useValue: mockService,
         },
       ],
-    }).compile();
+    }).overrideGuard(SessionGuard).useValue({ canActivate: () => true }).compile();
 
     controller = module.get<ScheduledTransactionsController>(
       ScheduledTransactionsController,

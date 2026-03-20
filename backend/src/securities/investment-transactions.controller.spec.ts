@@ -2,6 +2,7 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { BadRequestException } from "@nestjs/common";
 import { InvestmentTransactionsController } from "./investment-transactions.controller";
 import { InvestmentTransactionsService } from "./investment-transactions.service";
+import { SessionGuard } from "../common/guards/session.guard";
 
 describe("InvestmentTransactionsController", () => {
   let controller: InvestmentTransactionsController;
@@ -41,7 +42,7 @@ describe("InvestmentTransactionsController", () => {
       providers: [
         { provide: InvestmentTransactionsService, useValue: service },
       ],
-    }).compile();
+    }).overrideGuard(SessionGuard).useValue({ canActivate: () => true }).compile();
 
     controller = module.get<InvestmentTransactionsController>(
       InvestmentTransactionsController,

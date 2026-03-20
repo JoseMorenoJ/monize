@@ -19,39 +19,14 @@ describe("default-categories", () => {
       }
     });
 
-    it("should contain Investment Income category", () => {
+    it("should contain Income category", () => {
       const found = DEFAULT_INCOME_CATEGORIES.find(
-        (c) => c.name === "Investment Income",
+        (c) => c.name === "Income",
       );
       expect(found).toBeDefined();
-      expect(found!.subcategories).toContain("Capital Gains");
-      expect(found!.subcategories).toContain("Interest");
-    });
-
-    it("should contain Wages & Salary category", () => {
-      const found = DEFAULT_INCOME_CATEGORIES.find(
-        (c) => c.name === "Wages & Salary",
-      );
-      expect(found).toBeDefined();
-      expect(found!.subcategories).toContain("Gross Pay");
-      expect(found!.subcategories).toContain("Net Pay");
-      expect(found!.subcategories).toContain("Bonus");
-    });
-
-    it("should contain Other Income category", () => {
-      const found = DEFAULT_INCOME_CATEGORIES.find(
-        (c) => c.name === "Other Income",
-      );
-      expect(found).toBeDefined();
-      expect(found!.subcategories).toContain("Cashback");
-      expect(found!.subcategories).toContain("Gifts Received");
-    });
-
-    it("should contain Retirement Income category", () => {
-      const found = DEFAULT_INCOME_CATEGORIES.find(
-        (c) => c.name === "Retirement Income",
-      );
-      expect(found).toBeDefined();
+      expect(found!.subcategories).toContain("Salary");
+      expect(found!.subcategories).toContain("Interest Income");
+      expect(found!.subcategories).toContain("Other Income");
     });
 
     it("should have unique category names", () => {
@@ -65,6 +40,10 @@ describe("default-categories", () => {
         const uniqueSubs = new Set(category.subcategories);
         expect(uniqueSubs.size).toBe(category.subcategories.length);
       }
+    });
+
+    it("should contain expected number of income categories", () => {
+      expect(DEFAULT_INCOME_CATEGORIES.length).toBe(1);
     });
   });
 
@@ -82,106 +61,82 @@ describe("default-categories", () => {
       }
     });
 
-    it("should contain Automobile category", () => {
+    it("should contain Services category", () => {
       const found = DEFAULT_EXPENSE_CATEGORIES.find(
-        (c) => c.name === "Automobile",
+        (c) => c.name === "Services",
       );
       expect(found).toBeDefined();
-      expect(found!.subcategories).toContain("Gasoline");
-      expect(found!.subcategories).toContain("Maintenance");
-      expect(found!.subcategories).toContain("Parking");
+      expect(found!.subcategories).toContain("Software");
+      expect(found!.subcategories).toContain("Legal");
     });
 
-    it("should contain Food category", () => {
-      const found = DEFAULT_EXPENSE_CATEGORIES.find((c) => c.name === "Food");
-      expect(found).toBeDefined();
-      expect(found!.subcategories).toContain("Groceries");
-      expect(found!.subcategories).toContain("Dining Out");
-    });
-
-    it("should contain Housing category", () => {
+    it("should contain Personnel category", () => {
       const found = DEFAULT_EXPENSE_CATEGORIES.find(
-        (c) => c.name === "Housing",
+        (c) => c.name === "Personnel",
       );
       expect(found).toBeDefined();
-      expect(found!.subcategories).toContain("Rent");
-      expect(found!.subcategories).toContain("Mortgage Interest");
-      expect(found!.subcategories).toContain("Mortgage Principal");
-    });
-
-    it("should contain Healthcare category", () => {
-      const found = DEFAULT_EXPENSE_CATEGORIES.find(
-        (c) => c.name === "Healthcare",
-      );
-      expect(found).toBeDefined();
-      expect(found!.subcategories).toContain("Dental");
-      expect(found!.subcategories).toContain("Medication");
-      expect(found!.subcategories).toContain("Physician");
-    });
-
-    it("should contain Insurance category", () => {
-      const found = DEFAULT_EXPENSE_CATEGORIES.find(
-        (c) => c.name === "Insurance",
-      );
-      expect(found).toBeDefined();
-      expect(found!.subcategories).toContain("Automobile");
-      expect(found!.subcategories).toContain("Health");
-      expect(found!.subcategories).toContain("Life");
+      expect(found!.subcategories).toContain("Wages");
+      expect(found!.subcategories).toContain("Social Security");
     });
 
     it("should contain Taxes category", () => {
       const found = DEFAULT_EXPENSE_CATEGORIES.find((c) => c.name === "Taxes");
       expect(found).toBeDefined();
-      expect(found!.subcategories).toContain("Federal Income");
-      expect(found!.subcategories).toContain("Property");
+      expect(found!.subcategories).toContain("IRPF");
+      expect(found!.subcategories).toContain("IS");
     });
 
-    it("should contain Bills category", () => {
-      const found = DEFAULT_EXPENSE_CATEGORIES.find((c) => c.name === "Bills");
-      expect(found).toBeDefined();
-      expect(found!.subcategories).toContain("Electricity");
-      expect(found!.subcategories).toContain("Internet");
-      expect(found!.subcategories).toContain("Cell Phone");
-    });
-
-    it("should contain Loan category", () => {
-      const found = DEFAULT_EXPENSE_CATEGORIES.find((c) => c.name === "Loan");
-      expect(found).toBeDefined();
-      expect(found!.subcategories).toContain("Loan Interest");
-      expect(found!.subcategories).toContain("Loan Principal");
-    });
-
-    it("should contain Vacation category", () => {
+    it("should contain Operations category", () => {
       const found = DEFAULT_EXPENSE_CATEGORIES.find(
-        (c) => c.name === "Vacation",
+        (c) => c.name === "Operations",
       );
       expect(found).toBeDefined();
-      expect(found!.subcategories).toContain("Airfare");
-      expect(found!.subcategories).toContain("Lodging");
+      expect(found!.subcategories).toContain("Office");
+      expect(found!.subcategories).toContain("Rent");
     });
 
-    it("should contain Charitable Donations category", () => {
+    it("should contain Finance category", () => {
       const found = DEFAULT_EXPENSE_CATEGORIES.find(
-        (c) => c.name === "Charitable Donations",
+        (c) => c.name === "Finance",
       );
       expect(found).toBeDefined();
-      expect(found!.subcategories).toEqual([]);
+      expect(found!.subcategories).toContain("Fees");
+      expect(found!.subcategories).toContain("Insurance");
     });
 
-    it("should contain Interest Expense category with no subcategories", () => {
+    it("should contain Marketing category", () => {
       const found = DEFAULT_EXPENSE_CATEGORIES.find(
-        (c) => c.name === "Interest Expense",
+        (c) => c.name === "Marketing",
       );
       expect(found).toBeDefined();
-      expect(found!.subcategories).toEqual([]);
+      expect(found!.subcategories).toContain("Ads");
+      expect(found!.subcategories).toContain("Website");
     });
 
-    it("should contain Licencing Fees category with no subcategories", () => {
+    it("should contain Travel category", () => {
       const found = DEFAULT_EXPENSE_CATEGORIES.find(
-        (c) => c.name === "Licencing Fees",
+        (c) => c.name === "Travel",
       );
       expect(found).toBeDefined();
-      expect(found!.subcategories).toEqual([]);
+      expect(found!.subcategories).toContain("Petrol");
+      expect(found!.subcategories).toContain("Hotels");
+    });
+
+    it("should contain Equipement category", () => {
+      const found = DEFAULT_EXPENSE_CATEGORIES.find(
+        (c) => c.name === "Equipement",
+      );
+      expect(found).toBeDefined();
+      expect(found!.subcategories).toContain("Hardware");
+      expect(found!.subcategories).toContain("Software");
+    });
+
+    it("should contain Other category", () => {
+      const found = DEFAULT_EXPENSE_CATEGORIES.find(
+        (c) => c.name === "Other",
+      );
+      expect(found).toBeDefined();
+      expect(found!.subcategories).toContain("Other");
     });
 
     it("should have unique category names", () => {
@@ -198,8 +153,7 @@ describe("default-categories", () => {
     });
 
     it("should contain expected number of expense categories", () => {
-      // There are 25 expense categories based on the source file
-      expect(DEFAULT_EXPENSE_CATEGORIES.length).toBe(25);
+      expect(DEFAULT_EXPENSE_CATEGORIES.length).toBe(9);
     });
   });
 
@@ -237,7 +191,6 @@ describe("default-categories", () => {
     });
 
     it("should export DefaultCategoryDefinition interface-compatible objects", () => {
-      // Type check: each entry should satisfy the interface
       const typeCheck = (cat: DefaultCategoryDefinition): boolean => {
         return typeof cat.name === "string" && Array.isArray(cat.subcategories);
       };
@@ -248,11 +201,6 @@ describe("default-categories", () => {
       for (const cat of DEFAULT_EXPENSE_CATEGORIES) {
         expect(typeCheck(cat)).toBe(true);
       }
-    });
-
-    it("should contain expected number of income categories", () => {
-      // There are 4 income categories based on the source file
-      expect(DEFAULT_INCOME_CATEGORIES.length).toBe(4);
     });
 
     it("should have subcategories as string arrays (not objects or numbers)", () => {

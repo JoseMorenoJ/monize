@@ -2,6 +2,7 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { BadRequestException } from "@nestjs/common";
 import { NotificationsController } from "./notifications.controller";
 import { EmailService } from "./email.service";
+import { SessionGuard } from "../common/guards/session.guard";
 
 describe("NotificationsController", () => {
   let controller: NotificationsController;
@@ -22,7 +23,7 @@ describe("NotificationsController", () => {
           useValue: mockEmailService,
         },
       ],
-    }).compile();
+    }).overrideGuard(SessionGuard).useValue({ canActivate: () => true }).compile();
 
     controller = module.get<NotificationsController>(NotificationsController);
   });

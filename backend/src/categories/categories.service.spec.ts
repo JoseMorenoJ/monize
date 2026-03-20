@@ -1192,7 +1192,7 @@ describe("CategoriesService", () => {
 
       const result = await service.importDefaults("user-1");
 
-      expect(result.categoriesCreated).toBeGreaterThan(100);
+      expect(result.categoriesCreated).toBeGreaterThan(0);
       expect(qrRepo.create).toHaveBeenCalled();
       expect(qrRepo.save).toHaveBeenCalled();
     });

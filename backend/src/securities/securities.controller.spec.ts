@@ -4,6 +4,7 @@ import { SecuritiesService } from "./securities.service";
 import { SecurityPriceService } from "./security-price.service";
 import { NetWorthService } from "../net-worth/net-worth.service";
 import { SectorWeightingService } from "./sector-weighting.service";
+import { SessionGuard } from "../common/guards/session.guard";
 
 describe("SecuritiesController", () => {
   let controller: SecuritiesController;
@@ -69,7 +70,7 @@ describe("SecuritiesController", () => {
         { provide: NetWorthService, useValue: netWorthService },
         { provide: SectorWeightingService, useValue: sectorWeightingService },
       ],
-    }).compile();
+    }).overrideGuard(SessionGuard).useValue({ canActivate: () => true }).compile();
 
     controller = module.get<SecuritiesController>(SecuritiesController);
   });

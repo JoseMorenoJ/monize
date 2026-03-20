@@ -2,6 +2,7 @@ import { BadRequestException } from "@nestjs/common";
 import { Test, TestingModule } from "@nestjs/testing";
 import { TransactionsController } from "./transactions.controller";
 import { TransactionsService } from "./transactions.service";
+import { SessionGuard } from "../common/guards/session.guard";
 
 describe("TransactionsController", () => {
   let controller: TransactionsController;
@@ -46,7 +47,7 @@ describe("TransactionsController", () => {
           useValue: mockService,
         },
       ],
-    }).compile();
+    }).overrideGuard(SessionGuard).useValue({ canActivate: () => true }).compile();
 
     controller = module.get<TransactionsController>(TransactionsController);
   });

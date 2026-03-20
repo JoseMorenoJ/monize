@@ -1,6 +1,7 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import { NetWorthController } from "./net-worth.controller";
 import { NetWorthService } from "./net-worth.service";
+import { SessionGuard } from "../common/guards/session.guard";
 
 describe("NetWorthController", () => {
   let controller: NetWorthController;
@@ -23,7 +24,7 @@ describe("NetWorthController", () => {
           useValue: mockNetWorthService,
         },
       ],
-    }).compile();
+    }).overrideGuard(SessionGuard).useValue({ canActivate: () => true }).compile();
 
     controller = module.get<NetWorthController>(NetWorthController);
   });

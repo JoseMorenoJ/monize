@@ -1,6 +1,7 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import { TagsController } from "./tags.controller";
 import { TagsService } from "./tags.service";
+import { SessionGuard } from "../common/guards/session.guard";
 
 describe("TagsController", () => {
   let controller: TagsController;
@@ -28,7 +29,7 @@ describe("TagsController", () => {
           useValue: mockTagsService,
         },
       ],
-    }).compile();
+    }).overrideGuard(SessionGuard).useValue({ canActivate: () => true }).compile();
 
     controller = module.get<TagsController>(TagsController);
   });

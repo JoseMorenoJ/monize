@@ -1,6 +1,7 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import { HoldingsController } from "./holdings.controller";
 import { HoldingsService } from "./holdings.service";
+import { SessionGuard } from "../common/guards/session.guard";
 
 describe("HoldingsController", () => {
   let controller: HoldingsController;
@@ -31,7 +32,7 @@ describe("HoldingsController", () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [HoldingsController],
       providers: [{ provide: HoldingsService, useValue: holdingsService }],
-    }).compile();
+    }).overrideGuard(SessionGuard).useValue({ canActivate: () => true }).compile();
 
     controller = module.get<HoldingsController>(HoldingsController);
   });

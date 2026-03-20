@@ -1,6 +1,7 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import { CategoriesController } from "./categories.controller";
 import { CategoriesService } from "./categories.service";
+import { SessionGuard } from "../common/guards/session.guard";
 
 describe("CategoriesController", () => {
   let controller: CategoriesController;
@@ -32,7 +33,7 @@ describe("CategoriesController", () => {
           useValue: mockCategoriesService,
         },
       ],
-    }).compile();
+    }).overrideGuard(SessionGuard).useValue({ canActivate: () => true }).compile();
 
     controller = module.get<CategoriesController>(CategoriesController);
   });

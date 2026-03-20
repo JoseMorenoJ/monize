@@ -3,6 +3,7 @@ import { BadRequestException } from "@nestjs/common";
 import { AccountsController } from "./accounts.controller";
 import { AccountsService } from "./accounts.service";
 import { AccountExportService } from "./account-export.service";
+import { SessionGuard } from "../common/guards/session.guard";
 
 describe("AccountsController", () => {
   let controller: AccountsController;
@@ -46,7 +47,7 @@ describe("AccountsController", () => {
           useValue: mockExportService,
         },
       ],
-    }).compile();
+    }).overrideGuard(SessionGuard).useValue({ canActivate: () => true }).compile();
 
     controller = module.get<AccountsController>(AccountsController);
   });

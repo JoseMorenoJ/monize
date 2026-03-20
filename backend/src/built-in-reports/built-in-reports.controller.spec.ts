@@ -1,6 +1,7 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import { BuiltInReportsController } from "./built-in-reports.controller";
 import { BuiltInReportsService } from "./built-in-reports.service";
+import { SessionGuard } from "../common/guards/session.guard";
 
 describe("BuiltInReportsController", () => {
   let controller: BuiltInReportsController;
@@ -33,7 +34,7 @@ describe("BuiltInReportsController", () => {
           useValue: mockService,
         },
       ],
-    }).compile();
+    }).overrideGuard(SessionGuard).useValue({ canActivate: () => true }).compile();
 
     controller = module.get<BuiltInReportsController>(BuiltInReportsController);
   });
