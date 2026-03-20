@@ -278,7 +278,7 @@ function TransactionsContent() {
       router.push(`/investments?edit=${transaction.linkedInvestmentTransactionId}`);
       return;
     }
-    if (transaction.isTransfer) {
+    if (transaction.isTransfer || transaction.isSplit) {
       try {
         const fullTransaction = await transactionsApi.getById(transaction.id);
         openEdit(fullTransaction);

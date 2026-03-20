@@ -719,6 +719,53 @@ describe('TransactionsPage', () => {
         expect(mockTxOpenEdit).toHaveBeenCalled();
       });
     });
+
+    it('fetches full transaction when editing a split transaction', async () => {
+      const splitTx = { id: 'tx-split', date: '2026-02-01', amount: -100, payee: { name: 'Store' }, isTransfer: false, isSplit: true, splits: [{ id: 's1', amount: -60 }] };
+      const fullSplitTx = { ...splitTx, splits: [{ id: 's1', amount: -60 }, { id: 's2', amount: -40 }] };
+      mockGetAll.mockResolvedValue({
+        data: [splitTx],
+        pagination: { page: 1, totalPages: 1, total: 1 },
+      });
+      mockGetSummary.mockResolvedValue({ totalIncome: 0, totalExpenses: 100, netCashFlow: -100, transactionCount: 1 });
+      mockGetById.mockResolvedValue(fullSplitTx);
+
+      render(<TransactionsPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('tx-tx-split')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByTestId('tx-tx-split'));
+
+      await waitFor(() => {
+        expect(mockGetById).toHaveBeenCalledWith('tx-split');
+        expect(mockTxOpenEdit).toHaveBeenCalledWith(fullSplitTx);
+      });
+    });
+
+    it('falls back to filtered transaction if getById fails for split transaction', async () => {
+      const splitTx = { id: 'tx-split', date: '2026-02-01', amount: -100, payee: { name: 'Store' }, isTransfer: false, isSplit: true, splits: [{ id: 's1', amount: -60 }] };
+      mockGetAll.mockResolvedValue({
+        data: [splitTx],
+        pagination: { page: 1, totalPages: 1, total: 1 },
+      });
+      mockGetSummary.mockResolvedValue({ totalIncome: 0, totalExpenses: 100, netCashFlow: -100, transactionCount: 1 });
+      mockGetById.mockRejectedValue(new Error('Network error'));
+
+      render(<TransactionsPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('tx-tx-split')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByTestId('tx-tx-split'));
+
+      await waitFor(() => {
+        expect(mockGetById).toHaveBeenCalledWith('tx-split');
+        expect(mockTxOpenEdit).toHaveBeenCalledWith(splitTx);
+      });
+    });
   });
 
   describe('Payee Interaction', () => {
