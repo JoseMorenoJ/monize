@@ -1948,7 +1948,7 @@ describe("TransactionsService", () => {
         const sumQb = createMockQueryBuilder({
           setParameters: jest.fn().mockReturnThis(),
         });
-        sumQb.getRawOne.mockResolvedValue({ sum: -1000 });
+        sumQb.getRawOne.mockResolvedValue({ totalSum: -1000 });
 
         transactionsRepository.createQueryBuilder
           .mockReturnValueOnce(mockQb)
