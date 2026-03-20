@@ -42,6 +42,7 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { createLogger } from '@/lib/logger';
 import { showErrorToast } from '@/lib/errors';
+import { exportToCsv } from '@/lib/csv-export';
 import { PAGE_SIZE } from '@/lib/constants';
 import { budgetsApi } from '@/lib/budgets';
 import { CategoryBudgetStatus } from '@/types/budget';
@@ -77,6 +78,7 @@ function TransactionsContent() {
   const [showBulkUpdate, setShowBulkUpdate] = useState(false);
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
   const [bulkSelectMode, setBulkSelectMode] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
 
   // Ref to track whether any modal is open (used by popstate handler to avoid conflicts)
   const modalOpenRef = useRef(false);
@@ -422,6 +424,80 @@ function TransactionsContent() {
     loadAllData();
   }, [selection, loadAllData]);
 
+  const handleExport = useCallback(async () => {
+    setIsExporting(true);
+    try {
+      let accountIdsForQuery: string[] | undefined;
+      if (filters.filterAccountIds.length > 0) {
+        accountIdsForQuery = filters.filterAccountIds;
+      } else if (filters.filterAccountStatus && filters.filteredAccounts.length > 0) {
+        accountIdsForQuery = filters.filteredAccounts.map(a => a.id);
+      }
+
+      const parsedAmountFrom = filters.filterAmountFrom ? parseFloat(filters.filterAmountFrom) : undefined;
+      const parsedAmountTo = filters.filterAmountTo ? parseFloat(filters.filterAmountTo) : undefined;
+
+      const queryParams = {
+        accountIds: accountIdsForQuery,
+        startDate: filters.filterStartDate || undefined,
+        endDate: filters.filterEndDate || undefined,
+        categoryIds: filters.filterCategoryIds.length > 0 ? filters.filterCategoryIds : undefined,
+        payeeIds: filters.filterPayeeIds.length > 0 ? filters.filterPayeeIds : undefined,
+        tagIds: filters.filterTagIds.length > 0 ? filters.filterTagIds : undefined,
+        search: filters.filterSearch || undefined,
+        amountFrom: parsedAmountFrom,
+        amountTo: parsedAmountTo,
+      };
+
+      // Fetch all pages of filtered transactions
+      const allTransactions: Transaction[] = [];
+      let page = 1;
+      let hasMore = true;
+
+      while (hasMore) {
+        const response = await transactionsApi.getAll({
+          ...queryParams,
+          page,
+          limit: PAGE_SIZE,
+        });
+        allTransactions.push(...response.data);
+        hasMore = page < response.pagination.totalPages;
+        page++;
+      }
+
+      if (allTransactions.length === 0) {
+        toast.error('No transactions to export');
+        return;
+      }
+
+      const headers = ['Date', 'Account', 'Payee', 'Category', 'Description', 'Tags', 'Amount', 'Currency', 'Status'];
+      const rows = allTransactions.map(tx => [
+        tx.transactionDate,
+        tx.account?.name ?? '',
+        tx.payee?.name ?? tx.payeeName ?? '',
+        tx.category?.name ?? '',
+        tx.description ?? '',
+        tx.tags?.map(t => t.name).join('; ') ?? '',
+        tx.amount,
+        tx.currencyCode ?? '',
+        tx.status,
+      ]);
+
+      const now = new Date();
+      const datePart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      const timePart = `${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;
+      const filename = `Monize_Transactions_${datePart}_${timePart}.csv`;
+
+      exportToCsv(filename, headers, rows);
+      toast.success(`Exported ${allTransactions.length} transaction${allTransactions.length !== 1 ? 's' : ''}`);
+    } catch (error) {
+      showErrorToast(error, 'Failed to export transactions');
+      logger.error(error);
+    } finally {
+      setIsExporting(false);
+    }
+  }, [filters.filterAccountIds, filters.filterAccountStatus, filters.filteredAccounts, filters.filterCategoryIds, filters.filterPayeeIds, filters.filterTagIds, filters.filterStartDate, filters.filterEndDate, filters.filterSearch, filters.filterAmountFrom, filters.filterAmountTo]);
+
   return (
     <PageLayout>
       <main className="px-4 sm:px-6 lg:px-12 pt-6 pb-8">
@@ -572,6 +648,8 @@ function TransactionsContent() {
               onPayeeFilterClick={filters.handlePayeeFilterClick}
               density={listDensity}
               onDensityChange={setListDensity}
+              onExport={handleExport}
+              isExporting={isExporting}
               isSingleAccountView={filters.filterAccountIds.length === 1}
               selectionMode={bulkSelectMode}
               selectedIds={selection.selectedIds}

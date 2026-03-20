@@ -143,6 +143,11 @@ vi.mock('@/lib/errors', () => ({
   showErrorToast: vi.fn(),
 }));
 
+const mockExportToCsv = vi.fn();
+vi.mock('@/lib/csv-export', () => ({
+  exportToCsv: (...args: any[]) => mockExportToCsv(...args),
+}));
+
 // Mock budgets API (used for category budget status indicators)
 vi.mock('@/lib/budgets', () => ({
   budgetsApi: {
@@ -175,6 +180,12 @@ vi.mock('@/components/transactions/TransactionList', () => ({
       <span data-testid="single-account">{props.isSingleAccountView ? 'single' : 'multi'}</span>
       <span data-testid="starting-balance">{props.startingBalance ?? 'none'}</span>
       <span data-testid="selection-mode">{props.selectionMode ? 'on' : 'off'}</span>
+      {props.onExport && (
+        <button data-testid="export-btn" onClick={props.onExport} disabled={props.isExporting}>
+          {props.isExporting ? 'Exporting...' : 'Export'}
+        </button>
+      )}
+      <span data-testid="is-exporting">{props.isExporting ? 'true' : 'false'}</span>
     </div>
   ),
   DensityLevel: {},
@@ -1079,6 +1090,188 @@ describe('TransactionsPage', () => {
       await waitFor(() => {
         expect(screen.getByTestId('active-filter-count')).toHaveTextContent('1');
       });
+    });
+  });
+
+  describe('Export', () => {
+    it('renders the export button', async () => {
+      render(<TransactionsPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('export-btn')).toBeInTheDocument();
+        expect(screen.getByTestId('export-btn')).toHaveTextContent('Export');
+      });
+    });
+
+    it('exports all transactions as CSV when export button is clicked', async () => {
+      const exportTransactions = [
+        { id: 'tx-1', transactionDate: '2026-02-01', amount: -50, status: 'UNRECONCILED', payee: { id: 'p1', name: 'Store' }, payeeName: 'Store', category: { id: 'c1', name: 'Groceries' }, account: { id: 'acc-1', name: 'Checking' }, description: 'Weekly shop', tags: [{ id: 't1', name: 'Essential' }], currencyCode: 'USD', isTransfer: false },
+        { id: 'tx-2', transactionDate: '2026-02-02', amount: 3000, status: 'CLEARED', payee: { id: 'p2', name: 'Employer' }, payeeName: 'Employer', category: { id: 'c2', name: 'Salary' }, account: { id: 'acc-1', name: 'Checking' }, description: 'Monthly pay', tags: [], currencyCode: 'USD', isTransfer: false },
+      ];
+
+      mockGetAll.mockResolvedValue({
+        data: exportTransactions,
+        pagination: { page: 1, totalPages: 1, total: 2 },
+        startingBalance: 5000,
+      });
+
+      render(<TransactionsPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('tx-count')).toHaveTextContent('2 transactions');
+      });
+
+      fireEvent.click(screen.getByTestId('export-btn'));
+
+      await waitFor(() => {
+        expect(mockExportToCsv).toHaveBeenCalledTimes(1);
+      });
+
+      const [filename, headers, rows] = mockExportToCsv.mock.calls[0];
+
+      expect(filename).toMatch(/^Monize_Transactions_\d{4}-\d{2}-\d{2}_\d{6}\.csv$/);
+      expect(headers).toEqual(['Date', 'Account', 'Payee', 'Category', 'Description', 'Tags', 'Amount', 'Currency', 'Status']);
+      expect(rows).toHaveLength(2);
+      expect(rows[0]).toEqual(['2026-02-01', 'Checking', 'Store', 'Groceries', 'Weekly shop', 'Essential', -50, 'USD', 'UNRECONCILED']);
+      expect(rows[1]).toEqual(['2026-02-02', 'Checking', 'Employer', 'Salary', 'Monthly pay', '', 3000, 'USD', 'CLEARED']);
+    });
+
+    it('fetches all pages when exporting multi-page results', async () => {
+      const page1Transactions = [
+        { id: 'tx-1', transactionDate: '2026-02-01', amount: -50, status: 'UNRECONCILED', payee: null, payeeName: null, category: null, account: { id: 'acc-1', name: 'Checking' }, description: null, tags: [], currencyCode: 'USD', isTransfer: false },
+      ];
+      const page2Transactions = [
+        { id: 'tx-2', transactionDate: '2026-02-02', amount: 100, status: 'CLEARED', payee: null, payeeName: null, category: null, account: { id: 'acc-1', name: 'Checking' }, description: null, tags: [], currencyCode: 'USD', isTransfer: false },
+      ];
+
+      mockGetAll.mockImplementation((params: any) => {
+        if (params?.page === 2) {
+          return Promise.resolve({ data: page2Transactions, pagination: { page: 2, totalPages: 2, total: 2 }, startingBalance: 5000 });
+        }
+        return Promise.resolve({ data: page1Transactions, pagination: { page: 1, totalPages: 2, total: 2 }, startingBalance: 5000 });
+      });
+
+      render(<TransactionsPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('tx-count')).toHaveTextContent('1 transactions');
+      });
+
+      fireEvent.click(screen.getByTestId('export-btn'));
+
+      await waitFor(() => {
+        expect(mockExportToCsv).toHaveBeenCalledTimes(1);
+      });
+
+      const [, , rows] = mockExportToCsv.mock.calls[0];
+      expect(rows).toHaveLength(2);
+    });
+
+    it('shows error toast when no transactions to export', async () => {
+      const toast = await import('react-hot-toast');
+
+      mockGetAll.mockResolvedValue({
+        data: [],
+        pagination: { page: 1, totalPages: 1, total: 0 },
+        startingBalance: 0,
+      });
+
+      render(<TransactionsPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('export-btn')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByTestId('export-btn'));
+
+      await waitFor(() => {
+        expect(toast.default.error).toHaveBeenCalledWith('No transactions to export');
+      });
+
+      expect(mockExportToCsv).not.toHaveBeenCalled();
+    });
+
+    it('shows error toast when export fails', async () => {
+      const { showErrorToast } = await import('@/lib/errors');
+
+      // Initial load succeeds with data
+      mockGetAll.mockResolvedValue({
+        data: mockTransactions,
+        pagination: { page: 1, totalPages: 1, total: 3 },
+        startingBalance: 5000,
+      });
+
+      render(<TransactionsPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('tx-count')).toHaveTextContent('3 transactions');
+      });
+
+      // Now make next call fail (the export call)
+      mockGetAll.mockRejectedValueOnce(new Error('Network error'));
+
+      fireEvent.click(screen.getByTestId('export-btn'));
+
+      await waitFor(() => {
+        expect(showErrorToast).toHaveBeenCalledWith(expect.any(Error), 'Failed to export transactions');
+      });
+
+      expect(mockExportToCsv).not.toHaveBeenCalled();
+    });
+
+    it('generates filename starting with Monize', async () => {
+      const exportTransactions = [
+        { id: 'tx-1', transactionDate: '2026-02-01', amount: -50, status: 'UNRECONCILED', payee: null, payeeName: null, category: null, account: { id: 'acc-1', name: 'Checking' }, description: null, tags: [], currencyCode: 'USD', isTransfer: false },
+      ];
+
+      mockGetAll.mockResolvedValue({
+        data: exportTransactions,
+        pagination: { page: 1, totalPages: 1, total: 1 },
+        startingBalance: 5000,
+      });
+
+      render(<TransactionsPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('tx-count')).toHaveTextContent('1 transactions');
+      });
+
+      fireEvent.click(screen.getByTestId('export-btn'));
+
+      await waitFor(() => {
+        expect(mockExportToCsv).toHaveBeenCalledTimes(1);
+      });
+
+      const [filename] = mockExportToCsv.mock.calls[0];
+      expect(filename).toMatch(/^Monize/);
+      expect(filename).toMatch(/\.csv$/);
+    });
+
+    it('handles transactions with null/missing fields gracefully', async () => {
+      const sparseTransaction = [
+        { id: 'tx-1', transactionDate: '2026-02-01', amount: -25, status: 'UNRECONCILED', payee: null, payeeName: null, category: null, account: null, description: null, tags: undefined, currencyCode: 'USD', isTransfer: false },
+      ];
+
+      mockGetAll.mockResolvedValue({
+        data: sparseTransaction,
+        pagination: { page: 1, totalPages: 1, total: 1 },
+        startingBalance: 0,
+      });
+
+      render(<TransactionsPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('tx-count')).toHaveTextContent('1 transactions');
+      });
+
+      fireEvent.click(screen.getByTestId('export-btn'));
+
+      await waitFor(() => {
+        expect(mockExportToCsv).toHaveBeenCalledTimes(1);
+      });
+
+      const [, , rows] = mockExportToCsv.mock.calls[0];
+      expect(rows[0]).toEqual(['2026-02-01', '', '', '', '', '', -25, 'USD', 'UNRECONCILED']);
     });
   });
 });

@@ -28,6 +28,8 @@ interface TransactionListProps {
   onPayeeFilterClick?: (payeeId: string) => void;
   density?: DensityLevel;
   onDensityChange?: (density: DensityLevel) => void;
+  onExport?: () => void;
+  isExporting?: boolean;
   startingBalance?: number;
   isSingleAccountView?: boolean;
   currentPage?: number;
@@ -59,6 +61,8 @@ export function TransactionList({
   onPayeeFilterClick,
   density: propDensity,
   onDensityChange,
+  onExport,
+  isExporting,
   startingBalance,
   isSingleAccountView = false,
   currentPage,
@@ -312,17 +316,39 @@ export function TransactionList({
     <div>
       {/* Density toggle and top pagination */}
       {showToolbar && (() => {
-        const densityButton = (
-          <button
-            onClick={cycleDensity}
-            className="inline-flex items-center px-2 py-1 text-xs font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 rounded flex-shrink-0"
-            title="Toggle row density"
-          >
-            <svg className="w-4 h-4 sm:mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
-            <span className="hidden sm:inline">{density === 'normal' ? 'Normal' : density === 'compact' ? 'Compact' : 'Dense'}</span>
-          </button>
+        const toolbarButtons = (
+          <div className="flex items-center gap-1 flex-shrink-0">
+            {onExport && (
+              <button
+                onClick={onExport}
+                disabled={isExporting}
+                className="inline-flex items-center px-2 py-1 text-xs font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Export transactions to CSV"
+              >
+                {isExporting ? (
+                  <svg className="w-4 h-4 sm:mr-1 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                ) : (
+                  <svg className="w-4 h-4 sm:mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                )}
+                <span className="hidden sm:inline">{isExporting ? 'Exporting...' : 'Export'}</span>
+              </button>
+            )}
+            <button
+              onClick={cycleDensity}
+              className="inline-flex items-center px-2 py-1 text-xs font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 rounded flex-shrink-0"
+              title="Toggle row density"
+            >
+              <svg className="w-4 h-4 sm:mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+              <span className="hidden sm:inline">{density === 'normal' ? 'Normal' : density === 'compact' ? 'Compact' : 'Dense'}</span>
+            </button>
+          </div>
         );
         const showPagination = currentPage !== undefined && totalPages !== undefined && totalPages > 1 && totalItems !== undefined && pageSize !== undefined && onPageChange;
         return (
@@ -337,11 +363,11 @@ export function TransactionList({
                   onPageChange={onPageChange!}
                   itemName="transactions"
                   minimal
-                  infoRight={densityButton}
+                  infoRight={toolbarButtons}
                 />
               </div>
             ) : (
-              densityButton
+              toolbarButtons
             )}
           </div>
         );
