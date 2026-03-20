@@ -262,22 +262,59 @@ export function TransactionList({
 
   const showRunningBalance = isSingleAccountView || startingBalance !== undefined;
 
-  // Calculate running balances
+  // Compute display amounts for split transactions.  When a filter
+  // causes only some splits to be returned, the sum of visible splits
+  // will differ from the parent transaction amount.  In that case show
+  // only the filtered total so the amount column matches what the user
+  // sees in the category column.
+  const displayAmounts = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const tx of transactions) {
+      if (tx.isSplit && tx.splits && tx.splits.length > 0) {
+        const splitsSumCents = tx.splits.reduce(
+          (sum, s) => sum + Math.round(Number(s.amount) * 10000),
+          0,
+        );
+        const txAmountCents = Math.round(Number(tx.amount) * 10000);
+        if (splitsSumCents !== txAmountCents) {
+          map.set(tx.id, splitsSumCents / 10000);
+        }
+      }
+    }
+    return map;
+  }, [transactions]);
+
+  // Calculate running balances.  When some split transactions show
+  // partial (filtered) amounts, adjust the starting balance so the
+  // running total stays consistent with the displayed amounts.
   const runningBalances = useMemo(() => {
     if (startingBalance === undefined || transactions.length === 0) {
       return new Map<string, number>();
     }
 
+    // Compute the difference between full and filtered amounts for all
+    // partial split transactions on this page so we can adjust the
+    // starting balance the backend gave us.
+    let adjustment = 0;
+    for (const tx of transactions) {
+      const filtered = displayAmounts.get(tx.id);
+      if (filtered !== undefined) {
+        adjustment += filtered - Number(tx.amount);
+      }
+    }
+    const adjustedStart = startingBalance + adjustment;
+
     const balances = new Map<string, number>();
     let cumulativeSum = 0;
 
     for (const tx of transactions) {
-      balances.set(tx.id, startingBalance - cumulativeSum);
-      cumulativeSum += Number(tx.amount);
+      const amount = displayAmounts.get(tx.id) ?? Number(tx.amount);
+      balances.set(tx.id, adjustedStart - cumulativeSum);
+      cumulativeSum += amount;
     }
 
     return balances;
-  }, [transactions, startingBalance]);
+  }, [transactions, startingBalance, displayAmounts]);
 
   const formatAmount = useCallback((amount: number, currencyCode?: string) => {
     const isNegative = amount < 0;
@@ -427,6 +464,7 @@ export function TransactionList({
                     isSingleAccountView={isSingleAccountView}
                     showRunningBalance={showRunningBalance}
                     runningBalance={runningBalances.get(transaction.id)}
+                    displayAmount={displayAmounts.get(transaction.id)}
                     isDeleting={deletingId === transaction.id}
                     formatDate={formatDate}
                     formatAmount={formatAmount}
