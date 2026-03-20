@@ -43,27 +43,14 @@ export class TransactionAnalyticsService {
       .createQueryBuilder("transaction")
       .where("transaction.userId = :userId", { userId });
 
-    // Join account for investment filtering and uncategorized conditions.
+    // Join account for filtering and uncategorized conditions.
+    // Use the same exclusion logic as findAll() so the summary
+    // counts/totals match the transaction list.
     queryBuilder.leftJoin("transaction.account", "summaryAccount");
 
-    // Exclude transfers by default — they are not real income/expenses.
-    // Include them when the user explicitly filters for "transfer" category,
-    // searches by description, or filters by payee.
-    const wantsTransfers =
-      (categoryIds && categoryIds.includes("transfer")) ||
-      !!search ||
-      (payeeIds && payeeIds.length > 0);
-    if (!wantsTransfers) {
-      queryBuilder.andWhere("transaction.isTransfer = false");
-    }
-
-    // Exclude investment account transactions (purchases, sales, dividends)
-    // unless the user explicitly filters for specific investment accounts.
-    if (!accountIds || accountIds.length === 0) {
-      queryBuilder.andWhere("summaryAccount.accountType != :investmentType", {
-        investmentType: "INVESTMENT",
-      });
-    }
+    queryBuilder.andWhere(
+      "(summaryAccount.accountSubType IS NULL OR summaryAccount.accountSubType != 'INVESTMENT_BROKERAGE')",
+    );
 
     if (accountIds && accountIds.length > 0) {
       queryBuilder.andWhere("transaction.accountId IN (:...accountIds)", {
@@ -250,21 +237,15 @@ export class TransactionAnalyticsService {
       .createQueryBuilder("transaction")
       .where("transaction.userId = :userId", { userId });
 
+    // Join account for filtering.  Use the same exclusion logic as
+    // findAll() so the chart counts/totals match the transaction list.
+    // getMonthlyTotals is only called when filters are active (the
+    // frontend switches to daily balances otherwise).
     queryBuilder.leftJoin("transaction.account", "summaryAccount");
 
-    const wantsTransfers =
-      (categoryIds && categoryIds.includes("transfer")) ||
-      !!search ||
-      (payeeIds && payeeIds.length > 0);
-    if (!wantsTransfers) {
-      queryBuilder.andWhere("transaction.isTransfer = false");
-    }
-
-    if (!accountIds || accountIds.length === 0) {
-      queryBuilder.andWhere("summaryAccount.accountType != :investmentType", {
-        investmentType: "INVESTMENT",
-      });
-    }
+    queryBuilder.andWhere(
+      "(summaryAccount.accountSubType IS NULL OR summaryAccount.accountSubType != 'INVESTMENT_BROKERAGE')",
+    );
 
     if (accountIds && accountIds.length > 0) {
       queryBuilder.andWhere("transaction.accountId IN (:...accountIds)", {

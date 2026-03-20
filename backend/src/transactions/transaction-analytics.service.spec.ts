@@ -218,81 +218,20 @@ describe("TransactionAnalyticsService", () => {
       );
     });
 
-    describe("transfer exclusion", () => {
-      it("excludes transfers by default", async () => {
+    describe("account exclusion", () => {
+      it("excludes investment brokerage accounts", async () => {
         await service.getSummary(userId);
 
         expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
-          "transaction.isTransfer = false",
+          "(summaryAccount.accountSubType IS NULL OR summaryAccount.accountSubType != 'INVESTMENT_BROKERAGE')",
         );
       });
 
-      it("excludes transfers when categoryIds do not include transfer", async () => {
-        categoriesRepository.find.mockResolvedValue([
-          { id: "cat-1", parentId: null },
-        ]);
-
-        await service.getSummary(userId, undefined, undefined, undefined, [
-          "cat-1",
-        ]);
-
-        expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
-          "transaction.isTransfer = false",
-        );
-      });
-
-      it("does not exclude transfers when transfer category is explicitly requested", async () => {
-        await service.getSummary(userId, undefined, undefined, undefined, [
-          "transfer",
-        ]);
-
-        expect(mockQueryBuilder.andWhere).not.toHaveBeenCalledWith(
-          "transaction.isTransfer = false",
-        );
-      });
-
-      it("does not exclude transfers when search filter is provided", async () => {
-        await service.getSummary(
-          userId,
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          "grocery",
-        );
-
-        expect(mockQueryBuilder.andWhere).not.toHaveBeenCalledWith(
-          "transaction.isTransfer = false",
-        );
-      });
-    });
-
-    describe("investment account exclusion", () => {
-      it("excludes investment accounts by default", async () => {
+      it("does not exclude transfers", async () => {
         await service.getSummary(userId);
 
-        expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
-          "summaryAccount.accountType != :investmentType",
-          { investmentType: "INVESTMENT" },
-        );
-      });
-
-      it("excludes investment accounts when accountIds is empty", async () => {
-        await service.getSummary(userId, []);
-
-        expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
-          "summaryAccount.accountType != :investmentType",
-          { investmentType: "INVESTMENT" },
-        );
-      });
-
-      it("does not exclude investment accounts when specific accountIds are provided", async () => {
-        await service.getSummary(userId, ["acc-1"]);
-
         expect(mockQueryBuilder.andWhere).not.toHaveBeenCalledWith(
-          "summaryAccount.accountType != :investmentType",
-          expect.anything(),
+          "transaction.isTransfer = false",
         );
       });
     });
@@ -938,36 +877,19 @@ describe("TransactionAnalyticsService", () => {
       expect(mockQueryBuilder.orderBy).toHaveBeenCalledWith("month", "ASC");
     });
 
-    it("excludes transfers by default", async () => {
+    it("excludes investment brokerage accounts", async () => {
       await service.getMonthlyTotals(userId);
 
       expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
-        "transaction.isTransfer = false",
+        "(summaryAccount.accountSubType IS NULL OR summaryAccount.accountSubType != 'INVESTMENT_BROKERAGE')",
       );
     });
 
-    it("does not exclude transfers when search filter is provided", async () => {
-      await service.getMonthlyTotals(
-        userId,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        "grocery",
-      );
+    it("does not exclude transfers", async () => {
+      await service.getMonthlyTotals(userId);
 
       expect(mockQueryBuilder.andWhere).not.toHaveBeenCalledWith(
         "transaction.isTransfer = false",
-      );
-    });
-
-    it("excludes investment accounts by default", async () => {
-      await service.getMonthlyTotals(userId);
-
-      expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
-        "summaryAccount.accountType != :investmentType",
-        { investmentType: "INVESTMENT" },
       );
     });
 
