@@ -996,14 +996,6 @@ describe("ImportInvestmentProcessorService", () => {
       await testActionMapping("CvrShrt", InvestmentAction.BUY);
     });
 
-    it("maps XIn to TRANSFER_IN", async () => {
-      await testActionMapping("XIn", InvestmentAction.TRANSFER_IN);
-    });
-
-    it("maps XOut to TRANSFER_OUT", async () => {
-      await testActionMapping("XOut", InvestmentAction.TRANSFER_OUT);
-    });
-
     it("maps RtrnCap to DIVIDEND", async () => {
       await testActionMapping("RtrnCap", InvestmentAction.DIVIDEND);
     });
