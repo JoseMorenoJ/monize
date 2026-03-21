@@ -1578,7 +1578,7 @@ describe("ImportService", () => {
         expect(linkedTx.isTransfer).toBe(true);
       });
 
-      it("imports transfers that already exist before import (same-day duplicates are allowed)", async () => {
+      it("skips duplicate transfers that already exist before import", async () => {
         const dto = makeBaseDto({
           accountMappings: [
             { originalName: "Savings", accountId: "savings-acct" },
@@ -1618,26 +1618,16 @@ describe("ImportService", () => {
         // Batch validation of mapped account IDs
         accountsRepository.find.mockResolvedValue([{ id: "savings-acct" }]);
 
-        // A pre-existing linked transfer is found but should NOT suppress the import
-        let qbCallCount = 0;
+        // Simulate an existing linked transfer found via createQueryBuilder
         const mockQb = createMockQueryBuilder({
-          getOne: jest.fn().mockImplementation(() => {
-            qbCallCount++;
-            if (qbCallCount <= 2) {
-              // isDuplicateTransfer queries: return an existing tx not in createdCounterpartIds
-              return Promise.resolve({ id: "existing-transfer" });
-            }
-            // matchPendingTransfer and processTransfer queries: return null
-            return Promise.resolve(null);
-          }),
+          getOne: jest.fn().mockResolvedValue({ id: "existing-transfer" }),
         });
         mockQueryRunner.manager.createQueryBuilder.mockReturnValue(mockQb);
 
         const result = await service.importQifFile(userId, dto);
 
-        // Same-day duplicates are no longer suppressed — the transaction is imported
-        expect(result.imported).toBe(1);
-        expect(result.skipped).toBe(0);
+        expect(result.skipped).toBe(1);
+        expect(result.imported).toBe(0);
       });
     });
 
