@@ -15,7 +15,7 @@ export function formatCurrency(amount: number, currencyCode: string): string {
       currency: currencyCode,
       currencyDisplay: "narrowSymbol",
     });
-    const decimals = formatter.resolvedOptions().minimumFractionDigits;
+    const decimals = formatter.resolvedOptions().minimumFractionDigits ?? 2;
     return formatter.format(roundToDecimals(amount, decimals));
   } catch {
     return `${amount.toFixed(2)}`;
