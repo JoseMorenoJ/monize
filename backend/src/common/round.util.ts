@@ -9,10 +9,17 @@
  * Shifting via string concatenation ('e+N') sidesteps the floating-point
  * error that direct multiplication would introduce.
  *
+ * An additional one-ULP nudge (Number.EPSILON * abs) is applied before
+ * rounding to recover values that fell just below a midpoint due to
+ * IEEE 754 multiplication error (e.g., 10 * 15.9735 = 159.73499... in
+ * IEEE 754 but should round as 159.735 -> 159.74). The nudge is smaller
+ * than any legitimate distance from a midpoint in financial arithmetic.
+ *
  * Examples:
- *   roundToDecimals(159.735, 2)  => 159.74   (not 159.73)
- *   roundToDecimals(-159.735, 2) => -159.74  (not -159.73)
- *   roundToDecimals(1.005, 2)    => 1.01     (not 1.00)
+ *   roundToDecimals(159.735, 2)       => 159.74   (not 159.73)
+ *   roundToDecimals(10 * 15.9735, 2)  => 159.74   (not 159.73)
+ *   roundToDecimals(-159.735, 2)      => -159.74  (not -159.73)
+ *   roundToDecimals(1.005, 2)         => 1.01     (not 1.00)
  */
 export function roundToDecimals(
   value: number,
@@ -21,10 +28,11 @@ export function roundToDecimals(
   if (!isFinite(value)) return value;
   const sign = value < 0 ? -1 : 1;
   const abs = Math.abs(value);
+  const nudged = abs + Number.EPSILON * abs;
   return (
     sign *
     Number(
-      Math.round(Number(abs + 'e' + decimalPlaces)) +
+      Math.round(Number(nudged + 'e' + decimalPlaces)) +
         'e-' +
         decimalPlaces,
     )
