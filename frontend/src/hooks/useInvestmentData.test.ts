@@ -42,9 +42,9 @@ vi.mock('@/lib/payees', () => ({
 
 // --- Hook mocks ---
 vi.mock('@/hooks/useLocalStorage', () => ({
-  useLocalStorage: <T>(key: string, initialValue: T) => {
+  useLocalStorage: (_key: string, initialValue: unknown) => {
     const { useState } = require('react');
-    return useState<T>(initialValue);
+    return useState(initialValue);
   },
 }));
 
