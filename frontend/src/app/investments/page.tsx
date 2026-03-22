@@ -88,10 +88,11 @@ function InvestmentsContent() {
     setListDensity(d => nextDensity(d));
   }, [setListDensity]);
 
+  const { handleDeleteTransaction: deleteTransaction } = data;
   const handleDeleteTransaction = useCallback((id: string) => {
     if (!window.confirm('Are you sure you want to delete this transaction?')) return;
-    void data.handleDeleteTransaction(id);
-  }, [data.handleDeleteTransaction]); // eslint-disable-line react-hooks/exhaustive-deps
+    void deleteTransaction(id);
+  }, [deleteTransaction]);
 
   // Display name for account selector (strip " - Brokerage" suffix)
   const getAccountDisplayName = (account: Account) => {
