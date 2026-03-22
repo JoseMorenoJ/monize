@@ -364,7 +364,6 @@ export function useInvestmentData() {
   };
 
   const handleDeleteTransaction = async (id: string) => {
-    if (!window.confirm('Are you sure you want to delete this transaction?')) return;
     setTransactions(prev => prev.filter(tx => tx.id !== id));
     try {
       await investmentsApi.deleteTransaction(id);

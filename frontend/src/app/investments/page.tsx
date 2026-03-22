@@ -88,6 +88,11 @@ function InvestmentsContent() {
     setListDensity(d => nextDensity(d));
   }, [setListDensity]);
 
+  const handleDeleteTransaction = useCallback((id: string) => {
+    if (!window.confirm('Are you sure you want to delete this transaction?')) return;
+    void data.handleDeleteTransaction(id);
+  }, [data.handleDeleteTransaction]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Display name for account selector (strip " - Brokerage" suffix)
   const getAccountDisplayName = (account: Account) => {
     if (account.accountSubType === 'INVESTMENT_BROKERAGE') {
@@ -255,7 +260,7 @@ function InvestmentsContent() {
                 <InvestmentTransactionList
                   transactions={data.transactions}
                   isLoading={data.isLoading}
-                  onDelete={data.handleDeleteTransaction}
+                  onDelete={handleDeleteTransaction}
                   onEdit={data.handleEditTransaction}
                   onNewTransaction={data.handleNewTransaction}
                   density={listDensity}
