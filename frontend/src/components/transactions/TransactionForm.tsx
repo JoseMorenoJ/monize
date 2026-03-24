@@ -638,6 +638,7 @@ export function TransactionForm({ transaction, duplicateFrom, defaultAccountId, 
           status: data.status,
           payeeId: transferPayeeId || undefined,
           payeeName: transferPayeeName || undefined,
+          tagIds: selectedTagIds.length > 0 ? selectedTagIds : [],
         };
 
         // Include target amount for cross-currency transfers

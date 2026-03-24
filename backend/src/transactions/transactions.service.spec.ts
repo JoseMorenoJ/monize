@@ -4110,6 +4110,72 @@ describe("TransactionsService", () => {
         expect.objectContaining({ amount: -300 }),
       );
     });
+
+    it("sets tags on both transfer transactions when tagIds provided", async () => {
+      transactionsRepository.findOne
+        .mockResolvedValueOnce({ ...fromTx })
+        .mockResolvedValueOnce({ ...toTx })
+        // re-fetch inside transferService.updateTransfer
+        .mockResolvedValueOnce({ ...fromTx })
+        .mockResolvedValueOnce({ ...toTx })
+        // re-fetch after setTransactionTags in updateTransfer wrapper
+        .mockResolvedValueOnce({ ...fromTx, tags: [{ id: "tag-1" }] })
+        .mockResolvedValueOnce({ ...toTx, tags: [{ id: "tag-1" }] });
+
+      await service.updateTransfer("user-1", "tx-from", {
+        tagIds: ["tag-1"],
+      } as any);
+
+      expect(tagsService.setTransactionTags).toHaveBeenCalledWith(
+        "tx-from",
+        ["tag-1"],
+        "user-1",
+      );
+      expect(tagsService.setTransactionTags).toHaveBeenCalledWith(
+        "tx-to",
+        ["tag-1"],
+        "user-1",
+      );
+    });
+
+    it("clears tags on both transfer transactions when tagIds is empty array", async () => {
+      transactionsRepository.findOne
+        .mockResolvedValueOnce({ ...fromTx })
+        .mockResolvedValueOnce({ ...toTx })
+        // re-fetch inside transferService.updateTransfer
+        .mockResolvedValueOnce({ ...fromTx })
+        .mockResolvedValueOnce({ ...toTx })
+        // re-fetch after setTransactionTags in updateTransfer wrapper
+        .mockResolvedValueOnce({ ...fromTx, tags: [] })
+        .mockResolvedValueOnce({ ...toTx, tags: [] });
+
+      await service.updateTransfer("user-1", "tx-from", {
+        tagIds: [],
+      } as any);
+
+      expect(tagsService.setTransactionTags).toHaveBeenCalledWith(
+        "tx-from",
+        [],
+        "user-1",
+      );
+      expect(tagsService.setTransactionTags).toHaveBeenCalledWith(
+        "tx-to",
+        [],
+        "user-1",
+      );
+    });
+
+    it("does not call setTransactionTags when tagIds is not provided", async () => {
+      transactionsRepository.findOne
+        .mockResolvedValueOnce({ ...fromTx })
+        .mockResolvedValueOnce({ ...toTx })
+        .mockResolvedValueOnce({ ...fromTx, amount: -300 })
+        .mockResolvedValueOnce({ ...toTx, amount: 300 });
+
+      await service.updateTransfer("user-1", "tx-from", { amount: 300 });
+
+      expect(tagsService.setTransactionTags).not.toHaveBeenCalled();
+    });
   });
 
   describe("removeTransfer with parent split", () => {

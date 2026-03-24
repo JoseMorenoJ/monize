@@ -1741,12 +1741,32 @@ export class TransactionsService {
     transactionId: string,
     updateDto: Partial<CreateTransferDto>,
   ): Promise<TransferResult> {
-    return this.transferService.updateTransfer(
+    const result = await this.transferService.updateTransfer(
       userId,
       transactionId,
       updateDto,
       this.findOne.bind(this),
     );
+
+    if (updateDto.tagIds !== undefined) {
+      await this.tagsService.setTransactionTags(
+        result.fromTransaction.id,
+        updateDto.tagIds,
+        userId,
+      );
+      await this.tagsService.setTransactionTags(
+        result.toTransaction.id,
+        updateDto.tagIds,
+        userId,
+      );
+
+      return {
+        fromTransaction: await this.findOne(userId, result.fromTransaction.id),
+        toTransaction: await this.findOne(userId, result.toTransaction.id),
+      };
+    }
+
+    return result;
   }
 
   async bulkUpdate(
