@@ -223,7 +223,15 @@ export class ImportInvestmentProcessorService {
       }
     }
 
-    const cashAmount = qifTx.amount || 0;
+    // Quicken XOut uses positive amounts even though money is leaving the
+    // account.  Normalise to negative so the cash transaction correctly
+    // decreases the source balance and the duplicate-detection query matches
+    // the linked transaction created by the counterpart XIn entry.
+    const actionLower = (qifTx.action || "").toLowerCase();
+    let cashAmount = qifTx.amount || 0;
+    if (actionLower === "xout" && cashAmount > 0) {
+      cashAmount = -cashAmount;
+    }
     const status = qifTx.reconciled
       ? TransactionStatus.RECONCILED
       : qifTx.cleared

@@ -1224,6 +1224,156 @@ describe("ImportInvestmentProcessorService", () => {
       expect(linkedTxSave).toBeDefined();
     });
 
+    it("XOut with positive amount negates it (Quicken convention)", async () => {
+      const accountMap = new Map<string, string | null>();
+      accountMap.set("WS Joint LT", "acc-ws-joint");
+      const ctx = makeContext({ accountMap });
+
+      ctx.queryRunner.manager.findOne.mockImplementation(
+        (_entity: any, opts: any) => {
+          if (opts?.where?.id === "acc-ws-joint") {
+            return Promise.resolve({
+              id: "acc-ws-joint",
+              currencyCode: "CAD",
+              currentBalance: 0,
+            });
+          }
+          return Promise.resolve(null);
+        },
+      );
+
+      const qifTx = {
+        action: "XOut",
+        date: "2025-06-14",
+        amount: 76180,
+        payee: "End of Term",
+        isTransfer: true,
+        transferAccount: "WS Joint LT",
+      };
+
+      await service.processTransaction(ctx, qifTx);
+
+      expect(ctx.importResult.imported).toBe(1);
+
+      const saveCalls = ctx.queryRunner.manager.save.mock.calls;
+      // Cash transaction should be NEGATIVE (money leaving)
+      const cashTxSave = saveCalls.find(
+        (call: any) =>
+          call[0]?.accountId === accountId && call[0]?.amount === -76180,
+      );
+      expect(cashTxSave).toBeDefined();
+
+      // Linked transaction should be POSITIVE (money arriving)
+      const linkedTxSave = saveCalls.find(
+        (call: any) =>
+          call[0]?.accountId === "acc-ws-joint" && call[0]?.amount === 76180,
+      );
+      expect(linkedTxSave).toBeDefined();
+    });
+
+    it("XOut then XIn for same transfer skips the XIn as duplicate", async () => {
+      // Simulates a full QIF import where both sides of a transfer between
+      // two investment accounts are present.  The XOut is processed first and
+      // creates the transfer pair.  When the XIn is processed, the duplicate
+      // detection should find the already-created linked transfer and skip it.
+      const accountMap = new Map<string, string | null>();
+      accountMap.set("WS Joint LT", "acc-ws-joint");
+      accountMap.set("EQ Bank GIC", "acc-eq-gic");
+
+      // --- Process XOut on EQ Bank GIC side ---
+      const ctxEq = makeContext({
+        accountMap,
+        account: {
+          id: "acc-eq-gic-brokerage",
+          currencyCode: "CAD",
+          accountSubType: AccountSubType.INVESTMENT_BROKERAGE,
+          linkedAccountId: "acc-eq-gic",
+          name: "EQ Bank GIC - Brokerage",
+        } as any,
+      });
+      // Override accountId to brokerage
+      (ctxEq as any).accountId = "acc-eq-gic-brokerage";
+
+      ctxEq.queryRunner.manager.findOne.mockImplementation(
+        (_entity: any, opts: any) => {
+          if (opts?.where?.id === "acc-eq-gic") {
+            return Promise.resolve({
+              id: "acc-eq-gic",
+              currencyCode: "CAD",
+              currentBalance: 80000,
+            });
+          }
+          if (opts?.where?.id === "acc-ws-joint") {
+            return Promise.resolve({
+              id: "acc-ws-joint",
+              currencyCode: "CAD",
+              currentBalance: 0,
+            });
+          }
+          return Promise.resolve(null);
+        },
+      );
+
+      const xOutTx = {
+        action: "XOut",
+        date: "2025-06-14",
+        amount: 76180,
+        payee: "End of Term",
+        isTransfer: true,
+        transferAccount: "WS Joint LT",
+      };
+
+      await service.processTransaction(ctxEq, xOutTx);
+      expect(ctxEq.importResult.imported).toBe(1);
+
+      // Verify: negative in source, positive in target
+      const eqSaves = ctxEq.queryRunner.manager.save.mock.calls;
+      const sourceTx = eqSaves.find(
+        (call: any) =>
+          call[0]?.accountId === "acc-eq-gic" && call[0]?.amount === -76180,
+      );
+      expect(sourceTx).toBeDefined();
+      const targetTx = eqSaves.find(
+        (call: any) =>
+          call[0]?.accountId === "acc-ws-joint" && call[0]?.amount === 76180,
+      );
+      expect(targetTx).toBeDefined();
+
+      // --- Process XIn on WS Joint LT side ---
+      const ctxWs = makeContext({
+        accountMap,
+        account: {
+          id: "acc-ws-joint-brokerage",
+          currencyCode: "CAD",
+          accountSubType: AccountSubType.INVESTMENT_BROKERAGE,
+          linkedAccountId: "acc-ws-joint",
+          name: "WS Joint LT - Brokerage",
+        } as any,
+      });
+      (ctxWs as any).accountId = "acc-ws-joint-brokerage";
+
+      // Duplicate detection: the XOut already created a linked transfer in
+      // acc-ws-joint (amount=76180) linked to acc-eq-gic, so count=1
+      ctxWs.queryRunner.manager.createQueryBuilder.mockReturnValue(
+        makeMockQueryBuilder(1),
+      );
+
+      const xInTx = {
+        action: "XIn",
+        date: "2025-06-14",
+        amount: 76180,
+        payee: "End of Term",
+        isTransfer: true,
+        transferAccount: "EQ Bank GIC",
+      };
+
+      await service.processTransaction(ctxWs, xInTx);
+
+      // XIn should be skipped because XOut already created the transfer pair
+      expect(ctxWs.importResult.skipped).toBe(1);
+      expect(ctxWs.importResult.imported).toBe(0);
+    });
+
     it("XIn with no transfer account creates only a cash transaction", async () => {
       const ctx = makeContext();
 
