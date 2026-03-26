@@ -441,6 +441,8 @@ export class AccountsService {
         account.interestRate = updateAccountDto.interestRate;
       if (updateAccountDto.isFavourite !== undefined)
         account.isFavourite = updateAccountDto.isFavourite;
+      if (updateAccountDto.excludeFromNetWorth !== undefined)
+        account.excludeFromNetWorth = updateAccountDto.excludeFromNetWorth;
       // Credit card statement fields (only for credit card accounts)
       const effectiveType = updateAccountDto.accountType ?? account.accountType;
       if (effectiveType === AccountType.CREDIT_CARD) {
@@ -756,6 +758,8 @@ export class AccountsService {
     accounts.forEach((account) => {
       const balance = Number(account.currentBalance);
       totalBalance += balance;
+
+      if (account.excludeFromNetWorth) return;
 
       if (assetTypes.includes(account.accountType)) {
         totalAssets += balance;

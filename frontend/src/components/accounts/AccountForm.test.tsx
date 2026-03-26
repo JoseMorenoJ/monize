@@ -113,6 +113,7 @@ function createExistingAccount(overrides: Partial<Account> = {}): Account {
     isClosed: false,
     closedDate: null,
     isFavourite: false,
+    excludeFromNetWorth: false,
     statementDueDay: null,
     statementSettlementDay: null,
     paymentAmount: null,
