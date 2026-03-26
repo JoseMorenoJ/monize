@@ -9,9 +9,11 @@ import { CurrencyInput } from '@/components/ui/CurrencyInput';
 import { Combobox } from '@/components/ui/Combobox';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { Account, DetectedLoanPayment, SetupLoanPaymentsData } from '@/types/account';
+import { Payee } from '@/types/payee';
 import { Category } from '@/types/category';
 import { accountsApi } from '@/lib/accounts';
 import { categoriesApi } from '@/lib/categories';
+import { payeesApi } from '@/lib/payees';
 import { getCategorySelectOptions } from '@/lib/categoryUtils';
 import { getCurrencySymbol } from '@/lib/format';
 import { createLogger } from '@/lib/logger';
@@ -47,6 +49,7 @@ export function LoanPaymentSetupDialog({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [detected, setDetected] = useState<DetectedLoanPayment | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [payees, setPayees] = useState<Payee[]>([]);
 
   // Form state
   const [paymentAmount, setPaymentAmount] = useState<number>(0);
@@ -55,6 +58,7 @@ export function LoanPaymentSetupDialog({
   const [nextDueDate, setNextDueDate] = useState('');
   const [interestRate, setInterestRate] = useState<number | undefined>(undefined);
   const [interestCategoryId, setInterestCategoryId] = useState('');
+  const [selectedPayeeId, setSelectedPayeeId] = useState('');
   const [payeeName, setPayeeName] = useState('');
   const [autoPost, setAutoPost] = useState(false);
 
@@ -84,6 +88,11 @@ export function LoanPaymentSetupDialog({
 
   const categoryOptions = getCategorySelectOptions(categories);
 
+  const payeeOptions = payees.map((p) => ({
+    value: p.id,
+    label: p.name,
+  }));
+
   const hasDetectedSplit =
     detected?.lastPrincipalAmount != null && detected?.lastInterestAmount != null;
 
@@ -97,11 +106,13 @@ export function LoanPaymentSetupDialog({
     const detect = async () => {
       setIsDetecting(true);
       try {
-        const [result, cats] = await Promise.all([
+        const [result, cats, payeeList] = await Promise.all([
           accountsApi.detectLoanPayments(loanAccount.accountId),
           categoriesApi.getAll(),
+          payeesApi.getAll('active'),
         ]);
         setCategories(cats);
+        setPayees(payeeList);
 
         if (result) {
           setDetected(result);
@@ -115,6 +126,7 @@ export function LoanPaymentSetupDialog({
           // Pre-fill extra principal if detected
           if (result.averageExtraPrincipal > 0) {
             setExtraPrincipal(result.averageExtraPrincipal);
+            setIncludeExtraPrincipal(true);
           }
 
           // Enable detected split by default for mortgages when split data is available
@@ -148,6 +160,25 @@ export function LoanPaymentSetupDialog({
     detect();
   }, [isOpen, loanAccount.accountId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const handlePayeeChange = useCallback((payeeId: string, name: string) => {
+    setSelectedPayeeId(payeeId);
+    setPayeeName(name);
+  }, []);
+
+  const handlePayeeCreate = useCallback(async (name: string) => {
+    if (!name.trim()) return;
+    try {
+      const newPayee = await payeesApi.create({ name: name.trim() });
+      setPayees((prev) => [...prev, newPayee]);
+      setSelectedPayeeId(newPayee.id);
+      setPayeeName(newPayee.name);
+      toast.success(`Payee "${name}" created`);
+    } catch (error: any) {
+      const message = error?.response?.data?.message || 'Failed to create payee';
+      toast.error(message);
+    }
+  }, []);
+
   const handleSubmit = useCallback(async () => {
     if (!totalPaymentAmount || !sourceAccountId || !nextDueDate) {
       toast.error('Please fill in all required fields');
@@ -163,6 +194,7 @@ export function LoanPaymentSetupDialog({
         nextDueDate,
         interestRate,
         interestCategoryId: interestCategoryId || undefined,
+        payeeId: selectedPayeeId || undefined,
         payeeName: payeeName || undefined,
         autoPost,
       };
@@ -195,7 +227,7 @@ export function LoanPaymentSetupDialog({
     }
   }, [
     totalPaymentAmount, paymentFrequency, sourceAccountId, nextDueDate,
-    interestRate, interestCategoryId, payeeName, autoPost,
+    interestRate, interestCategoryId, selectedPayeeId, payeeName, autoPost,
     includeExtraPrincipal, extraPrincipal, useDetectedSplit, detected,
     isMortgage, isCanadianMortgage, isVariableRate, amortizationMonths, termMonths,
     loanAccount, onSetupComplete, onClose,
@@ -271,34 +303,32 @@ export function LoanPaymentSetupDialog({
               </div>
 
               {/* Extra Principal */}
-              {detected && detected.extraPrincipalCount > 0 && (
-                <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 space-y-2">
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={includeExtraPrincipal}
-                      onChange={(e) => setIncludeExtraPrincipal(e.target.checked)}
-                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 space-y-2">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={includeExtraPrincipal}
+                    onChange={(e) => setIncludeExtraPrincipal(e.target.checked)}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Include extra payment to principal
+                  </span>
+                </label>
+                {includeExtraPrincipal && (
+                  <div className="ml-6">
+                    <CurrencyInput
+                      label="Extra Principal Per Payment"
+                      value={extraPrincipal || undefined}
+                      onChange={(val) => setExtraPrincipal(val ?? 0)}
+                      prefix={currencySymbol}
                     />
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                      Include extra principal payments
-                    </span>
-                  </label>
-                  {includeExtraPrincipal && (
-                    <div className="ml-6">
-                      <CurrencyInput
-                        label="Extra Principal Per Payment"
-                        value={extraPrincipal || undefined}
-                        onChange={(val) => setExtraPrincipal(val ?? 0)}
-                        prefix={currencySymbol}
-                      />
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                        Total payment: {currencySymbol}{totalPaymentAmount.toFixed(2)}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              )}
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      Total payment: {currencySymbol}{totalPaymentAmount.toFixed(2)}
+                    </p>
+                  </div>
+                )}
+              </div>
 
               {/* Use Detected Split Ratio */}
               {hasDetectedSplit && (
@@ -398,16 +428,18 @@ export function LoanPaymentSetupDialog({
                 )}
               </div>
 
-              {/* Payee Name */}
+              {/* Payee */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Payee / Lender Name
+                  Payee / Lender
                 </label>
-                <Input
-                  value={payeeName}
-                  onChange={(e) => setPayeeName(e.target.value)}
-                  placeholder="e.g., Bank of America"
-                  maxLength={255}
+                <Combobox
+                  value={selectedPayeeId}
+                  onChange={handlePayeeChange}
+                  onCreateNew={handlePayeeCreate}
+                  options={payeeOptions}
+                  placeholder="Select or create payee..."
+                  allowCustomValue={true}
                 />
               </div>
 

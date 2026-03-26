@@ -199,6 +199,7 @@ export interface SetupLoanPaymentsData {
   nextDueDate: string;
   interestRate?: number;
   interestCategoryId?: string;
+  payeeId?: string;
   payeeName?: string;
   autoPost?: boolean;
   isCanadianMortgage?: boolean;

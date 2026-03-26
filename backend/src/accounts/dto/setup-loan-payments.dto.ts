@@ -62,6 +62,13 @@ export class SetupLoanPaymentsDto {
   interestCategoryId?: string;
 
   @ApiPropertyOptional({
+    description: "Payee ID for the scheduled transaction",
+  })
+  @IsOptional()
+  @IsUUID()
+  payeeId?: string;
+
+  @ApiPropertyOptional({
     description: "Payee name for the scheduled transaction",
     example: "Bank of America",
   })

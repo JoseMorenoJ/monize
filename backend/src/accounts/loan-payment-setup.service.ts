@@ -185,6 +185,7 @@ export class LoanPaymentSetupService {
       {
         accountId: dto.sourceAccountId,
         name: `${accountLabel} Payment - ${account.name}`,
+        payeeId: dto.payeeId || undefined,
         payeeName: dto.payeeName || account.institution || undefined,
         amount: -dto.paymentAmount,
         currencyCode: account.currencyCode,

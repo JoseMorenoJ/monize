@@ -19,6 +19,13 @@ vi.mock('@/lib/categories', () => ({
   },
 }));
 
+vi.mock('@/lib/payees', () => ({
+  payeesApi: {
+    getAll: vi.fn().mockResolvedValue([]),
+    create: vi.fn().mockResolvedValue({ id: 'new-payee', name: 'New Payee' }),
+  },
+}));
+
 vi.mock('@/lib/logger', () => ({
   createLogger: () => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn(), debug: vi.fn() }),
 }));
