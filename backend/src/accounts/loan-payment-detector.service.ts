@@ -208,11 +208,15 @@ export class LoanPaymentDetectorService {
   }
 
   /**
-   * Build payment records by examining transactions and their linked transfers/splits.
-   * Uses memo text on splits as cues: "Principal" for the regular amortization principal,
-   * "Interest" for interest, and "Extra"/"Additional" for extra principal payments.
-   * When multiple splits transfer to the loan account, separates regular from extra
-   * based on memo keywords.
+   * Build payment records by examining transactions and their linked source transfers/splits.
+   * The source account transaction represents the true total payment (principal + interest +
+   * extra principal). Its splits break down the components clearly:
+   *   - Transfer split to the loan account = principal
+   *   - Categorized split = interest expense
+   *   - Memo cues ("Extra"/"Additional") distinguish extra principal from regular principal
+   *
+   * When no linked source transaction is found (simple transfer without splits),
+   * the loan account transaction amount is used as the payment amount.
    */
   private async buildPaymentRecords(
     userId: string,
@@ -222,10 +226,10 @@ export class LoanPaymentDetectorService {
     const payments: PaymentRecord[] = [];
 
     for (const tx of transactions) {
-      const amount = Number(tx.amount);
+      const loanSideAmount = Number(tx.amount);
 
       // Payments to a loan account are positive (reducing the negative liability)
-      if (amount <= 0) continue;
+      if (loanSideAmount <= 0) continue;
 
       let sourceAccountId: string | null = null;
       let sourceAccountName: string | null = null;
@@ -234,8 +238,10 @@ export class LoanPaymentDetectorService {
       let extraPrincipalAmount: number | null = null;
       let interestCategoryId: string | null = null;
       let interestCategoryName: string | null = null;
+      // Default to loan-side amount; override with source amount when available
+      let totalPaymentAmount = loanSideAmount;
 
-      // Check if this is a transfer - find the linked transaction
+      // Check if this is a transfer - find the linked source transaction
       if (tx.isTransfer && tx.linkedTransactionId) {
         const linkedTx = await this.transactionRepository.findOne({
           where: { id: tx.linkedTransactionId, userId },
@@ -244,6 +250,13 @@ export class LoanPaymentDetectorService {
         if (linkedTx) {
           sourceAccountId = linkedTx.accountId;
           sourceAccountName = linkedTx.account?.name || null;
+
+          // The source transaction amount is the total payment (negative outflow).
+          // Use its absolute value as the total payment amount.
+          const sourceAmount = Math.abs(Number(linkedTx.amount));
+          if (sourceAmount > 0) {
+            totalPaymentAmount = sourceAmount;
+          }
 
           // Check if the source transaction has splits (principal + interest)
           if (linkedTx.isSplit) {
@@ -269,7 +282,7 @@ export class LoanPaymentDetectorService {
                   memo: split.memo,
                 });
               } else if (split.categoryId) {
-                // Categorized split = interest (use memo as additional confirmation)
+                // Categorized split = interest expense
                 interestAmount = splitAmount;
                 interestCategoryId = split.categoryId;
                 interestCategoryName = split.category?.name || null;
@@ -312,9 +325,8 @@ export class LoanPaymentDetectorService {
                 principalAmount = regular > 0 ? regular : null;
                 extraPrincipalAmount = extra > 0 ? extra : null;
               } else {
-                // No memo cues -- the varying split is regular principal,
-                // the static one is likely extra. For now, sum all as principal
-                // and let detectExtraPrincipal handle separation via pattern analysis.
+                // No memo cues -- sum all as principal and let detectExtraPrincipal
+                // handle separation via pattern analysis across payments.
                 principalAmount = principalSplits.reduce(
                   (s, ps) => s + ps.amount,
                   0,
@@ -327,7 +339,7 @@ export class LoanPaymentDetectorService {
 
       payments.push({
         date: tx.transactionDate,
-        amount,
+        amount: totalPaymentAmount,
         sourceAccountId,
         sourceAccountName,
         interestAmount,
@@ -653,14 +665,15 @@ export class LoanPaymentDetectorService {
 
   /**
    * Detect extra principal payments from split-level data.
+   * Only suggests extra principal when consistently applied across multiple payments.
    *
    * Priority order:
    * 1. Use memo-based extraPrincipalAmount from PaymentRecord (set by buildPaymentRecords
-   *    when splits have "Extra"/"Additional" in the memo).
+   *    when splits have "Extra"/"Additional" in the memo). Requires at least 3 occurrences
+   *    and appearing in at least half of all payments.
    * 2. When splits exist but no memo cues, analyze the principal amounts across payments:
    *    regular amortization principal varies over time (increases as interest decreases),
-   *    while extra principal is typically a static/constant amount. Identify a consistent
-   *    component across payments as extra principal.
+   *    while extra principal is typically a static/constant amount.
    * 3. Fall back to zero if nothing can be determined.
    */
   private detectExtraPrincipal(
@@ -668,12 +681,17 @@ export class LoanPaymentDetectorService {
     _regularAmount: number,
     _regularPaymentCount: number,
   ): { averageExtraPrincipal: number; extraPrincipalCount: number } {
-    // Strategy 1: Use memo-detected extra principal from splits
+    // Strategy 1: Use memo-detected extra principal from splits.
+    // Only suggest if consistently applied (at least 3 payments and >= 50% of all payments).
     const memoBasedExtras = allPayments.filter(
       (p) => p.extraPrincipalAmount !== null && p.extraPrincipalAmount > 0,
     );
 
-    if (memoBasedExtras.length > 0) {
+    const isConsistent =
+      memoBasedExtras.length >= 3 &&
+      memoBasedExtras.length / allPayments.length >= 0.5;
+
+    if (isConsistent) {
       const totalExtra = memoBasedExtras.reduce(
         (sum, p) => sum + p.extraPrincipalAmount!,
         0,
