@@ -236,12 +236,22 @@ export class LoanPaymentDetectorService {
     transactions: Transaction[],
   ): Promise<PaymentRecord[]> {
     const payments: PaymentRecord[] = [];
+    // Track processed linked source transactions to avoid duplicates.
+    // When extra principal is a second transfer split, each split creates its
+    // own transaction on the loan side. We only want one payment record per
+    // source transaction -- the first one will discover all splits.
+    const processedLinkedIds = new Set<string>();
 
     for (const tx of transactions) {
       const loanSideAmount = Number(tx.amount);
 
       // Payments to a loan account are positive (reducing the negative liability)
       if (loanSideAmount <= 0) continue;
+
+      // Skip if we already processed another loan-side transaction from the same source
+      if (tx.linkedTransactionId && processedLinkedIds.has(tx.linkedTransactionId)) {
+        continue;
+      }
 
       let sourceAccountId: string | null = null;
       let sourceAccountName: string | null = null;
@@ -256,6 +266,7 @@ export class LoanPaymentDetectorService {
 
       // Check if this is a transfer - find the linked source transaction
       if (tx.isTransfer && tx.linkedTransactionId) {
+        processedLinkedIds.add(tx.linkedTransactionId);
         const linkedTx = await this.transactionRepository.findOne({
           where: { id: tx.linkedTransactionId, userId },
           relations: ["account"],

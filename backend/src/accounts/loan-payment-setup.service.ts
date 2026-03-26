@@ -105,7 +105,7 @@ export class LoanPaymentSetupService {
       // recalculating from the amortization formula, which may differ due to
       // compounding method, rate changes, or rounding differences.
       interestPayment = dto.detectedInterestAmount;
-      principalPayment = basePaymentAmount - interestPayment + extraPrincipal;
+      principalPayment = basePaymentAmount - interestPayment;
       if (principalPayment < 0) {
         principalPayment = 0;
       }
@@ -122,7 +122,7 @@ export class LoanPaymentSetupService {
         dto.isCanadianMortgage ?? account.isCanadianMortgage ?? false,
         dto.isVariableRate ?? account.isVariableRate ?? false,
       );
-      principalPayment = split.principal + extraPrincipal;
+      principalPayment = split.principal;
       interestPayment = split.interest;
     } else if (interestRate > 0) {
       const split = calculatePaymentSplit(
@@ -131,7 +131,7 @@ export class LoanPaymentSetupService {
         basePaymentAmount,
         dto.paymentFrequency as PaymentFrequency,
       );
-      principalPayment = split.principal + extraPrincipal;
+      principalPayment = split.principal;
       interestPayment = split.interest;
     } else {
       // No interest rate - entire payment goes to principal
@@ -173,6 +173,16 @@ export class LoanPaymentSetupService {
         categoryId: interestCategoryId || undefined,
         amount: -interestPayment,
         memo: "Interest",
+      });
+    }
+
+    // Extra principal as a separate transfer split to the loan account,
+    // matching the structure of imported transactions
+    if (extraPrincipal > 0) {
+      splits.push({
+        transferAccountId: accountId,
+        amount: -extraPrincipal,
+        memo: "Extra Principal",
       });
     }
 
