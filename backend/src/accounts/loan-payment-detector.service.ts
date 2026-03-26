@@ -110,11 +110,17 @@ export class LoanPaymentDetectorService {
     }
 
     // Build payment records from transactions
-    const payments = await this.buildPaymentRecords(
+    const rawPayments = await this.buildPaymentRecords(
       userId,
       accountId,
       transactions,
     );
+
+    // Consolidate payment records by date. Multiple loan-side transactions
+    // on the same date are part of the same payment (e.g., regular principal
+    // + extra principal splits). This handles cases where linkedTransactionId-
+    // based dedup doesn't fully eliminate duplicates (e.g., imported data).
+    const payments = this.consolidatePaymentsByDate(rawPayments);
 
     if (payments.length < 2) {
       // Need at least 2 payments to detect a pattern
@@ -380,6 +386,73 @@ export class LoanPaymentDetectorService {
     }
 
     return payments;
+  }
+
+  /**
+   * Consolidate payment records that share the same date.
+   * When a source transaction has multiple transfer splits to the loan account,
+   * each creates its own loan-side transaction. Even with linkedTransactionId
+   * dedup, imported data may have inconsistent linking. This ensures we have
+   * exactly one payment record per date.
+   *
+   * Prefers the record with the most complete split data (has interestAmount).
+   */
+  private consolidatePaymentsByDate(
+    payments: PaymentRecord[],
+  ): PaymentRecord[] {
+    const byDate = new Map<string, PaymentRecord[]>();
+    for (const p of payments) {
+      const dateKey = p.date.split("T")[0];
+      const group = byDate.get(dateKey);
+      if (group) {
+        group.push(p);
+      } else {
+        byDate.set(dateKey, [p]);
+      }
+    }
+
+    const result: PaymentRecord[] = [];
+    for (const group of byDate.values()) {
+      if (group.length === 1) {
+        result.push(group[0]);
+        continue;
+      }
+
+      // Pick the record with the most complete split data as the base
+      const best =
+        group.find((p) => p.interestAmount !== null) || group[0];
+
+      // If the best record doesn't have split data but another does,
+      // merge interest info from it
+      if (best.interestAmount === null) {
+        const withInterest = group.find((p) => p.interestAmount !== null);
+        if (withInterest) {
+          best.interestAmount = withInterest.interestAmount;
+          best.interestCategoryId = withInterest.interestCategoryId;
+          best.interestCategoryName = withInterest.interestCategoryName;
+        }
+      }
+
+      // Use the largest amount as the total payment (source total, if found)
+      const maxAmount = Math.max(...group.map((g) => g.amount));
+      best.amount = maxAmount;
+
+      // Use the source account from whichever record found it
+      if (!best.sourceAccountId) {
+        const withSource = group.find((p) => p.sourceAccountId !== null);
+        if (withSource) {
+          best.sourceAccountId = withSource.sourceAccountId;
+          best.sourceAccountName = withSource.sourceAccountName;
+        }
+      }
+
+      result.push(best);
+    }
+
+    // Sort by date
+    return result.sort(
+      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
+    );
   }
 
   /**
@@ -651,32 +724,59 @@ export class LoanPaymentDetectorService {
 
   /**
    * Estimate the annual interest rate from payment data.
-   * Uses the actual running balance at each payment date for accuracy,
-   * and takes the median rate to be robust against outliers.
+   * Uses the actual running balance at each payment date and the real
+   * number of days between payments to annualize. This avoids dependence
+   * on the detected frequency, which can be wrong if payments are not
+   * perfectly deduplicated.
    */
   private estimateInterestRate(
     payments: PaymentRecord[],
     balanceMap: Map<string, number>,
-    frequency: string,
+    _frequency: string,
   ): number | null {
     const paymentsWithSplits = payments.filter(
       (p) => p.interestAmount !== null && p.principalAmount !== null,
     );
 
-    if (paymentsWithSplits.length < 1) {
+    if (paymentsWithSplits.length < 2) {
+      // Need at least 2 payments to compute days between them
+      if (paymentsWithSplits.length === 1) {
+        // Fall back to using the detected frequency for a single payment
+        const p = paymentsWithSplits[0];
+        const dateStr = p.date.split("T")[0];
+        const balance = balanceMap.get(dateStr);
+        if (balance && balance > 0 && p.interestAmount) {
+          const periodicRate = p.interestAmount / balance;
+          const periodsPerYear = this.getPeriodsPerYear(_frequency);
+          const annualRate = periodicRate * periodsPerYear * 100;
+          if (annualRate > 0 && annualRate < 50) {
+            return Math.round(annualRate * 100) / 100;
+          }
+        }
+      }
       return null;
     }
 
-    const periodsPerYear = this.getPeriodsPerYear(frequency);
     const rates: number[] = [];
 
-    for (const p of paymentsWithSplits) {
+    // Use actual days between consecutive payments to annualize the rate,
+    // making the estimate independent of frequency detection.
+    for (let i = 1; i < paymentsWithSplits.length; i++) {
+      const p = paymentsWithSplits[i];
+      const prevDate = new Date(paymentsWithSplits[i - 1].date);
+      const currDate = new Date(p.date);
+      const daysBetween = Math.round(
+        (currDate.getTime() - prevDate.getTime()) / (1000 * 60 * 60 * 24),
+      );
+
+      if (daysBetween <= 0) continue; // Skip same-day entries
+
       const dateStr = p.date.split("T")[0];
       const balance = balanceMap.get(dateStr);
       if (!balance || balance <= 0 || !p.interestAmount) continue;
 
       const periodicRate = p.interestAmount / balance;
-      const annualRate = periodicRate * periodsPerYear * 100;
+      const annualRate = periodicRate * (365 / daysBetween) * 100;
       if (annualRate > 0 && annualRate < 50) {
         rates.push(annualRate);
       }
