@@ -720,41 +720,57 @@ export class LoanPaymentDetectorService {
 
     // Strategy 2: Look for payments with multiple principal splits (2+ transfers
     // to the loan account). The extra principal appears as a second transfer
-    // with a static/constant amount across payments.
+    // with a static/constant amount across payments, while regular principal
+    // varies (increases with amortization).
+    //
+    // We compare the variance of each split group to determine which is static.
     const paymentsWithMultipleSplits = allPayments.filter(
       (p) => p.principalSplitAmounts.length >= 2,
     );
 
     if (paymentsWithMultipleSplits.length >= 3) {
-      // For each payment, find the smaller split amount(s).
-      // In amortization, the regular principal is the larger, varying portion.
-      // The extra principal is the smaller, static portion.
-      const candidateExtras: number[] = [];
+      // For the common case of exactly 2 principal splits per payment,
+      // sort each payment's splits and collect into two groups:
+      // group[0] = smaller split from each payment, group[1] = larger split
+      const twoSplitPayments = paymentsWithMultipleSplits.filter(
+        (p) => p.principalSplitAmounts.length === 2,
+      );
 
-      for (const p of paymentsWithMultipleSplits) {
-        // Sort splits ascending -- the smaller ones are candidate extras
-        const sorted = [...p.principalSplitAmounts].sort((a, b) => a - b);
-        // Take all but the largest (which is likely the regular principal)
-        for (let i = 0; i < sorted.length - 1; i++) {
-          candidateExtras.push(sorted[i]);
+      if (twoSplitPayments.length >= 3) {
+        const group0: number[] = []; // smaller split from each payment
+        const group1: number[] = []; // larger split from each payment
+
+        for (const p of twoSplitPayments) {
+          const sorted = [...p.principalSplitAmounts].sort((a, b) => a - b);
+          group0.push(sorted[0]);
+          group1.push(sorted[1]);
         }
-      }
 
-      if (candidateExtras.length >= 3) {
-        // Check if these candidate extras are roughly the same value (static)
-        const avg =
-          candidateExtras.reduce((s, e) => s + e, 0) / candidateExtras.length;
-        const maxDev = Math.max(
-          ...candidateExtras.map((e) => Math.abs(e - avg)),
-        );
-        const isStatic = avg > 0.01 && (maxDev < 0.02 || maxDev / avg < 0.05);
+        // Compute coefficient of variation for each group to find the static one.
+        // The group with lower CV is the extra principal (constant amount).
+        const cv0 = this.coefficientOfVariation(group0);
+        const cv1 = this.coefficientOfVariation(group1);
 
-        if (isStatic) {
+        // The static group must have very low variance (CV < 2%)
+        const staticThreshold = 0.02;
+        let extraGroup: number[] | null = null;
+
+        if (cv0 < staticThreshold && cv0 < cv1) {
+          extraGroup = group0;
+        } else if (cv1 < staticThreshold && cv1 < cv0) {
+          extraGroup = group1;
+        }
+
+        if (extraGroup) {
+          const avg =
+            extraGroup.reduce((s, e) => s + e, 0) / extraGroup.length;
           const extraAmount = Math.round(avg * 100) / 100;
-          return {
-            averageExtraPrincipal: extraAmount,
-            extraPrincipalCount: paymentsWithMultipleSplits.length,
-          };
+          if (extraAmount > 0.01) {
+            return {
+              averageExtraPrincipal: extraAmount,
+              extraPrincipalCount: twoSplitPayments.length,
+            };
+          }
         }
       }
     }
@@ -862,6 +878,19 @@ export class LoanPaymentDetectorService {
       projectedPrincipal: lastRegularPrincipal,
       projectedInterest: withSplits[withSplits.length - 1].interestAmount,
     };
+  }
+
+  /**
+   * Compute the coefficient of variation (stddev / mean) for an array of numbers.
+   * Returns Infinity for empty arrays or zero mean.
+   */
+  private coefficientOfVariation(values: number[]): number {
+    if (values.length === 0) return Infinity;
+    const mean = values.reduce((s, v) => s + v, 0) / values.length;
+    if (mean === 0) return Infinity;
+    const variance =
+      values.reduce((s, v) => s + (v - mean) ** 2, 0) / values.length;
+    return Math.sqrt(variance) / mean;
   }
 
   private getPeriodsPerYear(frequency: string): number {
