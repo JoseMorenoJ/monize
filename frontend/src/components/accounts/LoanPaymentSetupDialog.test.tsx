@@ -149,7 +149,7 @@ describe('LoanPaymentSetupDialog', () => {
     mockDetectLoanPayments.mockResolvedValue(defaultDetected);
     const mortgageProps = {
       ...defaultProps,
-      loanAccount: { accountId: 'loan-1', accountName: 'My Mortgage', accountType: 'MORTGAGE' },
+      loanAccount: { accountId: 'loan-1', accountName: 'My Mortgage', accountType: 'MORTGAGE', currencyCode: 'USD' },
     };
     await renderDialog(mortgageProps);
 
