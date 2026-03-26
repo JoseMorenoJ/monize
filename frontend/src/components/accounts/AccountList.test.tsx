@@ -53,6 +53,7 @@ function createAccount(overrides: Partial<Account> = {}): Account {
     isClosed: false,
     closedDate: null,
     isFavourite: false,
+    excludeFromNetWorth: false,
     paymentAmount: null,
     paymentFrequency: null,
     paymentStartDate: null,
@@ -422,6 +423,50 @@ describe('AccountList', () => {
     expect(screen.getByText('1 of 2 accounts')).toBeInTheDocument();
     expect(screen.queryByText('Active One')).not.toBeInTheDocument();
     expect(screen.getByText('Closed One')).toBeInTheDocument();
+  });
+
+  it('filters accounts by net worth included', () => {
+    const accounts = [
+      createAccount({ id: 'a1', name: 'Included Account', excludeFromNetWorth: false }),
+      createAccount({ id: 'a2', name: 'Excluded Account', excludeFromNetWorth: true }),
+    ];
+
+    render(
+      <AccountList accounts={accounts} onEdit={mockOnEdit} onRefresh={mockOnRefresh} />
+    );
+
+    expect(screen.getByText('2 of 2 accounts')).toBeInTheDocument();
+
+    const inNetWorthButton = screen.getAllByRole('button').find(
+      (btn) => btn.textContent === 'In Net Worth' && btn.closest('.inline-flex.rounded-md')
+    );
+    expect(inNetWorthButton).toBeTruthy();
+    fireEvent.click(inNetWorthButton!);
+
+    expect(screen.getByText('1 of 2 accounts')).toBeInTheDocument();
+    expect(screen.getByText('Included Account')).toBeInTheDocument();
+    expect(screen.queryByText('Excluded Account')).not.toBeInTheDocument();
+  });
+
+  it('filters accounts by net worth excluded', () => {
+    const accounts = [
+      createAccount({ id: 'a1', name: 'Included Account', excludeFromNetWorth: false }),
+      createAccount({ id: 'a2', name: 'Excluded Account', excludeFromNetWorth: true }),
+    ];
+
+    render(
+      <AccountList accounts={accounts} onEdit={mockOnEdit} onRefresh={mockOnRefresh} />
+    );
+
+    const excludedButton = screen.getAllByRole('button').find(
+      (btn) => btn.textContent === 'Excluded' && btn.closest('.inline-flex.rounded-md')
+    );
+    expect(excludedButton).toBeTruthy();
+    fireEvent.click(excludedButton!);
+
+    expect(screen.getByText('1 of 2 accounts')).toBeInTheDocument();
+    expect(screen.queryByText('Included Account')).not.toBeInTheDocument();
+    expect(screen.getByText('Excluded Account')).toBeInTheDocument();
   });
 
   it('shows "No accounts match your filters" and Clear Filters button when filters exclude all accounts', () => {
