@@ -295,8 +295,6 @@ export class ActionHistoryService {
     });
     if (!transaction) return;
 
-    await this.checkNotReconciled(transaction);
-
     // Delete splits first
     if (transaction.splits && transaction.splits.length > 0) {
       await queryRunner.manager.delete(TransactionSplit, {
@@ -333,8 +331,6 @@ export class ActionHistoryService {
         "Cannot undo: transaction no longer exists",
       );
     }
-
-    await this.checkNotReconciled(transaction);
 
     const before = action.beforeData;
 
@@ -531,7 +527,6 @@ export class ActionHistoryService {
         where: { id: txId, userId: action.userId },
       });
       if (tx) {
-        await this.checkNotReconciled(tx);
         await queryRunner.query(
           `DELETE FROM transaction_tags WHERE transaction_id = $1`,
           [txId],
@@ -886,13 +881,6 @@ export class ActionHistoryService {
 
   // --- Utility methods ---
 
-  private async checkNotReconciled(transaction: Transaction): Promise<void> {
-    if (transaction.status === "RECONCILED") {
-      throw new ConflictException(
-        "Cannot undo: transaction has been reconciled",
-      );
-    }
-  }
 
   private async recalculateBalance(
     accountId: string,

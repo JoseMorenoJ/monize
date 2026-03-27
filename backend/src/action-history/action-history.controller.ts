@@ -36,7 +36,6 @@ export class ActionHistoryController {
   @ApiOperation({ summary: "Undo the most recent action" })
   @ApiResponse({ status: 200, description: "Action undone successfully" })
   @ApiResponse({ status: 404, description: "Nothing to undo" })
-  @ApiResponse({ status: 409, description: "Cannot undo this action" })
   undo(@Request() req) {
     return this.actionHistoryService.undo(req.user.id);
   }
@@ -45,7 +44,6 @@ export class ActionHistoryController {
   @ApiOperation({ summary: "Redo the most recently undone action" })
   @ApiResponse({ status: 200, description: "Action redone successfully" })
   @ApiResponse({ status: 404, description: "Nothing to redo" })
-  @ApiResponse({ status: 409, description: "Cannot redo this action" })
   redo(@Request() req) {
     return this.actionHistoryService.redo(req.user.id);
   }

@@ -90,7 +90,7 @@ describe('useUndoRedo', () => {
     actionHistoryApi.undo.mockRejectedValue({
       response: {
         status: 409,
-        data: { message: 'Cannot undo: transaction has been reconciled' },
+        data: { message: 'Cannot undo: entity no longer exists' },
       },
     });
 
@@ -101,7 +101,7 @@ describe('useUndoRedo', () => {
     });
 
     expect(toast.error).toHaveBeenCalledWith(
-      'Cannot undo: transaction has been reconciled',
+      'Cannot undo: entity no longer exists',
     );
   });
 

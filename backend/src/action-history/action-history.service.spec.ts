@@ -343,28 +343,7 @@ describe("ActionHistoryService", () => {
       expect(mockQueryRunner.commitTransaction).toHaveBeenCalled();
     });
 
-    it("should reject undo for reconciled transactions", async () => {
-      const txAction = {
-        ...mockAction,
-        entityType: "transaction",
-        action: "create",
-        entityId: "tx-1",
-      };
-      mockRepository.findOne.mockResolvedValue(txAction);
-
-      const reconciledTx = {
-        id: "tx-1",
-        userId,
-        accountId: "acc-1",
-        status: "RECONCILED",
-        splits: [],
-      };
-      mockQueryRunner.manager.findOne.mockResolvedValue(reconciledTx);
-
-      await expect(service.undo(userId)).rejects.toThrow(ConflictException);
-      expect(mockQueryRunner.rollbackTransaction).toHaveBeenCalled();
-    });
-  });
+});
 
   describe("undo transaction delete", () => {
     it("should re-insert the transaction from snapshot", async () => {
