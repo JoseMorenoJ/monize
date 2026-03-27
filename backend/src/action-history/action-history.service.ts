@@ -26,7 +26,7 @@ export interface RecordActionParams {
   description: string;
 }
 
-interface UndoRedoResult {
+export interface UndoRedoResult {
   action: ActionHistory;
   description: string;
 }
