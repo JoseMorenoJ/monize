@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import { useOnUndoRedo } from '@/hooks/useOnUndoRedo';
 import toast from 'react-hot-toast';
 import { Button } from '@/components/ui/Button';
 import { TransactionFilterPanel } from '@/components/transactions/TransactionFilterPanel';
@@ -218,6 +219,8 @@ function TransactionsContent() {
     loadStaticData();
     await loadTransactions(page);
   }, [filters.currentPage, loadStaticData, loadTransactions]);
+
+  useOnUndoRedo(loadAllData);
 
   // Load static data once on mount
   useEffect(() => {

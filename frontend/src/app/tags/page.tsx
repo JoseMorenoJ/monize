@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
+import { useOnUndoRedo } from '@/hooks/useOnUndoRedo';
 import dynamic from 'next/dynamic';
 import { Button } from '@/components/ui/Button';
 const TagForm = dynamic(() => import('@/components/tags/TagForm').then(m => m.TagForm), { ssr: false });
@@ -45,7 +46,7 @@ function TagsContent() {
   const [deleteTransactionCount, setDeleteTransactionCount] = useState<number>(0);
   const { showForm, editingItem, openCreate, openEdit, close, isEditing, modalProps, setFormDirty, unsavedChangesDialog, formSubmitRef } = useFormModal<Tag>();
 
-  const loadTags = async () => {
+  const loadTags = useCallback(async () => {
     setIsLoading(true);
     try {
       const [data, counts] = await Promise.all([
@@ -60,11 +61,13 @@ function TagsContent() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadTags();
-  }, []);
+  }, [loadTags]);
+
+  useOnUndoRedo(loadTags);
 
   const handleFormSubmit = async (data: any) => {
     try {

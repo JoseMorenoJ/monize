@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import toast from 'react-hot-toast';
+import { useOnUndoRedo } from '@/hooks/useOnUndoRedo';
 import dynamic from 'next/dynamic';
 import { Button } from '@/components/ui/Button';
 const CategoryForm = dynamic(() => import('@/components/categories/CategoryForm').then(m => m.CategoryForm), { ssr: false });
@@ -41,7 +42,7 @@ function CategoriesContent() {
   const [sortDirection, setSortDirection] = useLocalStorage<SortDirection>('monize-categories-sort-dir', 'asc');
   const { showForm, editingItem, openCreate, openEdit, close, isEditing, modalProps, setFormDirty, unsavedChangesDialog, formSubmitRef } = useFormModal<Category>();
 
-  const loadCategories = async () => {
+  const loadCategories = useCallback(async () => {
     setIsLoading(true);
     try {
       const data = await categoriesApi.getAll();
@@ -52,11 +53,13 @@ function CategoriesContent() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadCategories();
-  }, []);
+  }, [loadCategories]);
+
+  useOnUndoRedo(loadCategories);
 
   const handleFormSubmit = async (data: any) => {
     try {

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import toast from 'react-hot-toast';
+import { useOnUndoRedo } from '@/hooks/useOnUndoRedo';
 import { Button } from '@/components/ui/Button';
 import { Pagination } from '@/components/ui/Pagination';
 import { PayeeForm } from '@/components/payees/PayeeForm';
@@ -52,7 +53,7 @@ function PayeesContent() {
   const [mergePayee, setMergePayee] = useState<Payee | null>(null);
   const { showForm, editingItem, openCreate, openEdit, close, isEditing, modalProps, setFormDirty, unsavedChangesDialog, formSubmitRef } = useFormModal<Payee>();
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setIsLoading(true);
     try {
       const [payeesData, categoriesData] = await Promise.all([
@@ -67,11 +68,13 @@ function PayeesContent() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [loadData]);
+
+  useOnUndoRedo(loadData);
 
   const handleFormSubmit = async (data: any) => {
     try {

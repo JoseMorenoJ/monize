@@ -7,6 +7,7 @@ import { authApi } from '@/lib/auth';
 import Image from 'next/image';
 import { Button } from '@/components/ui/Button';
 import { BudgetAlertBadge } from '@/components/budgets/BudgetAlertBadge';
+import { ActionHistoryPanel } from '@/components/layout/ActionHistoryPanel';
 import toast from 'react-hot-toast';
 
 const navLinks = [
@@ -359,6 +360,7 @@ export function AppHeader() {
             </nav>
           </div>
           <div className="flex items-center space-x-1 sm:space-x-4">
+            <ActionHistoryPanel />
             <BudgetAlertBadge />
             <button
               onClick={() => router.push('/settings')}
