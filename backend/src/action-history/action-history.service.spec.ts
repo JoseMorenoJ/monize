@@ -125,6 +125,21 @@ describe("ActionHistoryService", () => {
       });
     });
 
+    it("should skip recording if JSONB payload exceeds size limit", async () => {
+      const largeData = { data: "x".repeat(600 * 1024) };
+
+      const result = await service.record(userId, {
+        entityType: "tag",
+        entityId: "entity-1",
+        action: "create",
+        afterData: largeData,
+        description: "test",
+      });
+
+      expect(result).toBeNull();
+      expect(mockRepository.save).not.toHaveBeenCalled();
+    });
+
     it("should not throw if recording fails", async () => {
       mockRepository.delete.mockRejectedValue(new Error("DB error"));
 
@@ -200,6 +215,52 @@ describe("ActionHistoryService", () => {
       expect(mockQueryRunner.commitTransaction).toHaveBeenCalled();
       // Should have called query to re-insert
       expect(mockQueryRunner.query).toHaveBeenCalled();
+    });
+
+    it("should skip disallowed columns in beforeData during re-insert", async () => {
+      const deleteAction = {
+        ...mockAction,
+        action: "delete",
+        entityType: "tag",
+        entityId: "tag-1",
+        beforeData: {
+          id: "tag-1",
+          name: "Test Tag",
+          userId,
+          "'; DROP TABLE users; --": "evil",
+        },
+        afterData: null,
+      };
+      mockRepository.findOne.mockResolvedValue(deleteAction);
+      mockQueryRunner.query.mockResolvedValue([]);
+      mockQueryRunner.manager.update.mockResolvedValue({ affected: 1 });
+
+      const result = await service.undo(userId);
+
+      expect(result.description).toContain("Undone");
+      expect(mockQueryRunner.commitTransaction).toHaveBeenCalled();
+      // The INSERT query should not contain the malicious column
+      const insertCall = mockQueryRunner.query.mock.calls.find(
+        (call: any[]) =>
+          typeof call[0] === "string" && call[0].includes("INSERT INTO"),
+      );
+      expect(insertCall).toBeDefined();
+      expect(insertCall[0]).not.toContain("DROP TABLE");
+    });
+
+    it("should throw ConflictException for unsupported table in re-insert", async () => {
+      const deleteAction = {
+        ...mockAction,
+        action: "delete",
+        entityType: "unsupported_entity",
+        entityId: "entity-1",
+        beforeData: { id: "entity-1", name: "test" },
+        afterData: null,
+      };
+      mockRepository.findOne.mockResolvedValue(deleteAction);
+
+      await expect(service.undo(userId)).rejects.toThrow(ConflictException);
+      expect(mockQueryRunner.rollbackTransaction).toHaveBeenCalled();
     });
 
     it("should rollback on error", async () => {

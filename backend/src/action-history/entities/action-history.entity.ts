@@ -6,6 +6,7 @@ import {
   ManyToOne,
   JoinColumn,
 } from "typeorm";
+import { Exclude } from "class-transformer";
 import { User } from "../../users/entities/user.entity";
 
 @Entity("action_history")
@@ -29,12 +30,15 @@ export class ActionHistory {
   @Column({ type: "varchar", length: 20 })
   action: string;
 
+  @Exclude()
   @Column({ type: "jsonb", name: "before_data", nullable: true })
   beforeData: Record<string, any> | null;
 
+  @Exclude()
   @Column({ type: "jsonb", name: "after_data", nullable: true })
   afterData: Record<string, any> | null;
 
+  @Exclude()
   @Column({ type: "jsonb", name: "related_entities", nullable: true })
   relatedEntities: Record<string, any>[] | null;
 

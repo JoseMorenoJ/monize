@@ -32,6 +32,35 @@ interface UndoRedoResult {
 }
 
 const MAX_HISTORY_PER_USER = 100;
+const MAX_JSONB_SIZE_BYTES = 512 * 1024; // 500 KB
+
+// Whitelist of allowed table names and column names for reinsertEntity()
+// to prevent SQL injection via crafted JSONB keys
+const ALLOWED_COLUMNS: Record<string, Set<string>> = {
+  categories: new Set([
+    "id", "user_id", "parent_id", "name", "description", "icon", "color",
+    "is_income", "is_system", "created_at",
+  ]),
+  payees: new Set([
+    "id", "user_id", "name", "default_category_id", "notes", "is_active",
+    "created_at",
+  ]),
+  tags: new Set([
+    "id", "user_id", "name", "color", "icon", "created_at", "updated_at",
+  ]),
+  accounts: new Set([
+    "id", "user_id", "account_type", "name", "description", "currency_code",
+    "account_number", "institution", "opening_balance", "current_balance",
+    "credit_limit", "interest_rate", "statement_due_day",
+    "statement_settlement_day", "is_closed", "closed_date", "is_favourite",
+    "exclude_from_net_worth", "account_sub_type", "linked_account_id",
+    "payment_amount", "payment_frequency", "payment_start_date",
+    "source_account_id", "principal_category_id", "interest_category_id",
+    "asset_category_id", "date_acquired", "is_canadian_mortgage",
+    "is_variable_rate", "term_months", "term_end_date", "amortization_months",
+    "original_principal", "scheduled_transaction_id", "created_at", "updated_at",
+  ]),
+};
 const MAX_HISTORY_AGE_DAYS = 30;
 
 @Injectable()
@@ -49,6 +78,21 @@ export class ActionHistoryService {
     params: RecordActionParams,
   ): Promise<ActionHistory | null> {
     try {
+      // Check JSONB payload size to prevent oversized records
+      const jsonSize =
+        (params.beforeData ? JSON.stringify(params.beforeData).length : 0) +
+        (params.afterData ? JSON.stringify(params.afterData).length : 0) +
+        (params.relatedEntities
+          ? JSON.stringify(params.relatedEntities).length
+          : 0);
+
+      if (jsonSize > MAX_JSONB_SIZE_BYTES) {
+        this.logger.warn(
+          `Action history payload too large (${jsonSize} bytes) for ${params.action} on ${params.entityType}, skipping`,
+        );
+        return null;
+      }
+
       // Clear redo stack when a new action is recorded
       await this.actionHistoryRepository.delete({
         userId,
@@ -965,18 +1009,39 @@ export class ActionHistoryService {
     tableName: string,
     data: Record<string, any>,
   ): Promise<void> {
+    const allowedCols = ALLOWED_COLUMNS[tableName];
+    if (!allowedCols) {
+      throw new ConflictException(
+        `Unsupported table for re-insert: ${tableName}`,
+      );
+    }
+
     const keys = Object.keys(data).filter(
       (k) => data[k] !== undefined && k !== "updatedAt",
     );
     if (keys.length === 0) return;
 
-    // Convert camelCase to snake_case for column names
-    const columns = keys.map((k) => this.toSnakeCase(k));
-    const placeholders = keys.map((_, i) => `$${i + 1}`);
-    const values = keys.map((k) => data[k]);
+    const columns: string[] = [];
+    const values: any[] = [];
+    for (const k of keys) {
+      const col = this.toSnakeCase(k);
+      if (!allowedCols.has(col)) {
+        this.logger.warn(
+          `Skipping disallowed column "${col}" for table "${tableName}"`,
+        );
+        continue;
+      }
+      columns.push(col);
+      values.push(data[k]);
+    }
+
+    if (columns.length === 0) return;
+
+    const placeholders = columns.map((_, i) => `$${i + 1}`);
+    const quotedCols = columns.map((c) => `"${c}"`);
 
     await queryRunner.query(
-      `INSERT INTO ${tableName} (${columns.join(", ")}) VALUES (${placeholders.join(", ")}) ON CONFLICT (id) DO NOTHING`,
+      `INSERT INTO "${tableName}" (${quotedCols.join(", ")}) VALUES (${placeholders.join(", ")}) ON CONFLICT (id) DO NOTHING`,
       values,
     );
   }
