@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import {
   format,
@@ -45,6 +45,7 @@ import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { createLogger } from '@/lib/logger';
 import { getErrorMessage } from '@/lib/errors';
+import { useOnUndoRedo } from '@/hooks/useOnUndoRedo';
 
 const logger = createLogger('Bills');
 
@@ -95,7 +96,7 @@ function BillsContent() {
     transaction: ScheduledTransaction | null;
   }>({ isOpen: false, transaction: null });
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setIsLoading(true);
     try {
       const tomorrow = new Date();
@@ -128,11 +129,13 @@ function BillsContent() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [loadData]);
+
+  useOnUndoRedo(loadData);
 
   const handleCreateNew = () => {
     openCreate();

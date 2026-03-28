@@ -1,12 +1,13 @@
 'use client';
 
-import { Suspense, lazy } from 'react';
+import { Suspense, lazy, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { PageLayout } from '@/components/layout/PageLayout';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
+import { useOnUndoRedo } from '@/hooks/useOnUndoRedo';
 
 const reportComponents: Record<string, React.LazyExoticComponent<React.ComponentType>> = {
   'spending-by-category': lazy(() => import('@/components/reports/SpendingByCategoryReport').then(m => ({ default: m.SpendingByCategoryReport }))),
@@ -181,6 +182,11 @@ function ReportContent() {
   const params = useParams();
   const reportId = params.reportId as string;
 
+  // Force report remount after undo/redo so it re-fetches data
+  const [refreshKey, setRefreshKey] = useState(0);
+  const handleUndoRedo = useCallback(() => setRefreshKey((k) => k + 1), []);
+  useOnUndoRedo(handleUndoRedo);
+
   const ReportComponent = reportComponents[reportId];
   const reportName = reportNames[reportId];
   const reportDescription = reportDescriptions[reportId];
@@ -215,7 +221,7 @@ function ReportContent() {
           }
         />
         <Suspense fallback={<ReportSkeleton />}>
-          <ReportComponent />
+          <ReportComponent key={refreshKey} />
         </Suspense>
       </main>
     </PageLayout>

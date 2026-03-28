@@ -20,6 +20,7 @@ import { InvestmentValueChart } from '@/components/investments/InvestmentValueCh
 import { TransactionList } from '@/components/transactions/TransactionList';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { useInvestmentData } from '@/hooks/useInvestmentData';
+import { useOnUndoRedo } from '@/hooks/useOnUndoRedo';
 import { Account } from '@/types/account';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { PAGE_SIZE } from '@/lib/constants';
@@ -41,6 +42,10 @@ export default function InvestmentsPage() {
 function InvestmentsContent() {
   const { formatCurrency } = useNumberFormat();
   const data = useInvestmentData();
+  const handleUndoRedo = useCallback(() => {
+    data.loadAllPortfolioData(data.selectedAccountIds, data.currentPage, data.transactionFilters);
+  }, [data.loadAllPortfolioData, data.selectedAccountIds, data.currentPage, data.transactionFilters]);
+  useOnUndoRedo(handleUndoRedo);
   const [listDensity, setListDensity] = useLocalStorage<DensityLevel>('monize-investments-density', 'normal');
   const [transactionView, setTransactionView] = useState<TransactionViewType>('brokerage');
 
