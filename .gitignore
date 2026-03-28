@@ -64,4 +64,4 @@ backup.sql
 
 # Sensitive data
 secrets/
-credentials/
+credentials/.claude/worktrees/
