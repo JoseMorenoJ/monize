@@ -17,6 +17,7 @@ import { TransactionSplit } from "../transactions/entities/transaction-split.ent
 import { Category } from "../categories/entities/category.entity";
 import { ScheduledTransaction } from "../scheduled-transactions/entities/scheduled-transaction.entity";
 import { ScheduledTransactionOverride } from "../scheduled-transactions/entities/scheduled-transaction-override.entity";
+import { ActionHistoryService } from "../action-history/action-history.service";
 
 describe("BudgetsService", () => {
   let service: BudgetsService;
@@ -213,6 +214,10 @@ describe("BudgetsService", () => {
         {
           provide: getRepositoryToken(ScheduledTransactionOverride),
           useValue: overridesRepository,
+        },
+        {
+          provide: ActionHistoryService,
+          useValue: { record: jest.fn().mockResolvedValue(null) },
         },
       ],
     }).compile();

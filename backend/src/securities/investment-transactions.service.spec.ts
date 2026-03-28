@@ -18,6 +18,7 @@ import { SecuritiesService } from "./securities.service";
 import { SecurityPriceService } from "./security-price.service";
 import { NetWorthService } from "../net-worth/net-worth.service";
 import { DataSource } from "typeorm";
+import { ActionHistoryService } from "../action-history/action-history.service";
 import { isTransactionInFuture } from "../common/date-utils";
 
 jest.mock("../common/date-utils", () => ({
@@ -314,6 +315,10 @@ describe("InvestmentTransactionsService", () => {
         {
           provide: NetWorthService,
           useValue: netWorthService,
+        },
+        {
+          provide: ActionHistoryService,
+          useValue: { record: jest.fn().mockResolvedValue(null) },
         },
       ],
     }).compile();

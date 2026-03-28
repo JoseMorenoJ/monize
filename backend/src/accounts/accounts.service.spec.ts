@@ -14,6 +14,7 @@ import { ScheduledTransactionsService } from "../scheduled-transactions/schedule
 import { NetWorthService } from "../net-worth/net-worth.service";
 import { LoanMortgageAccountService } from "./loan-mortgage-account.service";
 import { DataSource } from "typeorm";
+import { ActionHistoryService } from "../action-history/action-history.service";
 
 describe("AccountsService", () => {
   let service: AccountsService;
@@ -140,6 +141,10 @@ describe("AccountsService", () => {
           useValue: scheduledTransactionsService,
         },
         { provide: NetWorthService, useValue: netWorthService },
+        {
+          provide: ActionHistoryService,
+          useValue: { record: jest.fn().mockResolvedValue(null) },
+        },
         LoanMortgageAccountService,
         {
           provide: DataSource,

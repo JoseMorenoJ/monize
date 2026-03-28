@@ -33,6 +33,7 @@ import {
 } from "./budget-spending.util";
 import { formatDateYMD, todayYMD } from "../common/date-utils";
 import { formatCurrency } from "../common/format-currency.util";
+import { ActionHistoryService } from "../action-history/action-history.service";
 
 export interface UpcomingBill {
   id: string;
@@ -83,6 +84,7 @@ export class BudgetsService {
     private scheduledTransactionsRepository: Repository<ScheduledTransaction>,
     @InjectRepository(ScheduledTransactionOverride)
     private overridesRepository: Repository<ScheduledTransactionOverride>,
+    private actionHistoryService: ActionHistoryService,
   ) {}
 
   async create(
@@ -94,7 +96,17 @@ export class BudgetsService {
       userId,
     });
 
-    return this.budgetsRepository.save(budget);
+    const saved = await this.budgetsRepository.save(budget);
+
+    this.actionHistoryService.record(userId, {
+      entityType: "budget",
+      entityId: saved.id,
+      action: "create",
+      afterData: { ...saved },
+      description: `Created budget "${saved.name}"`,
+    });
+
+    return saved;
   }
 
   async findAll(userId: string): Promise<Budget[]> {
@@ -129,6 +141,7 @@ export class BudgetsService {
     updateBudgetDto: UpdateBudgetDto,
   ): Promise<Budget> {
     const budget = await this.findOne(userId, id);
+    const beforeData = { ...budget };
 
     if (updateBudgetDto.name !== undefined) budget.name = updateBudgetDto.name;
     if (updateBudgetDto.description !== undefined)
@@ -150,12 +163,32 @@ export class BudgetsService {
     if (updateBudgetDto.config !== undefined)
       budget.config = updateBudgetDto.config;
 
-    return this.budgetsRepository.save(budget);
+    const saved = await this.budgetsRepository.save(budget);
+
+    this.actionHistoryService.record(userId, {
+      entityType: "budget",
+      entityId: id,
+      action: "update",
+      beforeData,
+      afterData: { ...saved },
+      description: `Updated budget "${saved.name}"`,
+    });
+
+    return saved;
   }
 
   async remove(userId: string, id: string): Promise<void> {
     const budget = await this.findOne(userId, id);
+    const beforeData = { ...budget };
     await this.budgetsRepository.remove(budget);
+
+    this.actionHistoryService.record(userId, {
+      entityType: "budget",
+      entityId: beforeData.id,
+      action: "delete",
+      beforeData,
+      description: `Deleted budget "${beforeData.name}"`,
+    });
   }
 
   async addCategory(

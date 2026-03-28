@@ -25,6 +25,7 @@ import {
 } from "../transactions/entities/transaction.entity";
 import { Account, AccountSubType } from "../accounts/entities/account.entity";
 import { isTransactionInFuture } from "../common/date-utils";
+import { ActionHistoryService } from "../action-history/action-history.service";
 
 @Injectable()
 export class InvestmentTransactionsService {
@@ -42,6 +43,7 @@ export class InvestmentTransactionsService {
     private securitiesService: SecuritiesService,
     private securityPriceService: SecurityPriceService,
     private netWorthService: NetWorthService,
+    private actionHistoryService: ActionHistoryService,
   ) {}
 
   private static readonly PRICE_ACTIONS: ReadonlySet<InvestmentAction> =
@@ -319,7 +321,17 @@ export class InvestmentTransactionsService {
         );
     }
 
-    return this.findOne(userId, savedId);
+    const result = await this.findOne(userId, savedId);
+
+    this.actionHistoryService.record(userId, {
+      entityType: "investment_transaction",
+      entityId: result.id,
+      action: "create",
+      afterData: { ...result },
+      description: `Created ${createDto.action} transaction${createDto.securityId ? "" : ""}`,
+    });
+
+    return result;
   }
 
   private calculateTotalAmount(dto: CreateInvestmentTransactionDto): number {
@@ -634,6 +646,7 @@ export class InvestmentTransactionsService {
     updateDto: UpdateInvestmentTransactionDto,
   ): Promise<InvestmentTransaction> {
     const transaction = await this.findOne(userId, id);
+    const beforeData = { ...transaction };
     const accountId = transaction.accountId;
     const oldSecurityId = transaction.securityId;
     const oldTransactionDate = transaction.transactionDate;
@@ -760,7 +773,18 @@ export class InvestmentTransactionsService {
         );
     }
 
-    return this.findOne(userId, savedId);
+    const result = await this.findOne(userId, savedId);
+
+    this.actionHistoryService.record(userId, {
+      entityType: "investment_transaction",
+      entityId: id,
+      action: "update",
+      beforeData,
+      afterData: { ...result },
+      description: `Updated ${result.action} transaction`,
+    });
+
+    return result;
   }
 
   private async reverseTransactionEffectsInTransaction(
@@ -887,6 +911,7 @@ export class InvestmentTransactionsService {
 
   async remove(userId: string, id: string): Promise<void> {
     const transaction = await this.findOne(userId, id);
+    const beforeData = { ...transaction };
     const { accountId } = transaction;
 
     const queryRunner = this.dataSource.createQueryRunner();
@@ -931,6 +956,14 @@ export class InvestmentTransactionsService {
           ),
         );
     }
+
+    this.actionHistoryService.record(userId, {
+      entityType: "investment_transaction",
+      entityId: beforeData.id,
+      action: "delete",
+      beforeData,
+      description: `Deleted ${beforeData.action} transaction`,
+    });
   }
 
   async getSummary(userId: string, accountIds?: string[]) {

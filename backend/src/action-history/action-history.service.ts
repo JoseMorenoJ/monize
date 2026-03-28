@@ -15,6 +15,9 @@ import { Category } from "../categories/entities/category.entity";
 import { Payee } from "../payees/entities/payee.entity";
 import { Tag } from "../tags/entities/tag.entity";
 import { InvestmentTransaction } from "../securities/entities/investment-transaction.entity";
+import { Security } from "../securities/entities/security.entity";
+import { ScheduledTransaction } from "../scheduled-transactions/entities/scheduled-transaction.entity";
+import { Budget } from "../budgets/entities/budget.entity";
 
 export interface RecordActionParams {
   entityType: string;
@@ -59,6 +62,29 @@ const ALLOWED_COLUMNS: Record<string, Set<string>> = {
     "asset_category_id", "date_acquired", "is_canadian_mortgage",
     "is_variable_rate", "term_months", "term_end_date", "amortization_months",
     "original_principal", "scheduled_transaction_id", "created_at", "updated_at",
+  ]),
+  scheduled_transactions: new Set([
+    "id", "user_id", "account_id", "name", "payee_id", "payee_name",
+    "category_id", "amount", "currency_code", "description", "frequency",
+    "next_due_date", "start_date", "end_date", "occurrences_remaining",
+    "total_occurrences", "is_active", "auto_post", "reminder_days_before",
+    "last_posted_date", "is_split", "is_transfer", "transfer_account_id",
+    "tag_ids", "created_at", "updated_at",
+  ]),
+  securities: new Set([
+    "id", "user_id", "symbol", "name", "security_type", "exchange",
+    "currency_code", "is_active", "skip_price_updates", "sector", "industry",
+    "sector_weightings", "sector_data_updated_at", "created_at", "updated_at",
+  ]),
+  investment_transactions: new Set([
+    "id", "user_id", "account_id", "transaction_id", "security_id",
+    "funding_account_id", "action", "transaction_date", "quantity", "price",
+    "commission", "total_amount", "description", "created_at", "updated_at",
+  ]),
+  budgets: new Set([
+    "id", "user_id", "name", "description", "budget_type", "period_start",
+    "period_end", "base_income", "income_linked", "strategy", "is_active",
+    "currency_code", "config", "created_at", "updated_at",
   ]),
 };
 const MAX_HISTORY_AGE_DAYS = 30;
@@ -216,8 +242,17 @@ export class ActionHistoryService {
       case "account":
         await this.undoSimpleEntity(action, queryRunner, Account, "accounts");
         break;
+      case "scheduled_transaction":
+        await this.undoSimpleEntity(action, queryRunner, ScheduledTransaction, "scheduled_transactions");
+        break;
+      case "security":
+        await this.undoSimpleEntity(action, queryRunner, Security, "securities");
+        break;
       case "investment_transaction":
         await this.undoInvestmentTransaction(action, queryRunner);
+        break;
+      case "budget":
+        await this.undoSimpleEntity(action, queryRunner, Budget, "budgets");
         break;
       case "bulk_transaction":
         await this.undoBulkTransaction(action, queryRunner);

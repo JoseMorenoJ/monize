@@ -12,6 +12,7 @@ import { AccountsService } from "../accounts/accounts.service";
 import { TransactionsService } from "../transactions/transactions.service";
 import { ScheduledTransactionOverrideService } from "./scheduled-transaction-override.service";
 import { ScheduledTransactionLoanService } from "./scheduled-transaction-loan.service";
+import { ActionHistoryService } from "../action-history/action-history.service";
 
 describe("ScheduledTransactionsService", () => {
   let service: ScheduledTransactionsService;
@@ -186,6 +187,10 @@ describe("ScheduledTransactionsService", () => {
         { provide: DataSource, useValue: mockDataSource },
         ScheduledTransactionOverrideService,
         ScheduledTransactionLoanService,
+        {
+          provide: ActionHistoryService,
+          useValue: { record: jest.fn().mockResolvedValue(null) },
+        },
       ],
     }).compile();
 

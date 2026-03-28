@@ -10,6 +10,7 @@ import { Security } from "./entities/security.entity";
 import { Holding } from "./entities/holding.entity";
 import { InvestmentTransaction } from "./entities/investment-transaction.entity";
 import { SecurityPriceService } from "./security-price.service";
+import { ActionHistoryService } from "../action-history/action-history.service";
 
 describe("SecuritiesService", () => {
   let service: SecuritiesService;
@@ -89,6 +90,10 @@ describe("SecuritiesService", () => {
         {
           provide: SecurityPriceService,
           useValue: mockSecurityPriceService,
+        },
+        {
+          provide: ActionHistoryService,
+          useValue: { record: jest.fn().mockResolvedValue(null) },
         },
       ],
     }).compile();

@@ -29,6 +29,7 @@ import { TransactionsService } from "../transactions/transactions.service";
 import { ScheduledTransactionOverrideService } from "./scheduled-transaction-override.service";
 import { ScheduledTransactionLoanService } from "./scheduled-transaction-loan.service";
 import { formatDateYMD, todayYMD } from "../common/date-utils";
+import { ActionHistoryService } from "../action-history/action-history.service";
 
 @Injectable()
 export class ScheduledTransactionsService {
@@ -49,6 +50,7 @@ export class ScheduledTransactionsService {
     private overrideService: ScheduledTransactionOverrideService,
     private loanService: ScheduledTransactionLoanService,
     private dataSource: DataSource,
+    private actionHistoryService: ActionHistoryService,
   ) {}
 
   @Cron("5 * * * *")
@@ -192,7 +194,17 @@ export class ScheduledTransactionsService {
       await this.createSplits(saved.id, splits);
     }
 
-    return this.findOne(userId, saved.id);
+    const result = await this.findOne(userId, saved.id);
+
+    this.actionHistoryService.record(userId, {
+      entityType: "scheduled_transaction",
+      entityId: result.id,
+      action: "create",
+      afterData: { ...result },
+      description: `Created scheduled transaction "${result.name}"`,
+    });
+
+    return result;
   }
 
   private validateSplits(
@@ -459,6 +471,7 @@ export class ScheduledTransactionsService {
     updateDto: UpdateScheduledTransactionDto,
   ): Promise<ScheduledTransaction> {
     const scheduled = await this.findOne(userId, id);
+    const beforeData = { ...scheduled };
 
     if (updateDto.accountId && updateDto.accountId !== scheduled.accountId) {
       await this.accountsService.findOne(userId, updateDto.accountId);
@@ -549,12 +562,32 @@ export class ScheduledTransactionsService {
       await this.scheduledTransactionsRepository.update(id, fieldsToUpdate);
     }
 
-    return this.findOne(userId, id);
+    const result = await this.findOne(userId, id);
+
+    this.actionHistoryService.record(userId, {
+      entityType: "scheduled_transaction",
+      entityId: id,
+      action: "update",
+      beforeData,
+      afterData: { ...result },
+      description: `Updated scheduled transaction "${result.name}"`,
+    });
+
+    return result;
   }
 
   async remove(userId: string, id: string): Promise<void> {
     const scheduled = await this.findOne(userId, id);
+    const beforeData = { ...scheduled };
     await this.scheduledTransactionsRepository.remove(scheduled);
+
+    this.actionHistoryService.record(userId, {
+      entityType: "scheduled_transaction",
+      entityId: beforeData.id,
+      action: "delete",
+      beforeData,
+      description: `Deleted scheduled transaction "${beforeData.name}"`,
+    });
   }
 
   async skip(userId: string, id: string): Promise<ScheduledTransaction> {
