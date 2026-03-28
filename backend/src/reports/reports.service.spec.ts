@@ -17,6 +17,7 @@ import { Transaction } from "../transactions/entities/transaction.entity";
 import { Category } from "../categories/entities/category.entity";
 import { Payee } from "../payees/entities/payee.entity";
 import { BudgetsService } from "../budgets/budgets.service";
+import { ActionHistoryService } from "../action-history/action-history.service";
 
 describe("ReportsService", () => {
   let service: ReportsService;
@@ -165,6 +166,10 @@ describe("ReportsService", () => {
             findAll: jest.fn().mockResolvedValue([]),
             findOne: jest.fn().mockResolvedValue(null),
           },
+        },
+        {
+          provide: ActionHistoryService,
+          useValue: { record: jest.fn().mockResolvedValue(null) },
         },
       ],
     }).compile();

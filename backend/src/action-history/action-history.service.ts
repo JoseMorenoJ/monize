@@ -18,6 +18,7 @@ import { InvestmentTransaction } from "../securities/entities/investment-transac
 import { Security } from "../securities/entities/security.entity";
 import { ScheduledTransaction } from "../scheduled-transactions/entities/scheduled-transaction.entity";
 import { Budget } from "../budgets/entities/budget.entity";
+import { CustomReport } from "../reports/entities/custom-report.entity";
 
 export interface RecordActionParams {
   entityType: string;
@@ -85,6 +86,11 @@ const ALLOWED_COLUMNS: Record<string, Set<string>> = {
     "id", "user_id", "name", "description", "budget_type", "period_start",
     "period_end", "base_income", "income_linked", "strategy", "is_active",
     "currency_code", "config", "created_at", "updated_at",
+  ]),
+  custom_reports: new Set([
+    "id", "user_id", "name", "description", "icon", "background_color",
+    "view_type", "timeframe_type", "group_by", "filters", "config",
+    "is_favourite", "sort_order", "created_at", "updated_at",
   ]),
 };
 const MAX_HISTORY_AGE_DAYS = 30;
@@ -253,6 +259,9 @@ export class ActionHistoryService {
         break;
       case "budget":
         await this.undoSimpleEntity(action, queryRunner, Budget, "budgets");
+        break;
+      case "custom_report":
+        await this.undoSimpleEntity(action, queryRunner, CustomReport, "custom_reports");
         break;
       case "bulk_transaction":
         await this.undoBulkTransaction(action, queryRunner);

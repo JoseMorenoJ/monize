@@ -34,6 +34,7 @@ const entityLabels: Record<string, string> = {
   scheduled_transaction: 'Scheduled',
   security: 'Security',
   budget: 'Budget',
+  custom_report: 'Report',
 };
 
 export function ActionHistoryPanel() {

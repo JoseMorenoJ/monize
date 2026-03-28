@@ -8,6 +8,7 @@ import { TransactionSplit } from "../transactions/entities/transaction-split.ent
 import { Category } from "../categories/entities/category.entity";
 import { Payee } from "../payees/entities/payee.entity";
 import { BudgetsModule } from "../budgets/budgets.module";
+import { ActionHistoryModule } from "../action-history/action-history.module";
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { BudgetsModule } from "../budgets/budgets.module";
       Payee,
     ]),
     BudgetsModule,
+    ActionHistoryModule,
   ],
   providers: [ReportsService],
   controllers: [ReportsController],
