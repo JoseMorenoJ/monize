@@ -198,7 +198,7 @@ function ImportContent() {
       <main className="px-4 sm:px-6 lg:px-12 pt-6 pb-8">
         <PageHeader
           title="Import Transactions"
-          subtitle="Import transactions from QIF, OFX/QFX, or CSV files (Beta)"
+          subtitle="Import transactions from QIF, OFX/QFX, or CSV files"
           helpUrl="https://github.com/kenlasko/monize/wiki/Importing-from-Microsoft-Money"
         />
         {/* Progress indicator */}

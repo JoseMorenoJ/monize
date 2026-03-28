@@ -750,6 +750,132 @@ describe("YahooFinanceService", () => {
 
       expect(result).toBeNull();
     });
+
+    it("should prefer LSE when specified as preferred exchange", async () => {
+      mockFetchResponse({
+        quotes: [
+          {
+            symbol: "VOD",
+            longname: "Vodafone Group (US ADR)",
+            exchDisp: "NASDAQ",
+            typeDisp: "Equity",
+          },
+          {
+            symbol: "VOD.L",
+            longname: "Vodafone Group Plc",
+            exchDisp: "LSE",
+            typeDisp: "Equity",
+          },
+        ],
+      });
+
+      const result = await service.lookupSecurity("VOD", ["LSE"]);
+
+      expect(result).not.toBeNull();
+      expect(result!.symbol).toBe("VOD");
+      expect(result!.exchange).toBe("LSE");
+      expect(result!.currencyCode).toBe("GBP");
+    });
+
+    it("should prefer ASX when specified as preferred exchange", async () => {
+      mockFetchResponse({
+        quotes: [
+          {
+            symbol: "CBA",
+            longname: "CBA US Listed",
+            exchDisp: "NYSE",
+            typeDisp: "Equity",
+          },
+          {
+            symbol: "CBA.AX",
+            longname: "Commonwealth Bank of Australia",
+            exchDisp: "ASX",
+            typeDisp: "Equity",
+          },
+        ],
+      });
+
+      const result = await service.lookupSecurity("CBA", ["ASX"]);
+
+      expect(result).not.toBeNull();
+      expect(result!.symbol).toBe("CBA");
+      expect(result!.exchange).toBe("ASX");
+      expect(result!.currencyCode).toBe("AUD");
+    });
+
+    it("should respect priority ordering of multiple preferred exchanges", async () => {
+      mockFetchResponse({
+        quotes: [
+          {
+            symbol: "TEST",
+            longname: "Test Corp US",
+            exchDisp: "NYSE",
+            typeDisp: "Equity",
+          },
+          {
+            symbol: "TEST.AX",
+            longname: "Test Corp AU",
+            exchDisp: "ASX",
+            typeDisp: "Equity",
+          },
+          {
+            symbol: "TEST.L",
+            longname: "Test Corp UK",
+            exchDisp: "LSE",
+            typeDisp: "Equity",
+          },
+        ],
+      });
+
+      // LSE is first preferred, should win even though ASX is also preferred
+      const result = await service.lookupSecurity("TEST", ["LSE", "ASX"]);
+
+      expect(result).not.toBeNull();
+      expect(result!.exchange).toBe("LSE");
+    });
+
+    it("should fall back to default priority when no preferred exchange matches", async () => {
+      mockFetchResponse({
+        quotes: [
+          {
+            symbol: "ENB",
+            longname: "Enbridge Inc US",
+            exchDisp: "NYSE",
+            typeDisp: "Equity",
+          },
+          {
+            symbol: "ENB.TO",
+            longname: "Enbridge Inc",
+            exchDisp: "Toronto",
+            typeDisp: "Equity",
+          },
+        ],
+      });
+
+      // Frankfurt preferred but not in results; falls back to default CA > US
+      const result = await service.lookupSecurity("ENB", ["Frankfurt"]);
+
+      expect(result!.symbol).toBe("ENB");
+      expect(result!.exchange).toBe("TSX");
+    });
+
+    it("should work with empty preferred exchanges array", async () => {
+      mockFetchResponse({
+        quotes: [
+          {
+            symbol: "AAPL",
+            longname: "Apple Inc.",
+            exchDisp: "NASDAQ",
+            typeDisp: "Equity",
+          },
+        ],
+      });
+
+      const result = await service.lookupSecurity("AAPL", []);
+
+      expect(result).not.toBeNull();
+      expect(result!.symbol).toBe("AAPL");
+    });
   });
 
   describe("getYahooSymbol", () => {
@@ -998,6 +1124,87 @@ describe("YahooFinanceService", () => {
 
     it("should return priority 3 for unknown exchanges", () => {
       expect(service.getExchangePriority("TEST.XX", "Unknown")).toBe(3);
+    });
+
+    describe("with preferredExchanges", () => {
+      it("should give highest priority to first preferred exchange", () => {
+        // LSE preferred, LSE result should get priority < 1 (the default CA priority)
+        expect(
+          service.getExchangePriority("VOD.L", "LSE", ["LSE"]),
+        ).toBeLessThan(0);
+      });
+
+      it("should rank first preferred higher than second preferred", () => {
+        const first = service.getExchangePriority("VOD.L", "LSE", [
+          "LSE",
+          "ASX",
+        ]);
+        const second = service.getExchangePriority("CBA.AX", "ASX", [
+          "LSE",
+          "ASX",
+        ]);
+        expect(first).toBeLessThan(second);
+      });
+
+      it("should rank all preferred exchanges above default tiers", () => {
+        const preferred = service.getExchangePriority("VOD.L", "LSE", [
+          "LSE",
+        ]);
+        const defaultCA = service.getExchangePriority("RY.TO", "Toronto");
+        expect(preferred).toBeLessThan(defaultCA);
+      });
+
+      it("should fall back to default priority for non-preferred exchanges", () => {
+        // ASX not in preferred list, should get default priority 3
+        expect(
+          service.getExchangePriority("CBA.AX", "ASX", ["LSE"]),
+        ).toBe(3);
+      });
+
+      it("should match preferred exchange by suffix", () => {
+        expect(
+          service.getExchangePriority("CBA.AX", undefined, ["ASX"]),
+        ).toBeLessThan(0);
+      });
+
+      it("should match preferred exchange by exchDisp", () => {
+        expect(
+          service.getExchangePriority("VOD", "London", ["LSE"]),
+        ).toBeLessThan(0);
+      });
+
+      it("should handle three preferred exchanges with correct ordering", () => {
+        const first = service.getExchangePriority("VOD.L", "LSE", [
+          "LSE",
+          "ASX",
+          "TSX",
+        ]);
+        const second = service.getExchangePriority("CBA.AX", "ASX", [
+          "LSE",
+          "ASX",
+          "TSX",
+        ]);
+        const third = service.getExchangePriority("RY.TO", "Toronto", [
+          "LSE",
+          "ASX",
+          "TSX",
+        ]);
+        expect(first).toBeLessThan(second);
+        expect(second).toBeLessThan(third);
+        expect(third).toBeLessThan(0);
+      });
+
+      it("should handle empty preferred exchanges array like no preference", () => {
+        expect(service.getExchangePriority("RY.TO", "Toronto", [])).toBe(1);
+        expect(service.getExchangePriority("AAPL", "NYSE", [])).toBe(2);
+      });
+
+      it("should fallback to exchDisp matching for unknown preferred exchange names", () => {
+        // "BOMBAY" is not in the matcher map, but exchDisp includes it
+        expect(
+          service.getExchangePriority("RELIANCE", "BOMBAY", ["BOMBAY"]),
+        ).toBeLessThan(0);
+      });
     });
   });
 

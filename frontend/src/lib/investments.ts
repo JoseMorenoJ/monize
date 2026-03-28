@@ -183,15 +183,22 @@ export const investmentsApi = {
   },
 
   // Lookup security info from Yahoo Finance
-  lookupSecurity: async (query: string): Promise<{
+  lookupSecurity: async (
+    query: string,
+    preferredExchanges?: string[],
+  ): Promise<{
     symbol: string;
     name: string;
     exchange: string | null;
     securityType: string | null;
     currencyCode: string | null;
   } | null> => {
+    const params: Record<string, string> = { q: query };
+    if (preferredExchanges && preferredExchanges.length > 0) {
+      params.exchanges = preferredExchanges.join(',');
+    }
     const response = await apiClient.get('/securities/lookup', {
-      params: { q: query },
+      params,
     });
     return response.data;
   },

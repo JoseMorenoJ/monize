@@ -65,7 +65,7 @@ interface InvestmentTransactionRowProps {
   cellPadding: string;
   defaultCurrency: string;
   formatDate: (date: string) => string;
-  formatCurrency: (amount: number, currencyCode?: string) => string;
+  formatCurrency: (amount: number, currencyCode?: string, fractionDigits?: number) => string;
   formatQuantity: (value: number) => string;
   onRowClick: (tx: InvestmentTransaction) => void;
   onLongPressStart: (tx: InvestmentTransaction, e?: React.TouchEvent) => void;
@@ -133,7 +133,7 @@ const InvestmentTransactionRow = memo(function InvestmentTransactionRow({
         {formatQuantity(tx.quantity ?? 0)}
       </td>
       <td className={`${cellPadding} whitespace-nowrap text-right text-sm text-gray-900 dark:text-gray-100 hidden md:table-cell`}>
-        {formatCurrency(tx.price ?? 0, tx.security?.currencyCode)}
+        {formatCurrency(tx.price ?? 0, tx.security?.currencyCode, 4)}
         {tx.security?.currencyCode && tx.security.currencyCode !== defaultCurrency && (
           <span className="ml-1">{tx.security.currencyCode}</span>
         )}

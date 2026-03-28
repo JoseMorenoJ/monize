@@ -487,6 +487,7 @@ CREATE TABLE user_preferences (
     budget_digest_day VARCHAR(10) DEFAULT 'MONDAY',
     favourite_report_ids TEXT[] DEFAULT '{}',
     show_created_at BOOLEAN DEFAULT false,
+    preferred_exchanges TEXT[] DEFAULT '{}',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

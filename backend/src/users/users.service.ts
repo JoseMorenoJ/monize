@@ -182,6 +182,9 @@ export class UsersService {
     if (dto.showCreatedAt !== undefined) {
       preferences.showCreatedAt = dto.showCreatedAt;
     }
+    if (dto.preferredExchanges !== undefined) {
+      preferences.preferredExchanges = dto.preferredExchanges;
+    }
 
     return this.preferencesRepository.save(preferences);
   }
@@ -540,6 +543,13 @@ export class UsersService {
         );
         deleted.exchangeRates = result[1] ?? 0;
       }
+
+      // Clear action history (undo/redo) -- references deleted entities
+      result = await queryRunner.query(
+        "DELETE FROM action_history WHERE user_id = $1",
+        [userId],
+      );
+      deleted.actionHistory = result[1] ?? 0;
 
       await queryRunner.commitTransaction();
 

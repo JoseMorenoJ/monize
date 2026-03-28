@@ -119,4 +119,16 @@ export class UpdatePreferencesDto {
   @IsOptional()
   @IsBoolean()
   showCreatedAt?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      "Preferred exchanges for security lookups, in priority order (max 3)",
+    example: ["TSX", "NYSE"],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @MaxLength(20, { each: true })
+  @ArrayMaxSize(3)
+  preferredExchanges?: string[];
 }

@@ -33,6 +33,7 @@ describe("TransactionsService (integration)", () => {
 
   beforeEach(async () => {
     await cleanTables(dataSource, [
+      "action_history",
       "transaction_splits",
       "transactions",
       "accounts",

@@ -10,7 +10,8 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { UserPreferences, UpdatePreferencesData } from '@/types/auth';
 import { getErrorMessage } from '@/lib/errors';
 import { exchangeRatesApi, CurrencyInfo } from '@/lib/exchange-rates';
-import { DATE_FORMAT_OPTIONS } from '@/lib/constants';
+import { Combobox } from '@/components/ui/Combobox';
+import { DATE_FORMAT_OPTIONS, EXCHANGE_OPTIONS } from '@/lib/constants';
 
 const NUMBER_FORMAT_OPTIONS = [
   { value: 'browser', label: 'Use browser locale (auto-detect)' },
@@ -69,6 +70,9 @@ export function PreferencesSection({ preferences, onPreferencesUpdated }: Prefer
   const [defaultCurrency, setDefaultCurrency] = useState(preferences.defaultCurrency);
   const [weekStartsOn, setWeekStartsOn] = useState(preferences.weekStartsOn ?? 1);
   const [showCreatedAt, setShowCreatedAt] = useState(preferences.showCreatedAt ?? false);
+  const [preferredExchanges, setPreferredExchanges] = useState<string[]>(
+    preferences.preferredExchanges ?? [],
+  );
   const [isUpdatingPreferences, setIsUpdatingPreferences] = useState(false);
 
   const [availableCurrencies, setAvailableCurrencies] = useState<CurrencyInfo[]>([]);
@@ -95,6 +99,7 @@ export function PreferencesSection({ preferences, onPreferencesUpdated }: Prefer
         defaultCurrency,
         weekStartsOn,
         showCreatedAt,
+        preferredExchanges: preferredExchanges.filter(Boolean),
       };
 
       const updated = await userSettingsApi.updatePreferences(data);
@@ -127,6 +132,41 @@ export function PreferencesSection({ preferences, onPreferencesUpdated }: Prefer
           value={defaultCurrency}
           onChange={(e) => setDefaultCurrency(e.target.value)}
         />
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            Preferred Exchanges (for security lookups)
+          </label>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+            Select up to 3 exchanges in priority order. These will be preferred when looking up securities.
+          </p>
+          <div className="grid grid-cols-3 gap-2">
+            {[0, 1, 2].map((i) => (
+              <Combobox
+                key={i}
+                options={EXCHANGE_OPTIONS
+                  .filter(
+                    (opt) =>
+                      !preferredExchanges.includes(opt.value) ||
+                      preferredExchanges[i] === opt.value,
+                  )
+                  .sort((a, b) => a.label.localeCompare(b.label))}
+                value={preferredExchanges[i] || ''}
+                onChange={(value) => {
+                  const updated = [...preferredExchanges];
+                  if (value) {
+                    updated[i] = value;
+                  } else {
+                    updated.splice(i, 1);
+                  }
+                  setPreferredExchanges(updated.filter(Boolean));
+                }}
+                placeholder={`Priority ${i + 1}`}
+                alwaysShowSubtitle
+              />
+            ))}
+          </div>
+        </div>
 
         <Select
           label="Date Format"

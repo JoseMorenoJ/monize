@@ -66,6 +66,14 @@ export class UserPreference {
   @Column({ name: "show_created_at", default: false })
   showCreatedAt: boolean;
 
+  @Column({
+    name: "preferred_exchanges",
+    type: "text",
+    array: true,
+    default: "{}",
+  })
+  preferredExchanges: string[];
+
   @CreateDateColumn({ name: "created_at" })
   createdAt: Date;
 

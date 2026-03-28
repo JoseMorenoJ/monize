@@ -53,6 +53,7 @@ describe("UsersService", () => {
     twoFactorEnabled: false,
     gettingStartedDismissed: false,
     favouriteReportIds: [],
+    preferredExchanges: [],
   };
 
   beforeEach(async () => {
@@ -352,6 +353,31 @@ describe("UsersService", () => {
         "spending-by-category",
         "net-worth",
       ]);
+    });
+
+    it("updates preferredExchanges", async () => {
+      preferencesRepository.findOne.mockResolvedValue({ ...mockPreferences });
+
+      await service.updatePreferences("user-1", {
+        preferredExchanges: ["LSE", "ASX", "TSX"],
+      });
+
+      const savedData = preferencesRepository.save.mock.calls[0][0];
+      expect(savedData.preferredExchanges).toEqual(["LSE", "ASX", "TSX"]);
+    });
+
+    it("clears preferredExchanges with empty array", async () => {
+      preferencesRepository.findOne.mockResolvedValue({
+        ...mockPreferences,
+        preferredExchanges: ["LSE"],
+      });
+
+      await service.updatePreferences("user-1", {
+        preferredExchanges: [],
+      });
+
+      const savedData = preferencesRepository.save.mock.calls[0][0];
+      expect(savedData.preferredExchanges).toEqual([]);
     });
   });
 
@@ -824,6 +850,11 @@ describe("UsersService", () => {
       expect(queries.some((q: string) => q.includes("DELETE FROM tags"))).toBe(
         true,
       );
+      expect(
+        queries.some((q: string) =>
+          q.includes("DELETE FROM action_history"),
+        ),
+      ).toBe(true);
     });
 
     it("does not delete optional data when flags are false", async () => {

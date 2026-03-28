@@ -3,14 +3,17 @@
 import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Select';
 import { Input } from '@/components/ui/Input';
+import { Combobox } from '@/components/ui/Combobox';
 import { SecurityMapping } from '@/lib/import';
+import { EXCHANGE_OPTIONS } from '@/lib/constants';
+import { usePreferencesStore } from '@/store/preferencesStore';
 
 type ImportStep = 'upload' | 'selectAccount' | 'mapCategories' | 'mapSecurities' | 'mapAccounts' | 'review' | 'multiAccountReview' | 'complete';
 
 interface MapSecuritiesStepProps {
   securityMappings: SecurityMapping[];
   handleSecurityMappingChange: (index: number, field: keyof SecurityMapping, value: string) => void;
-  handleSecurityLookup: (index: number, query: string) => void;
+  handleSecurityLookup: (index: number, query: string, exchange?: string) => void;
   lookupLoadingIndex: number | null;
   bulkLookupInProgress: boolean;
   securityOptions: Array<{ value: string; label: string }>;
@@ -38,6 +41,7 @@ export function MapSecuritiesStep({
   isLoading = false,
   onMultiAccountImport,
 }: MapSecuritiesStepProps) {
+  const preferredExchanges = usePreferencesStore((s) => s.preferences?.preferredExchanges) || [];
   const readyCount = securityMappings.filter((m) => m.securityId || (m.createNew && m.securityName)).length;
   const needsAttentionCount = securityMappings.length - readyCount;
 
@@ -86,7 +90,7 @@ export function MapSecuritiesStep({
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => handleSecurityLookup(index, mapping.createNew || mapping.originalName)}
+                    onClick={() => handleSecurityLookup(index, mapping.createNew || mapping.securityName || mapping.originalName, mapping.exchange)}
                     disabled={lookupLoadingIndex === index}
                   >
                     {lookupLoadingIndex === index ? 'Looking up...' : 'Lookup'}
@@ -127,13 +131,18 @@ export function MapSecuritiesStep({
                           handleSecurityMappingChange(index, 'securityType', e.target.value)
                         }
                       />
-                      <Input
+                      <Combobox
                         label="Exchange"
-                        placeholder="e.g., TSX, NYSE"
+                        options={EXCHANGE_OPTIONS}
                         value={mapping.exchange || ''}
-                        onChange={(e) =>
-                          handleSecurityMappingChange(index, 'exchange', e.target.value)
+                        onChange={(value, label) =>
+                          handleSecurityMappingChange(index, 'exchange', value || label)
                         }
+                        placeholder="Search exchanges..."
+                        allowCustomValue
+                        usePortal
+                        alwaysShowSubtitle
+                        priorityValues={preferredExchanges}
                       />
                     </div>
                   </div>
