@@ -879,7 +879,9 @@ describe('TransactionsPage', () => {
       // It should not trigger loadAllData (full reload with static data refresh).
       // Verify the callback works by clicking the inline update button and confirming
       // the list re-renders without triggering a full static data refresh.
-      const staticDataCallsBefore = mockGetAllAccounts.mock.calls.length;
+      const accountCallsBefore = mockGetAllAccounts.mock.calls.length;
+      const categoryCallsBefore = mockGetAllCategories.mock.calls.length;
+      const payeeCallsBefore = mockGetAllPayees.mock.calls.length;
 
       fireEvent.click(screen.getByTestId('inline-update-btn'));
 
@@ -887,10 +889,10 @@ describe('TransactionsPage', () => {
       // which would reload accounts, categories, and payees. Verify that the static
       // data APIs are not called again.
       await waitFor(() => {
-        expect(mockGetAllAccounts.mock.calls.length).toBe(staticDataCallsBefore);
+        expect(mockGetAllAccounts.mock.calls.length).toBe(accountCallsBefore);
       });
-      expect(mockGetAllCategories.mock.calls.length).toBeLessThanOrEqual(1);
-      expect(mockGetAllPayees.mock.calls.length).toBeLessThanOrEqual(1);
+      expect(mockGetAllCategories.mock.calls.length).toBe(categoryCallsBefore);
+      expect(mockGetAllPayees.mock.calls.length).toBe(payeeCallsBefore);
     });
   });
 
