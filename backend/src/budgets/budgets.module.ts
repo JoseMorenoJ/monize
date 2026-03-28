@@ -24,6 +24,7 @@ import { BudgetHealthReportsService } from "./budget-health-reports.service";
 import { BudgetActivityReportsService } from "./budget-activity-reports.service";
 import { BudgetsController } from "./budgets.controller";
 import { NotificationsModule } from "../notifications/notifications.module";
+import { ActionHistoryModule } from "../action-history/action-history.module";
 
 @Module({
   imports: [
@@ -43,6 +44,7 @@ import { NotificationsModule } from "../notifications/notifications.module";
       UserPreference,
     ]),
     NotificationsModule,
+    ActionHistoryModule,
   ],
   providers: [
     BudgetsService,

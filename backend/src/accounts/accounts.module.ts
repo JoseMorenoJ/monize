@@ -14,6 +14,7 @@ import { MortgageReminderService } from "./mortgage-reminder.service";
 import { CategoriesModule } from "../categories/categories.module";
 import { ScheduledTransactionsModule } from "../scheduled-transactions/scheduled-transactions.module";
 import { NetWorthModule } from "../net-worth/net-worth.module";
+import { ActionHistoryModule } from "../action-history/action-history.module";
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { NetWorthModule } from "../net-worth/net-worth.module";
     forwardRef(() => CategoriesModule),
     forwardRef(() => ScheduledTransactionsModule),
     forwardRef(() => NetWorthModule),
+    ActionHistoryModule,
   ],
   providers: [
     AccountsService,

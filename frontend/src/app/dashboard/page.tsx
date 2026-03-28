@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { subDays, subMonths, format } from 'date-fns';
+import { useOnUndoRedo } from '@/hooks/useOnUndoRedo';
 import dynamic from 'next/dynamic';
 import { useAuthStore } from '@/store/authStore';
 import { FavouriteAccounts } from '@/components/dashboard/FavouriteAccounts';
@@ -115,6 +116,8 @@ function DashboardContent() {
   useEffect(() => {
     loadDashboardData();
   }, [loadDashboardData]);
+
+  useOnUndoRedo(loadDashboardData);
 
   useEffect(() => {
     if (hasInvestments && !isLoading) {

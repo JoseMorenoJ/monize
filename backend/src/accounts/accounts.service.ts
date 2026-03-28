@@ -28,6 +28,7 @@ import {
 } from "./mortgage-amortization.util";
 import { Cron } from "@nestjs/schedule";
 import { formatDateYMD, todayYMD } from "../common/date-utils";
+import { ActionHistoryService } from "../action-history/action-history.service";
 
 @Injectable()
 export class AccountsService {
@@ -48,6 +49,7 @@ export class AccountsService {
     private netWorthService: NetWorthService,
     private loanMortgageService: LoanMortgageAccountService,
     private dataSource: DataSource,
+    private actionHistoryService: ActionHistoryService,
   ) {}
 
   /**
@@ -106,7 +108,17 @@ export class AccountsService {
       currentBalance: openingBalance,
     });
 
-    return this.accountsRepository.save(account);
+    const saved = await this.accountsRepository.save(account);
+
+    this.actionHistoryService.record(userId, {
+      entityType: "account",
+      entityId: saved.id,
+      action: "create",
+      afterData: { ...saved },
+      description: `Created account "${saved.name}"`,
+    });
+
+    return saved;
   }
 
   /**
@@ -404,6 +416,8 @@ export class AccountsService {
         throw new BadRequestException("Cannot update a closed account");
       }
 
+      const beforeData = { ...account };
+
       // If openingBalance is being changed, we need to recalculate currentBalance
       // currentBalance = openingBalance + sum(all transaction amounts)
       if (
@@ -515,6 +529,15 @@ export class AccountsService {
       }
 
       await queryRunner.commitTransaction();
+
+      this.actionHistoryService.record(userId, {
+        entityType: "account",
+        entityId: id,
+        action: "update",
+        beforeData,
+        afterData: { ...savedAccount },
+        description: `Updated account "${savedAccount.name}"`,
+      });
 
       // Trigger net worth recalculation if balance-affecting fields changed
       const needsRecalc =
@@ -867,7 +890,16 @@ export class AccountsService {
       }
     }
 
+    const beforeData = { ...account };
     await this.accountsRepository.remove(account);
+
+    this.actionHistoryService.record(userId, {
+      entityType: "account",
+      entityId: beforeData.id,
+      action: "delete",
+      beforeData,
+      description: `Deleted account "${beforeData.name}"`,
+    });
   }
 
   /**

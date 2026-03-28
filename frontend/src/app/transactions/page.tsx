@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import { useOnUndoRedo } from '@/hooks/useOnUndoRedo';
 import toast from 'react-hot-toast';
 import { Button } from '@/components/ui/Button';
 import { TransactionFilterPanel } from '@/components/transactions/TransactionFilterPanel';
@@ -119,6 +120,7 @@ function TransactionsContent() {
 
   // Load transaction data and chart data in parallel
   const loadTransactions = useCallback(async (page: number) => {
+    const safePage = (!page || page < 1) ? 1 : page;
     try {
       let accountIdsForQuery: string[] | undefined;
       if (filters.filterAccountIds.length > 0) {
@@ -165,7 +167,7 @@ function TransactionsContent() {
           payeeIds: filters.filterPayeeIds.length > 0 ? filters.filterPayeeIds : undefined,
           tagIds: filters.filterTagIds.length > 0 ? filters.filterTagIds : undefined,
           search: filters.filterSearch || undefined,
-          page,
+          page: safePage,
           limit: PAGE_SIZE,
           targetTransactionId: targetTransactionId || undefined,
           amountFrom: parsedAmountFrom,
@@ -186,7 +188,7 @@ function TransactionsContent() {
         setMonthlyTotals([]);
       }
 
-      if (targetTransactionId && transactionsResponse.pagination.page !== page) {
+      if (targetTransactionId && transactionsResponse.pagination.page !== safePage) {
         filters.setCurrentPage(transactionsResponse.pagination.page);
       }
 
@@ -219,6 +221,15 @@ function TransactionsContent() {
     await loadTransactions(page);
   }, [filters.currentPage, loadStaticData, loadTransactions]);
 
+  // After undo/redo, just reset static data so next load refreshes everything.
+  // Bump a counter to trigger the filter useEffect which handles the actual reload.
+  const [undoRedoTick, setUndoRedoTick] = useState(0);
+  const handleUndoRedo = useCallback(() => {
+    staticDataLoaded.current = false;
+    setUndoRedoTick((t) => t + 1);
+  }, []);
+  useOnUndoRedo(handleUndoRedo);
+
   // Load static data once on mount
   useEffect(() => {
     loadStaticData();
@@ -227,6 +238,9 @@ function TransactionsContent() {
   // Update URL and load transactions when page or filters change
   useEffect(() => {
     if (!filters.filtersInitialized) return;
+
+    // Reload static data if invalidated (e.g. after undo/redo)
+    loadStaticData();
 
     const page = filters.isFilterChange.current ? 1 : filters.currentPage;
     const wasFilterChange = filters.isFilterChange.current;
@@ -259,7 +273,7 @@ function TransactionsContent() {
     } else {
       loadTransactions(page);
     }
-  }, [filters.currentPage, filters.filterAccountIds, filters.filterCategoryIds, filters.filterPayeeIds, filters.filterTagIds, filters.filterStartDate, filters.filterEndDate, filters.filterSearch, filters.filterAmountFrom, filters.filterAmountTo, filters.updateUrl, loadTransactions, filters.filtersInitialized]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [filters.currentPage, filters.filterAccountIds, filters.filterCategoryIds, filters.filterPayeeIds, filters.filterTagIds, filters.filterStartDate, filters.filterEndDate, filters.filterSearch, filters.filterAmountFrom, filters.filterAmountTo, filters.updateUrl, loadTransactions, filters.filtersInitialized, undoRedoTick]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Patch popstate handler to skip when modals open
   useEffect(() => {

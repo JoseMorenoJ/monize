@@ -11,6 +11,7 @@ import { BudgetDashboard } from '@/components/budgets/BudgetDashboard';
 import { BudgetPeriodDetail } from '@/components/budgets/BudgetPeriodDetail';
 import { BudgetPeriodSelector } from '@/components/budgets/BudgetPeriodSelector';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
+import { useOnUndoRedo } from '@/hooks/useOnUndoRedo';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { budgetsApi } from '@/lib/budgets';
 import { scheduledTransactionsApi } from '@/lib/scheduled-transactions';
@@ -111,6 +112,8 @@ function BudgetDetailContent() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useOnUndoRedo(loadData);
 
   const handlePeriodChange = useCallback(
     async (periodId: string | null) => {

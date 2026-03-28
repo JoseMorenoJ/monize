@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
+import { useOnUndoRedo } from '@/hooks/useOnUndoRedo';
 import { Button } from '@/components/ui/Button';
 import { PageLayout } from '@/components/layout/PageLayout';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -33,7 +34,7 @@ function BudgetsContent() {
   const { defaultCurrency } = useExchangeRates();
   const router = useRouter();
 
-  const loadBudgets = async () => {
+  const loadBudgets = useCallback(async () => {
     setIsLoading(true);
     try {
       const data = await budgetsApi.getAll();
@@ -43,12 +44,14 @@ function BudgetsContent() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadBudgets();
     accountsApi.getAll().then(setAccounts).catch(() => {});
-  }, []);
+  }, [loadBudgets]);
+
+  useOnUndoRedo(loadBudgets);
 
   const handleWizardComplete = () => {
     setShowWizard(false);

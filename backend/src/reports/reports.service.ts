@@ -28,6 +28,7 @@ import {
   ReportSummary,
 } from "./dto/execute-report.dto";
 import { BudgetsService } from "../budgets/budgets.service";
+import { ActionHistoryService } from "../action-history/action-history.service";
 import {
   subDays,
   subMonths,
@@ -54,6 +55,7 @@ export class ReportsService {
     @InjectRepository(Payee)
     private payeesRepository: Repository<Payee>,
     private budgetsService: BudgetsService,
+    private actionHistoryService: ActionHistoryService,
   ) {}
 
   async create(
@@ -81,7 +83,17 @@ export class ReportsService {
       filters: dto.filters || {},
     });
 
-    return this.reportsRepository.save(report);
+    const saved = await this.reportsRepository.save(report);
+
+    this.actionHistoryService.record(userId, {
+      entityType: "custom_report",
+      entityId: saved.id,
+      action: "create",
+      afterData: { ...saved },
+      description: `Created report "${saved.name}"`,
+    });
+
+    return saved;
   }
 
   async findAll(userId: string): Promise<CustomReport[]> {
@@ -109,6 +121,7 @@ export class ReportsService {
     dto: UpdateCustomReportDto,
   ): Promise<CustomReport> {
     const report = await this.findOne(userId, id);
+    const beforeData = { ...report };
 
     // Validate custom timeframe using the effective values after merge
     const effectiveTimeframe = dto.timeframeType ?? report.timeframeType;
@@ -140,12 +153,32 @@ export class ReportsService {
       report.filters = dto.filters as ReportFilters;
     }
 
-    return this.reportsRepository.save(report);
+    const saved = await this.reportsRepository.save(report);
+
+    this.actionHistoryService.record(userId, {
+      entityType: "custom_report",
+      entityId: id,
+      action: "update",
+      beforeData,
+      afterData: { ...saved },
+      description: `Updated report "${saved.name}"`,
+    });
+
+    return saved;
   }
 
   async remove(userId: string, id: string): Promise<void> {
     const report = await this.findOne(userId, id);
+    const beforeData = { ...report };
     await this.reportsRepository.remove(report);
+
+    this.actionHistoryService.record(userId, {
+      entityType: "custom_report",
+      entityId: beforeData.id,
+      action: "delete",
+      beforeData,
+      description: `Deleted report "${beforeData.name}"`,
+    });
   }
 
   async execute(

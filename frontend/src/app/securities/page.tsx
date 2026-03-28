@@ -23,6 +23,7 @@ import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { createLogger } from '@/lib/logger';
 import { getErrorMessage } from '@/lib/errors';
 import { useFormModal } from '@/hooks/useFormModal';
+import { useOnUndoRedo } from '@/hooks/useOnUndoRedo';
 import { PAGE_SIZE } from '@/lib/constants';
 
 const logger = createLogger('Securities');
@@ -53,7 +54,7 @@ function SecuritiesContent() {
   const [sortField, setSortField] = useLocalStorage<SecuritySortField>('monize-securities-sort-field', 'symbol');
   const [sortDirection, setSortDirection] = useLocalStorage<SortDirection>('monize-securities-sort-dir', 'asc');
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setIsLoading(true);
     try {
       const [data, holdingsData, usedIds] = await Promise.all([
@@ -87,7 +88,9 @@ function SecuritiesContent() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
+
+  useOnUndoRedo(loadData);
 
   // Apply status filter
   const statusFilteredSecurities = useMemo(() => {
@@ -97,7 +100,7 @@ function SecuritiesContent() {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [loadData]);
 
   const handleCreateNew = () => {
     openCreate();

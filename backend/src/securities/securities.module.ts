@@ -23,6 +23,7 @@ import { AccountsModule } from "../accounts/accounts.module";
 import { TransactionsModule } from "../transactions/transactions.module";
 import { CurrenciesModule } from "../currencies/currencies.module";
 import { NetWorthModule } from "../net-worth/net-worth.module";
+import { ActionHistoryModule } from "../action-history/action-history.module";
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { NetWorthModule } from "../net-worth/net-worth.module";
     TransactionsModule,
     forwardRef(() => CurrenciesModule),
     NetWorthModule,
+    ActionHistoryModule,
   ],
   providers: [
     SecuritiesService,

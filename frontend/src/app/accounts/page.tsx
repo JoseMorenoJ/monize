@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import toast from 'react-hot-toast';
+import { useOnUndoRedo } from '@/hooks/useOnUndoRedo';
 import { Button } from '@/components/ui/Button';
 import dynamic from 'next/dynamic';
 
@@ -42,7 +43,7 @@ function AccountsContent() {
   const { convertToDefault, defaultCurrency } = useExchangeRates();
   const { formatCurrency } = useNumberFormat();
 
-  const loadAccounts = async () => {
+  const loadAccounts = useCallback(async () => {
     setIsLoading(true);
     try {
       const [data, portfolio] = await Promise.all([
@@ -57,11 +58,13 @@ function AccountsContent() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadAccounts();
-  }, []);
+  }, [loadAccounts]);
+
+  useOnUndoRedo(loadAccounts);
 
   // Build a map of brokerage account ID -> market value of holdings only.
   // Cash balance is tracked separately via the linked INVESTMENT_CASH account

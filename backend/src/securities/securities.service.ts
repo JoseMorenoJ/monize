@@ -13,6 +13,7 @@ import { InvestmentTransaction } from "./entities/investment-transaction.entity"
 import { CreateSecurityDto } from "./dto/create-security.dto";
 import { UpdateSecurityDto } from "./dto/update-security.dto";
 import { SecurityPriceService } from "./security-price.service";
+import { ActionHistoryService } from "../action-history/action-history.service";
 
 @Injectable()
 export class SecuritiesService {
@@ -26,6 +27,7 @@ export class SecuritiesService {
     @InjectRepository(InvestmentTransaction)
     private investmentTransactionsRepository: Repository<InvestmentTransaction>,
     private securityPriceService: SecurityPriceService,
+    private actionHistoryService: ActionHistoryService,
   ) {}
 
   async create(
@@ -54,6 +56,14 @@ export class SecuritiesService {
       this.logger.warn(
         `Background price backfill failed for ${saved.symbol}: ${err.message}`,
       );
+    });
+
+    this.actionHistoryService.record(userId, {
+      entityType: "security",
+      entityId: saved.id,
+      action: "create",
+      afterData: { ...saved },
+      description: `Created security "${saved.symbol}"`,
     });
 
     return saved;
@@ -96,6 +106,7 @@ export class SecuritiesService {
     updateSecurityDto: UpdateSecurityDto,
   ): Promise<Security> {
     const security = await this.findOne(userId, id);
+    const beforeData = { ...security };
 
     // Check for symbol conflicts if updating symbol
     if (
@@ -126,7 +137,18 @@ export class SecuritiesService {
     if (updateSecurityDto.isActive !== undefined)
       security.isActive = updateSecurityDto.isActive;
 
-    return this.securitiesRepository.save(security);
+    const saved = await this.securitiesRepository.save(security);
+
+    this.actionHistoryService.record(userId, {
+      entityType: "security",
+      entityId: id,
+      action: "update",
+      beforeData,
+      afterData: { ...saved },
+      description: `Updated security "${saved.symbol}"`,
+    });
+
+    return saved;
   }
 
   async deactivate(userId: string, id: string): Promise<Security> {
@@ -189,7 +211,16 @@ export class SecuritiesService {
     }
 
     // Security prices cascade-delete via FK constraint
+    const beforeData = { ...security };
     await this.securitiesRepository.remove(security);
+
+    this.actionHistoryService.record(userId, {
+      entityType: "security",
+      entityId: beforeData.id,
+      action: "delete",
+      beforeData,
+      description: `Deleted security "${beforeData.symbol}"`,
+    });
   }
 
   async getSecurityIdsWithTransactions(userId: string): Promise<string[]> {

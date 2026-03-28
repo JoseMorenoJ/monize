@@ -14,6 +14,7 @@ import { ScheduledTransactionsService } from "../scheduled-transactions/schedule
 import { NetWorthService } from "../net-worth/net-worth.service";
 import { LoanMortgageAccountService } from "./loan-mortgage-account.service";
 import { DataSource } from "typeorm";
+import { ActionHistoryService } from "../action-history/action-history.service";
 
 describe("AccountsService", () => {
   let service: AccountsService;
@@ -25,6 +26,7 @@ describe("AccountsService", () => {
   let netWorthService: Record<string, jest.Mock>;
   let mockQueryRunner: Record<string, any>;
   let mockQrRepo: Record<string, jest.Mock>;
+  let mockActionHistoryService: Record<string, jest.Mock>;
   // loanMortgageService uses the real class with mocked repositories
 
   const mockAccount = {
@@ -106,6 +108,10 @@ describe("AccountsService", () => {
       save: jest.fn().mockImplementation((data) => data),
     };
 
+    mockActionHistoryService = {
+      record: jest.fn().mockResolvedValue(null),
+    };
+
     mockQueryRunner = {
       connect: jest.fn().mockResolvedValue(undefined),
       startTransaction: jest.fn().mockResolvedValue(undefined),
@@ -140,6 +146,10 @@ describe("AccountsService", () => {
           useValue: scheduledTransactionsService,
         },
         { provide: NetWorthService, useValue: netWorthService },
+        {
+          provide: ActionHistoryService,
+          useValue: mockActionHistoryService,
+        },
         LoanMortgageAccountService,
         {
           provide: DataSource,
@@ -248,6 +258,23 @@ describe("AccountsService", () => {
       const createCall = accountsRepository.create.mock.calls[0][0];
       expect(createCall.statementDueDay).toBeUndefined();
       expect(createCall.statementSettlementDay).toBeUndefined();
+    });
+
+    it("records action history on create", async () => {
+      await service.create("user-1", {
+        name: "New Account",
+        accountType: AccountType.CHEQUING,
+        currencyCode: "USD",
+      } as any);
+
+      expect(mockActionHistoryService.record).toHaveBeenCalledWith(
+        "user-1",
+        expect.objectContaining({
+          entityType: "account",
+          action: "create",
+          description: expect.stringContaining("New Account"),
+        }),
+      );
     });
   });
 
@@ -541,6 +568,25 @@ describe("AccountsService", () => {
       expect(saved.statementDueDay).toBeNull();
       expect(saved.statementSettlementDay).toBeNull();
     });
+
+    it("records action history with beforeData and afterData on update", async () => {
+      mockQueryRunner.manager.findOne.mockResolvedValue({ ...mockAccount });
+
+      await service.update("user-1", "account-1", {
+        name: "Updated Name",
+      });
+
+      expect(mockActionHistoryService.record).toHaveBeenCalledWith(
+        "user-1",
+        expect.objectContaining({
+          entityType: "account",
+          entityId: "account-1",
+          action: "update",
+          beforeData: expect.objectContaining({ name: "Checking" }),
+          description: expect.stringContaining("Updated Name"),
+        }),
+      );
+    });
   });
 
   describe("close", () => {
@@ -695,6 +741,25 @@ describe("AccountsService", () => {
 
       const savedLinked = accountsRepository.save.mock.calls[0][0];
       expect(savedLinked.linkedAccountId).toBeNull();
+    });
+
+    it("records action history on delete", async () => {
+      accountsRepository.findOne.mockResolvedValue({ ...mockAccount });
+      transactionRepository.count.mockResolvedValue(0);
+      investmentTxRepository.count.mockResolvedValue(0);
+
+      await service.delete("user-1", "account-1");
+
+      expect(mockActionHistoryService.record).toHaveBeenCalledWith(
+        "user-1",
+        expect.objectContaining({
+          entityType: "account",
+          entityId: "account-1",
+          action: "delete",
+          beforeData: expect.objectContaining({ name: "Checking" }),
+          description: expect.stringContaining("Checking"),
+        }),
+      );
     });
   });
 

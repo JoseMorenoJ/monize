@@ -21,6 +21,7 @@ import { useExchangeRates } from '@/hooks/useExchangeRates';
 import { createLogger } from '@/lib/logger';
 import { getErrorMessage } from '@/lib/errors';
 import { useFormModal } from '@/hooks/useFormModal';
+import { useOnUndoRedo } from '@/hooks/useOnUndoRedo';
 import { PAGE_SIZE } from '@/lib/constants';
 
 const logger = createLogger('Currencies');
@@ -49,7 +50,7 @@ function CurrenciesContent() {
   const { defaultCurrency, getRate, refresh: refreshRates } = useExchangeRates();
 
   // Always fetch all currencies so summary cards show correct totals
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setIsLoading(true);
     try {
       const [currenciesData, usageData] = await Promise.all([
@@ -64,11 +65,13 @@ function CurrenciesContent() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [loadData]);
+
+  useOnUndoRedo(loadData);
 
   const handleCreateNew = () => {
     openCreate();
