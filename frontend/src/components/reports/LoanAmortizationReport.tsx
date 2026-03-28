@@ -307,37 +307,49 @@ export function LoanAmortizationReport() {
     };
   }, [paymentHistory, selectedAccount, historicalCount, hasProjection]);
 
-  const handleExportCsv = () => {
+  const getExportData = (formatted: boolean) => {
     const headers = ['#', 'Date', 'Payment', 'Principal', 'Interest', 'Balance', 'Type'];
+    const currency = selectedAccount?.currencyCode;
     const rows = paymentHistory.map((row) => [
       row.paymentNumber,
       format(parseISO(row.date), 'yyyy-MM-dd'),
-      row.payment,
-      row.principal,
-      row.interest,
-      row.balance,
+      formatted ? formatCurrency(row.payment, currency) : row.payment,
+      formatted ? formatCurrency(row.principal, currency) : row.principal,
+      formatted ? formatCurrency(row.interest, currency) : row.interest,
+      formatted ? formatCurrency(row.balance, currency) : row.balance,
       row.isProjected ? 'Projected' : 'Actual',
     ]);
+    return { headers, rows };
+  };
+
+  const handleExportCsv = () => {
+    const { headers, rows } = getExportData(false);
     const accountName = selectedAccount?.name?.replace(/[^a-zA-Z0-9]/g, '-') || 'loan';
     exportToCsv(`amortization-${accountName}`, headers, rows);
   };
 
   const handleExportPdf = async () => {
     const { exportToPdf } = await import('@/lib/pdf-export');
-    const headers = ['#', 'Date', 'Payment', 'Principal', 'Interest', 'Balance', 'Type'];
-    const rows = paymentHistory.map((row) => [
-      row.paymentNumber,
-      format(parseISO(row.date), 'yyyy-MM-dd'),
-      row.payment,
-      row.principal,
-      row.interest,
-      row.balance,
-      row.isProjected ? 'Projected' : 'Actual',
-    ]);
+    const currency = selectedAccount?.currencyCode;
+    const { headers, rows } = getExportData(true);
     const accountName = selectedAccount?.name?.replace(/[^a-zA-Z0-9]/g, '-') || 'loan';
+    const cards = [];
+    if (selectedAccount) {
+      cards.push(
+        { label: 'Current Balance', value: formatCurrency(Math.abs(selectedAccount.currentBalance), currency), color: '#dc2626' },
+        { label: 'Original Amount', value: formatCurrency(summary?.originalBalance || Math.abs(selectedAccount.openingBalance), currency), color: '#111827' },
+        { label: 'Interest Rate', value: selectedAccount.interestRate ? `${selectedAccount.interestRate}%` : 'Not set', color: '#111827' },
+        { label: summary?.hasProjection ? 'Est. Total Interest' : 'Total Interest Paid', value: formatCurrency(summary?.totalInterest || 0, currency), color: '#ea580c' },
+        { label: 'Payments Made', value: String(historicalCount), color: '#16a34a' },
+      );
+      if (summary?.hasProjection && summary.projectedPayoffDate) {
+        cards.push({ label: 'Est. Payoff', value: format(parseISO(summary.projectedPayoffDate), 'MMM yyyy'), color: '#9333ea' });
+      }
+    }
     await exportToPdf({
       title: `Loan Amortization - ${selectedAccount?.name || 'Loan'}`,
-      subtitle: summary ? `${historicalCount} payments made, ${formatCurrency(summary.totalInterest)} total interest` : undefined,
+      subtitle: summary ? `${historicalCount} payments made, ${formatCurrency(summary.totalInterest, currency)} total interest` : undefined,
+      summaryCards: cards.length > 0 ? cards : undefined,
       tableData: { headers, rows },
       filename: `amortization-${accountName}`,
     });
@@ -391,6 +403,9 @@ export function LoanAmortizationReport() {
                   </option>
                 ))}
             </select>
+          </div>
+          <div className="ml-auto">
+            <ExportDropdown onExportCsv={handleExportCsv} onExportPdf={handleExportPdf} />
           </div>
         </div>
       </div>
@@ -477,21 +492,16 @@ export function LoanAmortizationReport() {
 
       {/* Payment History Table */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-              Payment {hasProjection ? 'History & Projection' : 'History'}
-            </h3>
-            {summary && (
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                {historicalCount} payments made
-                {hasProjection && ` + ${paymentHistory.length - historicalCount} projected`}
-                {' '}totaling {formatCurrency(summary.totalPayments)}
-              </p>
-            )}
-          </div>
-          {paymentHistory.length > 0 && (
-            <ExportDropdown onExportCsv={handleExportCsv} onExportPdf={handleExportPdf} />
+        <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+            Payment {hasProjection ? 'History & Projection' : 'History'}
+          </h3>
+          {summary && (
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+              {historicalCount} payments made
+              {hasProjection && ` + ${paymentHistory.length - historicalCount} projected`}
+              {' '}totaling {formatCurrency(summary.totalPayments)}
+            </p>
           )}
         </div>
 

@@ -1,9 +1,11 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   AreaChart,
   Area,
+  BarChart,
+  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -20,6 +22,8 @@ import { parseLocalDate } from '@/lib/utils';
 import { useNumberFormat } from '@/hooks/useNumberFormat';
 import { useDateRange } from '@/hooks/useDateRange';
 import { DateRangeSelector } from '@/components/ui/DateRangeSelector';
+import { ChartViewToggle } from '@/components/ui/ChartViewToggle';
+import { ExportDropdown } from '@/components/ui/ExportDropdown';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('NetWorthReport');
@@ -29,6 +33,8 @@ export function NetWorthReport() {
   const [monthlyData, setMonthlyData] = useState<MonthlyNetWorth[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRecalculating, setIsRecalculating] = useState(false);
+  const [chartType, setChartType] = useState<'line' | 'bar'>('line');
+  const chartRef = useRef<HTMLDivElement>(null);
   const { dateRange, setDateRange, startDate, setStartDate, endDate, setEndDate, resolvedRange, isValid } = useDateRange({ defaultRange: '1y', alignment: 'month' });
 
   const loadData = useCallback(async () => {
@@ -66,6 +72,21 @@ export function NetWorthReport() {
     } finally {
       setIsRecalculating(false);
     }
+  };
+
+  const handleExportPdf = async () => {
+    const { exportToPdf } = await import('@/lib/pdf-export');
+    await exportToPdf({
+      title: 'Net Worth Report',
+      subtitle: `${chartData[0]?.name || ''} - ${chartData[chartData.length - 1]?.name || ''}`,
+      summaryCards: [
+        { label: 'Current Net Worth', value: formatCurrency(summary.current), color: summary.current >= 0 ? '#16a34a' : '#dc2626' },
+        { label: 'Change', value: `${summary.change >= 0 ? '+' : ''}${formatCurrency(summary.change)}`, color: summary.change >= 0 ? '#16a34a' : '#dc2626' },
+        { label: 'Change %', value: `${summary.changePercent >= 0 ? '+' : ''}${summary.changePercent.toFixed(1)}%`, color: summary.changePercent >= 0 ? '#16a34a' : '#dc2626' },
+      ],
+      chartContainer: chartRef.current,
+      filename: 'net-worth-report',
+    });
   };
 
   const chartData = useMemo(() =>
@@ -207,13 +228,21 @@ export function NetWorthReport() {
             customEndDate={endDate}
             onCustomEndDateChange={setEndDate}
           />
-          <button
-            onClick={handleRecalculate}
-            disabled={isRecalculating}
-            className="px-3 py-1.5 text-sm font-medium rounded-md transition-colors bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50"
-          >
-            {isRecalculating ? 'Recalculating...' : 'Recalculate'}
-          </button>
+          <div className="flex items-center gap-3">
+            <ChartViewToggle
+              value={chartType}
+              onChange={(v) => setChartType(v as 'line' | 'bar')}
+              options={['line', 'bar']}
+            />
+            <button
+              onClick={handleRecalculate}
+              disabled={isRecalculating}
+              className="px-3 py-1.5 text-sm font-medium rounded-md transition-colors bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50"
+            >
+              {isRecalculating ? 'Recalculating...' : 'Recalculate'}
+            </button>
+            <ExportDropdown onExportPdf={handleExportPdf} disabled={chartData.length === 0} />
+          </div>
         </div>
       </div>
 
@@ -224,8 +253,9 @@ export function NetWorthReport() {
             No data for this period.
           </p>
         ) : (
-          <div className="h-96">
+          <div ref={chartRef} className="h-96">
             <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+              {chartType === 'line' ? (
               <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                 <defs>
                   <linearGradient id="colorNetWorth" x1="0" y1="0" x2="0" y2="1">
@@ -240,14 +270,11 @@ export function NetWorthReport() {
                   {...(xAxisTicks ? { ticks: xAxisTicks } : {})}
                   tickFormatter={(value: string) => {
                     if (chartData.length > 36) {
-                      // Long range (5Y, All Time): show just the year
                       return value.split(' ')[1] || value;
                     } else if (chartData.length > 18) {
-                      // Medium range (2Y): show "MMM 'YY"
                       const parts = value.split(' ');
                       return parts.length === 2 ? `${parts[0]} '${parts[1].slice(2)}` : value;
                     }
-                    // Short range (1Y): show month only
                     return value.split(' ')[0];
                   }}
                 />
@@ -291,6 +318,34 @@ export function NetWorthReport() {
                   />
                 )}
               </AreaChart>
+              ) : (
+              <BarChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis
+                  dataKey="name"
+                  tick={{ fontSize: 12 }}
+                  {...(xAxisTicks ? { ticks: xAxisTicks } : {})}
+                  tickFormatter={(value: string) => {
+                    if (chartData.length > 36) {
+                      return value.split(' ')[1] || value;
+                    } else if (chartData.length > 18) {
+                      const parts = value.split(' ');
+                      return parts.length === 2 ? `${parts[0]} '${parts[1].slice(2)}` : value;
+                    }
+                    return value.split(' ')[0];
+                  }}
+                />
+                <YAxis
+                  domain={yAxisDomain}
+                  tickFormatter={formatCurrencyAxis}
+                  tick={{ fontSize: 12 }}
+                />
+                <Tooltip content={<CustomTooltip />} />
+                <Legend />
+                <ReferenceLine y={0} stroke="#9ca3af" strokeDasharray="3 3" />
+                <Bar dataKey="NetWorth" fill="#3b82f6" name="Net Worth" />
+              </BarChart>
+              )}
             </ResponsiveContainer>
           </div>
         )}

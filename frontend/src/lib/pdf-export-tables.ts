@@ -14,7 +14,11 @@ export interface PdfTableOptions {
   totalRow?: (string | number)[];
 }
 
-type CellValue = string | number | null | undefined;
+export type CellValue = string | number | null | undefined | {
+  text: string;
+  bgColor?: [number, number, number];
+  textColor?: [number, number, number];
+};
 
 /**
  * Adds a formatted table to a jsPDF document.
@@ -39,12 +43,20 @@ export function addTableToPdf(
   }));
 
   const bodyRows: RowInput[] = rows.map((row) =>
-    row.map((cell, colIndex) => ({
-      content: cell != null ? cell : '',
-      styles: {
+    row.map((cell, colIndex) => {
+      const isObj = cell != null && typeof cell === 'object' && 'text' in cell;
+      const content = isObj ? cell.text : (cell != null ? cell : '');
+      const styles: Record<string, unknown> = {
         halign: isNumericHeader(headers[colIndex]) ? 'right' as const : 'left' as const,
-      },
-    })),
+      };
+      if (isObj && cell.bgColor) {
+        styles.fillColor = cell.bgColor;
+      }
+      if (isObj && cell.textColor) {
+        styles.textColor = cell.textColor;
+      }
+      return { content, styles };
+    }),
   );
 
   if (showTotalRow && totalRow) {
@@ -90,6 +102,15 @@ const NUMERIC_HEADERS = new Set([
   'Payment', 'Principal', 'Interest', 'Average', 'Avg Amount',
   '6-Mo Total', 'Total Paid', 'Payments', 'Total Income',
   'Total Expenses', 'Total Deductions',
+  'Quantity', 'Price', 'Budgeted', 'Actual', 'Score',
+  'Rate', 'Yield', 'Return', 'Weight', 'Allocation',
+  'Market Value', 'Net', 'Confidence', 'Return %',
+  'Proceeds', 'Cost Basis', 'Gain/Loss',
+  'Total Value', '% of Portfolio', 'Holdings', 'Native Value',
+  '% Used', 'Score Impact', 'Avg Budget', 'Avg Actual',
+  'Total Variance', 'Spent', 'Remaining', 'Direct Value',
+  'ETF Value', 'Typical/Mo', '% Change', 'Current Balance',
+  'Interest Rate', 'Payment Amount', 'Variance',
 ]);
 
 function isNumericHeader(header: string): boolean {

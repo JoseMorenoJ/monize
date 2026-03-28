@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   BarChart,
   Bar,
@@ -17,6 +17,7 @@ import { budgetsApi } from '@/lib/budgets';
 import type { Budget, BudgetTrendPoint, CategoryTrendSeries } from '@/types/budget';
 import { useNumberFormat } from '@/hooks/useNumberFormat';
 import { BudgetCategoryTrend } from '@/components/budgets/BudgetCategoryTrend';
+import { ExportDropdown } from '@/components/ui/ExportDropdown';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('BudgetVsActualReport');
@@ -30,6 +31,7 @@ export function BudgetVsActualReport() {
   const [categoryData, setCategoryData] = useState<CategoryTrendSeries[]>([]);
   const [viewMode, setViewMode] = useState<'overview' | 'categories'>('overview');
   const [isLoading, setIsLoading] = useState(true);
+  const chartRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const loadBudgets = async () => {
@@ -72,6 +74,24 @@ export function BudgetVsActualReport() {
   useEffect(() => {
     loadReportData();
   }, [loadReportData]);
+
+  const handleExportPdf = async () => {
+    const { exportToPdf } = await import('@/lib/pdf-export');
+    const headers = ['Month', 'Budgeted', 'Actual', 'Variance', '% Used'];
+    const rows = trendData.map(point => [
+      point.month,
+      formatCurrency(point.budgeted),
+      formatCurrency(point.actual),
+      `${point.variance > 0 ? '+' : ''}${formatCurrency(point.variance)}`,
+      `${point.percentUsed}%`,
+    ]);
+    await exportToPdf({
+      title: 'Budget vs Actual',
+      chartContainer: chartRef.current,
+      tableData: { headers, rows },
+      filename: 'budget-vs-actual',
+    });
+  };
 
   if (isLoading) {
     return (
@@ -122,34 +142,37 @@ export function BudgetVsActualReport() {
               <option value={24}>24 Months</option>
             </select>
           </div>
-          <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 rounded-md p-0.5">
-            <button
-              onClick={() => setViewMode('overview')}
-              className={`px-3 py-1.5 text-sm font-medium rounded transition-colors ${
-                viewMode === 'overview'
-                  ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-gray-100 shadow-sm'
-                  : 'text-gray-500 dark:text-gray-400'
-              }`}
-            >
-              Overview
-            </button>
-            <button
-              onClick={() => setViewMode('categories')}
-              className={`px-3 py-1.5 text-sm font-medium rounded transition-colors ${
-                viewMode === 'categories'
-                  ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-gray-100 shadow-sm'
-                  : 'text-gray-500 dark:text-gray-400'
-              }`}
-            >
-              By Category
-            </button>
+          <div className="flex items-center gap-2">
+            <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 rounded-md p-0.5">
+              <button
+                onClick={() => setViewMode('overview')}
+                className={`px-3 py-1.5 text-sm font-medium rounded transition-colors ${
+                  viewMode === 'overview'
+                    ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-gray-100 shadow-sm'
+                    : 'text-gray-500 dark:text-gray-400'
+                }`}
+              >
+                Overview
+              </button>
+              <button
+                onClick={() => setViewMode('categories')}
+                className={`px-3 py-1.5 text-sm font-medium rounded transition-colors ${
+                  viewMode === 'categories'
+                    ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-gray-100 shadow-sm'
+                    : 'text-gray-500 dark:text-gray-400'
+                }`}
+              >
+                By Category
+              </button>
+            </div>
+            <ExportDropdown onExportPdf={handleExportPdf} />
           </div>
         </div>
       </div>
 
       {/* Chart */}
       {viewMode === 'overview' ? (
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 px-2 py-4 sm:p-6">
+        <div ref={chartRef} className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 px-2 py-4 sm:p-6">
           {trendData.length === 0 ? (
             <p className="text-gray-500 dark:text-gray-400 text-center py-8">
               No trend data available for this budget yet.

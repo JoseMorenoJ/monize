@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   AreaChart,
   Area,
@@ -17,6 +17,7 @@ import { Security, SecurityPrice, InvestmentTransaction, HoldingWithMarketValue 
 import { parseLocalDate } from '@/lib/utils';
 import { useNumberFormat } from '@/hooks/useNumberFormat';
 import { useExchangeRates } from '@/hooks/useExchangeRates';
+import { ExportDropdown } from '@/components/ui/ExportDropdown';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('SecurityPerformanceReport');
@@ -34,6 +35,7 @@ interface PriceChartPoint {
 export function SecurityPerformanceReport() {
   const { formatCurrency: formatCurrencyFull, formatCurrencyAxis } = useNumberFormat();
   const { defaultCurrency } = useExchangeRates();
+  const chartRef = useRef<HTMLDivElement>(null);
   const [securities, setSecurities] = useState<Security[]>([]);
   const [selectedSecurityId, setSelectedSecurityId] = useState<string>('');
   const [prices, setPrices] = useState<SecurityPrice[]>([]);
@@ -195,6 +197,59 @@ export function SecurityPerformanceReport() {
 
   const displayCurrency = selectedSecurity?.currencyCode || defaultCurrency;
 
+  const handleExportPdf = async () => {
+    const { exportToPdf } = await import('@/lib/pdf-export');
+
+    const secLabel = selectedSecurity
+      ? `${selectedSecurity.symbol} - ${selectedSecurity.name}${selectedSecurity.exchange ? ` (${selectedSecurity.exchange})` : ''}`
+      : undefined;
+
+    const summaryCards = stats ? [
+      { label: 'Current Value', value: formatCurrencyFull(stats.currentValue, displayCurrency), color: '#111827' },
+      { label: 'Cost Basis', value: formatCurrencyFull(stats.costBasis, displayCurrency), color: '#111827' },
+      { label: 'Total Return', value: `${stats.totalReturn >= 0 ? '+' : ''}${formatCurrencyFull(stats.totalReturn, displayCurrency)} (${stats.totalReturnPercent >= 0 ? '+' : ''}${stats.totalReturnPercent.toFixed(2)}%)`, color: stats.totalReturn >= 0 ? '#16a34a' : '#dc2626' },
+      { label: 'Annualized Return', value: stats.annualizedReturn !== null ? `${stats.annualizedReturn >= 0 ? '+' : ''}${stats.annualizedReturn.toFixed(2)}%` : '-', color: stats.annualizedReturn !== null ? (stats.annualizedReturn >= 0 ? '#16a34a' : '#dc2626') : '#9ca3af' },
+    ] : undefined;
+
+    let chartContainer: HTMLElement | null = null;
+    let tableData: { headers: string[]; rows: (string | number)[][]; totalRow?: (string | number)[] } | undefined;
+
+    if (viewType === 'chart') {
+      chartContainer = chartRef.current;
+    } else if (viewType === 'transactions') {
+      tableData = {
+        headers: ['Date', 'Action', 'Shares', 'Price', 'Total'],
+        rows: tradeTx.map((tx) => [
+          format(parseLocalDate(tx.transactionDate), 'MMM d, yyyy'),
+          tx.action,
+          tx.quantity != null ? String(tx.quantity) : '-',
+          tx.price != null ? formatCurrencyFull(tx.price, displayCurrency) : '-',
+          formatCurrencyFull(Math.abs(tx.totalAmount), displayCurrency),
+        ]),
+      };
+    } else {
+      const totalDividends = dividendTx.reduce((sum, tx) => sum + Math.abs(tx.totalAmount), 0);
+      tableData = {
+        headers: ['Date', 'Type', 'Amount'],
+        rows: dividendTx.map((tx) => [
+          format(parseLocalDate(tx.transactionDate), 'MMM d, yyyy'),
+          tx.action,
+          formatCurrencyFull(Math.abs(tx.totalAmount), displayCurrency),
+        ]),
+        totalRow: ['Total Dividends', '', formatCurrencyFull(totalDividends, displayCurrency)],
+      };
+    }
+
+    await exportToPdf({
+      title: 'Security Performance',
+      subtitle: secLabel,
+      summaryCards,
+      chartContainer,
+      tableData,
+      filename: `security-performance-${selectedSecurity?.symbol?.toLowerCase() || 'report'}`,
+    });
+  };
+
   if (isLoading) {
     return (
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-6">
@@ -251,6 +306,7 @@ export function SecurityPerformanceReport() {
               >
                 Dividends
               </button>
+              <ExportDropdown onExportPdf={handleExportPdf} />
             </div>
           )}
         </div>
@@ -271,6 +327,36 @@ export function SecurityPerformanceReport() {
         </div>
       ) : (
         <>
+          {/* Security Info */}
+          {selectedSecurity && (
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-4">
+              <div className="flex flex-wrap gap-6 items-center">
+                <div>
+                  <div className="text-xl font-bold text-gray-900 dark:text-gray-100">{selectedSecurity.symbol}</div>
+                  <div className="text-sm text-gray-500 dark:text-gray-400">{selectedSecurity.name}</div>
+                </div>
+                {selectedSecurity.exchange && (
+                  <div>
+                    <div className="text-xs text-gray-400 dark:text-gray-500 uppercase">Exchange</div>
+                    <div className="text-sm font-medium text-gray-700 dark:text-gray-300">{selectedSecurity.exchange}</div>
+                  </div>
+                )}
+                {selectedSecurity.securityType && (
+                  <div>
+                    <div className="text-xs text-gray-400 dark:text-gray-500 uppercase">Type</div>
+                    <div className="text-sm font-medium text-gray-700 dark:text-gray-300">{selectedSecurity.securityType}</div>
+                  </div>
+                )}
+                {selectedSecurity.currencyCode && (
+                  <div>
+                    <div className="text-xs text-gray-400 dark:text-gray-500 uppercase">Currency</div>
+                    <div className="text-sm font-medium text-gray-700 dark:text-gray-300">{selectedSecurity.currencyCode}</div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Stats Cards */}
           {stats && (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -319,7 +405,7 @@ export function SecurityPerformanceReport() {
 
           {viewType === 'chart' ? (
             /* Price Chart */
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 px-2 py-4 sm:p-6">
+            <div ref={chartRef} className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 px-2 py-4 sm:p-6">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
                 Price History - {selectedSecurity?.symbol}
               </h3>

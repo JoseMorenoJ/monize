@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   AreaChart,
   Area,
@@ -20,6 +20,7 @@ import { useNumberFormat } from '@/hooks/useNumberFormat';
 import { useExchangeRates } from '@/hooks/useExchangeRates';
 import { useDateRange } from '@/hooks/useDateRange';
 import { DateRangeSelector } from '@/components/ui/DateRangeSelector';
+import { ExportDropdown } from '@/components/ui/ExportDropdown';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('PortfolioValueReport');
@@ -46,6 +47,7 @@ function CustomTooltip({ active, payload, fmtFull }: {
 export function PortfolioValueReport() {
   const { formatCurrencyCompact, formatCurrencyAxis, formatCurrency: formatCurrencyFull } = useNumberFormat();
   const { defaultCurrency } = useExchangeRates();
+  const chartRef = useRef<HTMLDivElement>(null);
   const [chartPoints, setChartPoints] = useState<Array<{ name: string; Value: number }>>([]);
   const [portfolio, setPortfolio] = useState<PortfolioSummary | null>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -165,6 +167,37 @@ export function PortfolioValueReport() {
     return [Math.min(0, minValue), 'auto'] as [number, 'auto'];
   }, [chartPoints]);
 
+  const handleExportPdf = async () => {
+    const { exportToPdf } = await import('@/lib/pdf-export');
+    const accountLabel = selectedAccount
+      ? selectedAccount.name.replace(/ - (Brokerage|Cash)$/, '')
+      : 'All Accounts';
+    const breakdownHeaders = ['Account', 'Holdings', 'Cash', 'Total', 'Gain/Loss'];
+    const breakdownRows = portfolio?.holdingsByAccount.map((acct) => [
+      acct.accountName,
+      fmtFull(acct.totalMarketValue),
+      fmtFull(acct.cashBalance),
+      fmtFull(acct.totalMarketValue + acct.cashBalance),
+      `${acct.totalGainLoss >= 0 ? '+' : ''}${fmtFull(acct.totalGainLoss)}`,
+    ]) || [];
+    await exportToPdf({
+      title: 'Portfolio Value',
+      subtitle: accountLabel,
+      summaryCards: [
+        { label: 'Current Value', value: fmtVal(summary.current), color: '#111827' },
+        { label: 'Period Change', value: `${summary.change >= 0 ? '+' : ''}${fmtVal(summary.change)}`, color: summary.change >= 0 ? '#16a34a' : '#dc2626' },
+        { label: 'Period Return', value: `${summary.changePercent >= 0 ? '+' : ''}${summary.changePercent.toFixed(1)}%`, color: summary.changePercent >= 0 ? '#16a34a' : '#dc2626' },
+      ],
+      chartContainer: chartRef.current,
+      additionalTables: breakdownRows.length > 0 ? [{
+        title: 'Current Portfolio Breakdown',
+        headers: breakdownHeaders,
+        rows: breakdownRows,
+      }] : undefined,
+      filename: 'portfolio-value',
+    });
+  };
+
   if (isLoading) {
     return (
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-6">
@@ -234,11 +267,12 @@ export function PortfolioValueReport() {
               activeColour="bg-emerald-600"
             />
           </div>
+          <ExportDropdown onExportPdf={handleExportPdf} />
         </div>
       </div>
 
       {/* Chart */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 px-2 py-4 sm:p-6">
+      <div ref={chartRef} className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 px-2 py-4 sm:p-6">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
           Portfolio Value Over Time
         </h3>

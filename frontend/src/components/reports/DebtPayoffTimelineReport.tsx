@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   BarChart,
   Bar,
@@ -20,6 +20,7 @@ import { transactionsApi } from '@/lib/transactions';
 import { Account } from '@/types/account';
 import { Transaction } from '@/types/transaction';
 import { useNumberFormat } from '@/hooks/useNumberFormat';
+import { ExportDropdown } from '@/components/ui/ExportDropdown';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('DebtPayoffTimelineReport');
@@ -110,6 +111,7 @@ function advanceDate(date: Date, frequency: string): Date {
 
 export function DebtPayoffTimelineReport() {
   const { formatCurrencyCompact: formatCurrency, formatCurrencyAxis } = useNumberFormat();
+  const chartRef = useRef<HTMLDivElement>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState<string>('');
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -423,6 +425,32 @@ export function DebtPayoffTimelineReport() {
     return null;
   };
 
+  const handleExportPdf = async () => {
+    const { exportToPdf } = await import('@/lib/pdf-export');
+    const headers = ['Account', 'Type', 'Current Balance', 'Interest Rate', 'Payment Amount'];
+    const rows = selectedAccount ? [[
+      selectedAccount.name,
+      selectedAccount.accountType === 'LINE_OF_CREDIT'
+        ? 'Line of Credit'
+        : selectedAccount.accountType.charAt(0) + selectedAccount.accountType.slice(1).toLowerCase(),
+      formatCurrency(Math.abs(selectedAccount.currentBalance)),
+      selectedAccount.interestRate ? `${selectedAccount.interestRate}%` : 'Not set',
+      selectedAccount.paymentAmount ? formatCurrency(selectedAccount.paymentAmount) : 'Not set',
+    ]] : [];
+    await exportToPdf({
+      title: 'Debt Payoff Timeline',
+      summaryCards: summary ? [
+        { label: 'Current Balance', value: formatCurrency(summary.currentBalance), color: '#dc2626' },
+        { label: 'Principal Paid', value: formatCurrency(summary.totalPrincipalPaid), color: '#16a34a' },
+        { label: summary.hasProjection ? 'Est. Total Interest' : 'Interest Paid', value: formatCurrency(summary.totalInterest), color: '#ea580c' },
+        { label: 'Progress', value: `${summary.percentPaid.toFixed(1)}%`, color: '#2563eb' },
+      ] : undefined,
+      chartContainer: chartRef.current,
+      tableData: { headers, rows },
+      filename: 'debt-payoff-timeline',
+    });
+  };
+
   if (isLoading) {
     return (
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-6">
@@ -468,7 +496,7 @@ export function DebtPayoffTimelineReport() {
                 ))}
             </select>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2 items-center">
             <button
               onClick={() => setViewType('balance')}
               className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
@@ -499,6 +527,7 @@ export function DebtPayoffTimelineReport() {
             >
               Principal vs Interest
             </button>
+            <ExportDropdown onExportPdf={handleExportPdf} />
           </div>
         </div>
       </div>
@@ -544,7 +573,7 @@ export function DebtPayoffTimelineReport() {
       )}
 
       {/* Chart */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 px-2 py-4 sm:p-6">
+      <div ref={chartRef} className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 px-2 py-4 sm:p-6">
         {payoffSchedule.length === 0 ? (
           <p className="text-gray-500 dark:text-gray-400 text-center py-8">
             No payment history found. Make payments to your debt account to see the timeline.

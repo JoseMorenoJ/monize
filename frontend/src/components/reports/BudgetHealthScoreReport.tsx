@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { budgetsApi } from '@/lib/budgets';
 import type { Budget, HealthScoreResult } from '@/types/budget';
 import { BudgetHealthGauge } from '@/components/budgets/BudgetHealthGauge';
+import { ExportDropdown } from '@/components/ui/ExportDropdown';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('BudgetHealthScoreReport');
@@ -29,6 +30,7 @@ function getGroupColor(group: string | null): string {
 }
 
 export function BudgetHealthScoreReport() {
+  const chartRef = useRef<HTMLDivElement>(null);
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [selectedBudgetId, setSelectedBudgetId] = useState<string>('');
   const [healthScore, setHealthScore] = useState<HealthScoreResult | null>(null);
@@ -72,6 +74,47 @@ export function BudgetHealthScoreReport() {
     loadHealthScore();
   }, [loadHealthScore]);
 
+  const handleExportPdf = async () => {
+    const { exportToPdf } = await import('@/lib/pdf-export');
+    const headers = ['Category', 'Group', '% Used', 'Score Impact'];
+    const rows = healthScore
+      ? healthScore.categoryScores
+          .sort((a, b) => a.impact - b.impact)
+          .map((cat) => [
+            cat.categoryName,
+            getGroupLabel(cat.categoryGroup),
+            `${cat.percentUsed}%`,
+            `${cat.impact > 0 ? '+' : ''}${cat.impact}`,
+          ])
+      : [];
+    const scoreColor = healthScore
+      ? healthScore.score >= 80 ? '#16a34a' : healthScore.score >= 60 ? '#ca8a04' : '#dc2626'
+      : '#111827';
+    await exportToPdf({
+      title: 'Budget Health Score',
+      summaryCards: healthScore ? [
+        { label: 'Health Score', value: `${healthScore.score}/100`, color: scoreColor },
+      ] : undefined,
+      tableData: healthScore ? {
+        headers: ['Component', 'Value'],
+        rows: [
+          ['Base Score', String(healthScore.breakdown.baseScore)],
+          ['Over-Budget Deductions', `-${healthScore.breakdown.overBudgetDeductions}`],
+          ['Essential Category Penalty', `-${healthScore.breakdown.essentialWeightPenalty}`],
+          ['Under-Budget Bonus', `+${healthScore.breakdown.underBudgetBonus}`],
+          ['Improving Trend Bonus', `+${healthScore.breakdown.trendBonus}`],
+          ['Final Score', String(healthScore.score)],
+        ],
+      } : undefined,
+      additionalTables: rows.length > 0 ? [{
+        title: 'Category Impact',
+        headers,
+        rows,
+      }] : undefined,
+      filename: 'budget-health-score',
+    });
+  };
+
   if (isLoading) {
     return (
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-6">
@@ -98,23 +141,26 @@ export function BudgetHealthScoreReport() {
     <div className="space-y-6">
       {/* Budget selector */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-4">
-        <select
-          value={selectedBudgetId}
-          onChange={(e) => setSelectedBudgetId(e.target.value)}
-          className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-        >
-          {budgets.map((b) => (
-            <option key={b.id} value={b.id}>
-              {b.name}
-            </option>
-          ))}
-        </select>
+        <div className="flex flex-wrap gap-3 items-center justify-between">
+          <select
+            value={selectedBudgetId}
+            onChange={(e) => setSelectedBudgetId(e.target.value)}
+            className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+          >
+            {budgets.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name}
+              </option>
+            ))}
+          </select>
+          <ExportDropdown onExportPdf={handleExportPdf} />
+        </div>
       </div>
 
       {healthScore && (
         <>
           {/* Gauge */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div ref={chartRef} className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <BudgetHealthGauge score={healthScore.score} />
 
             {/* Score Breakdown */}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   BarChart,
   Bar,
@@ -19,6 +19,7 @@ import { WeekendVsWeekdayResponse } from '@/types/built-in-reports';
 import { useNumberFormat } from '@/hooks/useNumberFormat';
 import { useDateRange } from '@/hooks/useDateRange';
 import { DateRangeSelector } from '@/components/ui/DateRangeSelector';
+import { ExportDropdown } from '@/components/ui/ExportDropdown';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('WeekendVsWeekdayReport');
@@ -36,6 +37,7 @@ const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 export function WeekendVsWeekdayReport() {
   const { formatCurrencyCompact: formatCurrency, formatCurrencyAxis } = useNumberFormat();
+  const chartRef = useRef<HTMLDivElement>(null);
   const [reportData, setReportData] = useState<WeekendVsWeekdayResponse | null>(null);
   const { dateRange, setDateRange, resolvedRange } = useDateRange({ defaultRange: '3m', alignment: 'day' });
   const [isLoading, setIsLoading] = useState(true);
@@ -139,6 +141,26 @@ export function WeekendVsWeekdayReport() {
     return null;
   };
 
+  const handleExportPdf = async () => {
+    const { exportToPdf } = await import('@/lib/pdf-export');
+    const weekdayPercent = totalSpending > 0 ? (weekdayTotal / totalSpending) * 100 : 0;
+    await exportToPdf({
+      title: 'Weekend vs Weekday Spending',
+      summaryCards: [
+        { label: 'Weekend Spending', value: formatCurrency(weekendTotal), color: '#7c3aed' },
+        { label: 'Weekday Spending', value: formatCurrency(weekdayTotal), color: '#2563eb' },
+        { label: 'Avg Weekend Txn', value: formatCurrency(weekendAvg), color: '#111827' },
+        { label: 'Avg Weekday Txn', value: formatCurrency(weekdayAvg), color: '#111827' },
+      ],
+      chartContainer: chartRef.current,
+      chartLegend: [
+        { color: '#8b5cf6', label: `Weekend (Sat-Sun) - ${formatCurrency(weekendTotal)} (${weekendPercent.toFixed(1)}%)` },
+        { color: '#3b82f6', label: `Weekday (Mon-Fri) - ${formatCurrency(weekdayTotal)} (${weekdayPercent.toFixed(1)}%)` },
+      ],
+      filename: 'weekend-vs-weekday',
+    });
+  };
+
   if (isLoading) {
     return (
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-6">
@@ -153,7 +175,7 @@ export function WeekendVsWeekdayReport() {
   const hasData = totalSpending > 0;
 
   return (
-    <div className="space-y-6">
+    <div ref={chartRef} className="space-y-6">
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-4">
@@ -196,7 +218,7 @@ export function WeekendVsWeekdayReport() {
             value={dateRange}
             onChange={setDateRange}
           />
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center">
             <button
               onClick={() => setViewType('comparison')}
               className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
@@ -227,6 +249,7 @@ export function WeekendVsWeekdayReport() {
             >
               By Category
             </button>
+            <ExportDropdown onExportPdf={handleExportPdf} />
           </div>
         </div>
       </div>

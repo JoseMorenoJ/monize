@@ -19,6 +19,8 @@ import { useNumberFormat } from '@/hooks/useNumberFormat';
 import { useExchangeRates } from '@/hooks/useExchangeRates';
 import { useDateRange } from '@/hooks/useDateRange';
 import { DateRangeSelector } from '@/components/ui/DateRangeSelector';
+import { ExportDropdown } from '@/components/ui/ExportDropdown';
+import { exportToCsv } from '@/lib/csv-export';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('RealizedGainsReport');
@@ -186,6 +188,50 @@ export function RealizedGainsReport() {
     [transactions],
   );
 
+  const getExportData = useCallback(() => {
+    const headers = ['Security', 'Date Sold', 'Quantity', 'Proceeds', 'Cost Basis', 'Gain/Loss', 'Return %'];
+    const rows: (string | number)[][] = sortedTransactions.map((tx) => {
+      const proceeds = getTxAmount(Math.abs(tx.totalAmount), tx.accountId);
+      const costBasis = tx.quantity && tx.price
+        ? getTxAmount(Math.abs(tx.quantity) * Math.abs(tx.price), tx.accountId)
+        : proceeds;
+      const gain = proceeds - costBasis;
+      const returnPct = costBasis !== 0 ? ((gain / costBasis) * 100).toFixed(2) + '%' : '-';
+      return [
+        tx.security?.symbol || 'N/A',
+        format(parseLocalDate(tx.transactionDate), 'yyyy-MM-dd'),
+        tx.quantity != null ? Math.abs(tx.quantity) : '',
+        proceeds,
+        costBasis,
+        gain,
+        returnPct,
+      ];
+    });
+    return { headers, rows };
+  }, [sortedTransactions, getTxAmount]);
+
+  const handleExportCsv = useCallback(() => {
+    const { headers, rows } = getExportData();
+    exportToCsv('realized-gains', headers, rows);
+  }, [getExportData]);
+
+  const handleExportPdf = useCallback(async () => {
+    const { exportToPdf } = await import('@/lib/pdf-export');
+    const { headers, rows } = getExportData();
+    const totalRow: (string | number)[] = ['Total', '', '', totals.totalProceeds, totals.totalCostBasis, totals.totalGain, ''];
+    await exportToPdf({
+      title: 'Realized Gains Report',
+      subtitle: `${securityGains.length} securities | Net gain: ${fmtValue(totals.totalGain)}`,
+      summaryCards: [
+        { label: 'Total Proceeds', value: fmtValue(totals.totalProceeds), color: '#111827' },
+        { label: 'Cost Basis', value: fmtValue(totals.totalCostBasis), color: '#111827' },
+        { label: 'Realized Gain/Loss', value: `${totals.totalGain >= 0 ? '+' : ''}${fmtValue(totals.totalGain)}`, color: totals.totalGain >= 0 ? '#16a34a' : '#dc2626' },
+      ],
+      tableData: { headers, rows, totalRow },
+      filename: 'realized-gains',
+    });
+  }, [getExportData, securityGains.length, fmtValue, totals]);
+
   if (isLoading) {
     return (
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-6">
@@ -234,50 +280,55 @@ export function RealizedGainsReport() {
 
       {/* Controls */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-4">
-        <div className="flex flex-wrap gap-4 items-center justify-between">
-          <div className="flex flex-wrap gap-2 items-center">
-            <select
-              value={selectedAccountId}
-              onChange={(e) => setSelectedAccountId(e.target.value)}
-              className="rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 text-sm"
-            >
-              <option value="">All Accounts</option>
-              {accounts
-                .filter((a) => a.accountSubType !== 'INVESTMENT_BROKERAGE')
-                .sort((a, b) => a.name.localeCompare(b.name))
-                .map((account) => (
-                  <option key={account.id} value={account.id}>
-                    {account.name.replace(/ - (Brokerage|Cash)$/, '')}
-                  </option>
-                ))}
-            </select>
-            <DateRangeSelector
-              ranges={['6m', '1y', '2y', 'all']}
-              value={dateRange}
-              onChange={setDateRange}
-            />
-          </div>
-          <div className="flex gap-2">
+        <div className="flex flex-wrap gap-3 items-center">
+          <select
+            value={selectedAccountId}
+            onChange={(e) => setSelectedAccountId(e.target.value)}
+            className="max-w-48 rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 text-sm"
+          >
+            <option value="">All Accounts</option>
+            {accounts
+              .filter((a) => a.accountSubType !== 'INVESTMENT_BROKERAGE')
+              .sort((a, b) => a.name.localeCompare(b.name))
+              .map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.name.replace(/ - (Brokerage|Cash)$/, '')}
+                </option>
+              ))}
+          </select>
+          <DateRangeSelector
+            ranges={['6m', '1y', '2y', 'all']}
+            value={dateRange}
+            onChange={setDateRange}
+          />
+          <div className="ml-auto shrink-0 flex gap-2 items-center">
             <button
               onClick={() => setViewType('chart')}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+              title="Chart"
+              className={`p-2 rounded-md transition-colors ${
                 viewType === 'chart'
                   ? 'bg-blue-600 text-white'
                   : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
               }`}
             >
-              Chart
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              </svg>
             </button>
             <button
               onClick={() => setViewType('table')}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+              title="Table"
+              className={`p-2 rounded-md transition-colors ${
                 viewType === 'table'
                   ? 'bg-blue-600 text-white'
                   : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
               }`}
             >
-              Table
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M3 14h18M3 6h18M3 18h18" />
+              </svg>
             </button>
+            <ExportDropdown onExportCsv={handleExportCsv} onExportPdf={handleExportPdf} disabled={transactions.length === 0} />
           </div>
         </div>
       </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   BarChart,
@@ -19,6 +19,7 @@ import { MonthlyIncomeExpenseItem } from "@/types/built-in-reports";
 import { useNumberFormat } from "@/hooks/useNumberFormat";
 import { useDateRange } from "@/hooks/useDateRange";
 import { DateRangeSelector } from "@/components/ui/DateRangeSelector";
+import { ExportDropdown } from '@/components/ui/ExportDropdown';
 import { createLogger } from "@/lib/logger";
 
 const logger = createLogger("IncomeVsExpensesReport");
@@ -36,6 +37,7 @@ interface ChartDataItem {
 
 export function IncomeVsExpensesReport() {
   const router = useRouter();
+  const chartRef = useRef<HTMLDivElement>(null);
   const { formatCurrencyCompact: formatCurrency, formatCurrencyAxis } =
     useNumberFormat();
   const [chartData, setChartData] = useState<ChartDataItem[]>([]);
@@ -105,6 +107,21 @@ export function IncomeVsExpensesReport() {
     if (isValid) loadData();
   }, [isValid, loadData]);
 
+  const handleExportPdf = async () => {
+    const { exportToPdf } = await import("@/lib/pdf-export");
+    await exportToPdf({
+      title: "Income vs Expenses",
+      summaryCards: [
+        { label: "Total Income", value: formatCurrency(totals.totalIncome), color: "#16a34a" },
+        { label: "Total Expenses", value: formatCurrency(totals.totalExpenses), color: "#dc2626" },
+        { label: "Total Savings", value: formatCurrency(totals.totalSavings), color: totals.totalSavings >= 0 ? "#2563eb" : "#ea580c" },
+        { label: "Savings Rate", value: `${totals.savingsRate.toFixed(1)}%`, color: totals.savingsRate >= 0 ? "#9333ea" : "#ea580c" },
+      ],
+      chartContainer: chartRef.current,
+      filename: "income-vs-expenses",
+    });
+  };
+
   const handleChartClick = (state: any) => {
     const label = state?.activeLabel;
     if (!label) return;
@@ -166,20 +183,23 @@ export function IncomeVsExpensesReport() {
     <div className="space-y-6">
       {/* Controls */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-4">
-        <DateRangeSelector
-          ranges={["6m", "1y", "2y"]}
-          value={dateRange}
-          onChange={setDateRange}
-          showCustom
-          customStartDate={startDate}
-          onCustomStartDateChange={setStartDate}
-          customEndDate={endDate}
-          onCustomEndDateChange={setEndDate}
-        />
+        <div className="flex flex-wrap gap-4 items-center justify-between">
+          <DateRangeSelector
+            ranges={["6m", "1y", "2y"]}
+            value={dateRange}
+            onChange={setDateRange}
+            showCustom
+            customStartDate={startDate}
+            onCustomStartDateChange={setStartDate}
+            customEndDate={endDate}
+            onCustomEndDateChange={setEndDate}
+          />
+          <ExportDropdown onExportPdf={handleExportPdf} />
+        </div>
       </div>
 
       {/* Chart */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 px-2 py-4 sm:p-6">
+      <div ref={chartRef} className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 px-2 py-4 sm:p-6">
         {chartData.length === 0 ? (
           <p className="text-gray-500 dark:text-gray-400 text-center py-8">
             No data for this period.

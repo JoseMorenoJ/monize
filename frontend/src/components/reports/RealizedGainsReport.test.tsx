@@ -132,9 +132,9 @@ describe('RealizedGainsReport', () => {
     mockGetInvestmentAccounts.mockResolvedValue([]);
     render(<RealizedGainsReport />);
     await waitFor(() => {
-      expect(screen.getByText('Chart')).toBeInTheDocument();
+      expect(screen.getByTitle('Chart')).toBeInTheDocument();
     });
-    expect(screen.getByText('Table')).toBeInTheDocument();
+    expect(screen.getByTitle('Table')).toBeInTheDocument();
   });
 
   it('renders chart with gain data', async () => {

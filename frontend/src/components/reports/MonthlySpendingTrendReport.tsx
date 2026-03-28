@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   LineChart,
@@ -18,6 +18,7 @@ import { MonthlyIncomeExpenseItem } from "@/types/built-in-reports";
 import { useNumberFormat } from "@/hooks/useNumberFormat";
 import { useDateRange } from "@/hooks/useDateRange";
 import { DateRangeSelector } from "@/components/ui/DateRangeSelector";
+import { ExportDropdown } from '@/components/ui/ExportDropdown';
 import { createLogger } from "@/lib/logger";
 
 const logger = createLogger("MonthlySpendingTrendReport");
@@ -34,6 +35,7 @@ interface ChartDataItem {
 
 export function MonthlySpendingTrendReport() {
   const router = useRouter();
+  const chartRef = useRef<HTMLDivElement>(null);
   const { formatCurrencyCompact: formatCurrency, formatCurrencyAxis } =
     useNumberFormat();
   const [chartData, setChartData] = useState<ChartDataItem[]>([]);
@@ -95,6 +97,25 @@ export function MonthlySpendingTrendReport() {
     return { totalExpenses, totalIncome, avgExpenses, avgIncome };
   }, [chartData]);
 
+  const handleExportPdf = async () => {
+    const { exportToPdf } = await import("@/lib/pdf-export");
+    await exportToPdf({
+      title: "Monthly Spending Trend",
+      summaryCards: [
+        { label: 'Total Income', value: formatCurrency(totals.totalIncome), color: '#16a34a' },
+        { label: 'Total Expenses', value: formatCurrency(totals.totalExpenses), color: '#dc2626' },
+        { label: 'Avg Monthly Income', value: formatCurrency(totals.avgIncome), color: '#16a34a' },
+        { label: 'Avg Monthly Expenses', value: formatCurrency(totals.avgExpenses), color: '#dc2626' },
+      ],
+      chartContainer: chartRef.current,
+      chartLegend: [
+        { color: '#ef4444', label: 'Expenses' },
+        { color: '#22c55e', label: 'Income' },
+      ],
+      filename: "monthly-spending-trend",
+    });
+  };
+
   const handleChartClick = (state: any) => {
     const label = state?.activeLabel;
     if (!label) return;
@@ -153,20 +174,23 @@ export function MonthlySpendingTrendReport() {
     <div className="space-y-6">
       {/* Controls */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-4">
-        <DateRangeSelector
-          ranges={["6m", "1y", "2y"]}
-          value={dateRange}
-          onChange={setDateRange}
-          showCustom
-          customStartDate={startDate}
-          onCustomStartDateChange={setStartDate}
-          customEndDate={endDate}
-          onCustomEndDateChange={setEndDate}
-        />
+        <div className="flex flex-wrap gap-4 items-center justify-between">
+          <DateRangeSelector
+            ranges={["6m", "1y", "2y"]}
+            value={dateRange}
+            onChange={setDateRange}
+            showCustom
+            customStartDate={startDate}
+            onCustomStartDateChange={setStartDate}
+            customEndDate={endDate}
+            onCustomEndDateChange={setEndDate}
+          />
+          <ExportDropdown onExportPdf={handleExportPdf} />
+        </div>
       </div>
 
       {/* Chart */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 px-2 py-4 sm:p-6">
+      <div ref={chartRef} className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 px-2 py-4 sm:p-6">
         {chartData.length === 0 ? (
           <p className="text-gray-500 dark:text-gray-400 text-center py-8">
             No data for this period.

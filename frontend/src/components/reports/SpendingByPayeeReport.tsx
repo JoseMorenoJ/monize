@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   BarChart,
@@ -18,6 +18,7 @@ import { useNumberFormat } from '@/hooks/useNumberFormat';
 import { useDateRange } from '@/hooks/useDateRange';
 import { DateRangeSelector } from '@/components/ui/DateRangeSelector';
 import { CHART_COLOURS } from '@/lib/chart-colours';
+import { ExportDropdown } from '@/components/ui/ExportDropdown';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('SpendingByPayeeReport');
@@ -30,6 +31,7 @@ interface ChartDataItem {
 
 export function SpendingByPayeeReport() {
   const router = useRouter();
+  const chartRef = useRef<HTMLDivElement>(null);
   const { formatCurrencyCompact: formatCurrency, formatCurrencyAxis } = useNumberFormat();
   const [chartData, setChartData] = useState<ChartDataItem[]>([]);
   const [totalExpenses, setTotalExpenses] = useState(0);
@@ -65,6 +67,15 @@ export function SpendingByPayeeReport() {
   useEffect(() => {
     if (isValid) loadData();
   }, [isValid, loadData]);
+
+  const handleExportPdf = async () => {
+    const { exportToPdf } = await import('@/lib/pdf-export');
+    await exportToPdf({
+      title: 'Spending by Payee',
+      chartContainer: chartRef.current,
+      filename: 'spending-by-payee',
+    });
+  };
 
   const handlePayeeClick = (payeeId: string) => {
     if (payeeId) {
@@ -115,11 +126,12 @@ export function SpendingByPayeeReport() {
             customEndDate={endDate}
             onCustomEndDateChange={setEndDate}
           />
+          <ExportDropdown onExportPdf={handleExportPdf} />
         </div>
       </div>
 
       {/* Chart */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 px-2 py-4 sm:p-6">
+      <div ref={chartRef} className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 px-2 py-4 sm:p-6">
         {chartData.length === 0 ? (
           <p className="text-gray-500 dark:text-gray-400 text-center py-8">
             No expense data for this period.

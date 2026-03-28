@@ -255,6 +255,7 @@ export function CustomReportViewer({ reportId }: CustomReportViewerProps) {
               groupBy={result.groupBy as GroupByType}
               onDataPointClick={handleDataPointClick}
               tableColumns={result.tableColumns}
+              reportTitle={report.name}
               exportFilename={report.name.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase()}
             />
           ) : (

@@ -14,6 +14,7 @@ import { HoldingWithMarketValue } from '@/types/investment';
 import { Account } from '@/types/account';
 import { useNumberFormat } from '@/hooks/useNumberFormat';
 import { useExchangeRates } from '@/hooks/useExchangeRates';
+import { ExportDropdown } from '@/components/ui/ExportDropdown';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('CurrencyExposureReport');
@@ -74,6 +75,7 @@ export function CurrencyExposureReport() {
   const [isLoading, setIsLoading] = useState(true);
   const [showAccountFilter, setShowAccountFilter] = useState(false);
   const accountFilterRef = useRef<HTMLDivElement>(null);
+  const chartRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -158,6 +160,34 @@ export function CurrencyExposureReport() {
     [allocationData, defaultCurrency],
   );
 
+  const handleExportPdf = async () => {
+    const { exportToPdf } = await import('@/lib/pdf-export');
+    const headers = ['Currency', 'Native Value', `Rate to ${defaultCurrency}`, `${defaultCurrency} Value`, '% of Portfolio', 'Holdings'];
+    const rows = allocationData.map(item => [
+      item.currency,
+      formatCurrencyFull(item.nativeValue, item.currency),
+      item.currency === defaultCurrency ? '1.0000' : item.rate !== null ? item.rate.toFixed(4) : '-',
+      formatCurrencyFull(item.convertedValue, defaultCurrency),
+      `${item.percentage.toFixed(1)}%`,
+      String(item.count),
+    ]);
+    const accountLabel = selectedAccountIds.length > 0
+      ? accounts.filter((a) => selectedAccountIds.includes(a.id)).map((a) => a.name).join(', ')
+      : 'All Accounts';
+    const legendItems = allocationData.map((item) => ({
+      color: item.color,
+      label: `${item.currency} - ${formatCurrencyFull(item.convertedValue, defaultCurrency)} (${item.percentage.toFixed(1)}%)`,
+    }));
+    await exportToPdf({
+      title: 'Currency Exposure',
+      subtitle: accountLabel,
+      chartContainer: chartRef.current,
+      chartLegend: legendItems.length > 0 ? legendItems : undefined,
+      tableData: { headers, rows },
+      filename: 'currency-exposure',
+    });
+  };
+
   if (isLoading) {
     return (
       <div className="space-y-6">
@@ -185,8 +215,9 @@ export function CurrencyExposureReport() {
     <div className="space-y-6">
       {/* Account Filter */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-4">
-        <div className="flex flex-wrap gap-3">
-          <div className="relative" ref={accountFilterRef}>
+        <div className="flex flex-wrap gap-3 items-center justify-between">
+          <div className="flex flex-wrap gap-3">
+            <div className="relative" ref={accountFilterRef}>
             <button
               onClick={() => setShowAccountFilter(!showAccountFilter)}
               className="px-4 py-2 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
@@ -228,6 +259,8 @@ export function CurrencyExposureReport() {
               Clear Filters
             </button>
           )}
+          </div>
+          <ExportDropdown onExportPdf={handleExportPdf} />
         </div>
       </div>
 
@@ -262,7 +295,7 @@ export function CurrencyExposureReport() {
       </div>
 
       {/* Pie Chart */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-3 sm:p-6">
+      <div ref={chartRef} className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-3 sm:p-6">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
           Currency Allocation
         </h3>

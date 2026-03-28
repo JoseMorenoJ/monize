@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   BarChart,
@@ -23,6 +23,7 @@ import {
 import { useNumberFormat } from "@/hooks/useNumberFormat";
 import { useDateRange } from "@/hooks/useDateRange";
 import { DateRangeSelector } from "@/components/ui/DateRangeSelector";
+import { ExportDropdown } from '@/components/ui/ExportDropdown';
 import { createLogger } from "@/lib/logger";
 
 const logger = createLogger("CashFlowReport");
@@ -39,6 +40,7 @@ interface ChartDataItem {
 
 export function CashFlowReport() {
   const router = useRouter();
+  const chartRef = useRef<HTMLDivElement>(null);
   const { formatCurrencyCompact: formatCurrency, formatCurrencyAxis } =
     useNumberFormat();
   const [monthlyData, setMonthlyData] = useState<ChartDataItem[]>([]);
@@ -112,6 +114,38 @@ export function CashFlowReport() {
   useEffect(() => {
     if (isValid) loadData();
   }, [isValid, loadData]);
+
+  const handleExportPdf = async () => {
+    const { exportToPdf } = await import("@/lib/pdf-export");
+
+    const inflowRows = incomeItems.map((item) => [item.categoryName, formatCurrency(item.total)]);
+    const outflowRows = expenseItems.map((item) => [item.categoryName, formatCurrency(item.total)]);
+
+    await exportToPdf({
+      title: "Cash Flow Report",
+      summaryCards: [
+        { label: "Total Inflows", value: formatCurrency(totals.totalIncome), color: "#16a34a" },
+        { label: "Total Outflows", value: formatCurrency(totals.totalExpenses), color: "#dc2626" },
+        { label: "Net Cash Flow", value: `${totals.netCashFlow >= 0 ? "+" : ""}${formatCurrency(totals.netCashFlow)}`, color: totals.netCashFlow >= 0 ? "#2563eb" : "#ea580c" },
+      ],
+      chartContainer: chartRef.current,
+      additionalTables: [
+        ...(inflowRows.length > 0 ? [{
+          title: "Inflows by Category",
+          headers: ["Category", "Amount"],
+          rows: inflowRows,
+          totalRow: ["Total Inflows", formatCurrency(totals.totalIncome)],
+        }] : []),
+        ...(outflowRows.length > 0 ? [{
+          title: "Outflows by Category",
+          headers: ["Category", "Amount"],
+          rows: outflowRows,
+          totalRow: ["Total Outflows", formatCurrency(totals.totalExpenses)],
+        }] : []),
+      ],
+      filename: "cash-flow",
+    });
+  };
 
   const handleChartClick = (state: any) => {
     const label = state?.activeLabel;
@@ -226,20 +260,23 @@ export function CashFlowReport() {
 
       {/* Controls */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-4">
-        <DateRangeSelector
-          ranges={["3m", "6m", "1y"]}
-          value={dateRange}
-          onChange={setDateRange}
-          showCustom
-          customStartDate={startDate}
-          onCustomStartDateChange={setStartDate}
-          customEndDate={endDate}
-          onCustomEndDateChange={setEndDate}
-        />
+        <div className="flex flex-wrap gap-4 items-center justify-between">
+          <DateRangeSelector
+            ranges={["3m", "6m", "1y"]}
+            value={dateRange}
+            onChange={setDateRange}
+            showCustom
+            customStartDate={startDate}
+            onCustomStartDateChange={setStartDate}
+            customEndDate={endDate}
+            onCustomEndDateChange={setEndDate}
+          />
+          <ExportDropdown onExportPdf={handleExportPdf} />
+        </div>
       </div>
 
       {/* Monthly Chart */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 px-2 py-4 sm:p-6">
+      <div ref={chartRef} className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 px-2 py-4 sm:p-6">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4 px-1 sm:px-0">
           Monthly Cash Flow
         </h3>

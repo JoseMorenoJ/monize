@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   LineChart,
   Line,
@@ -15,12 +15,14 @@ import {
 import { budgetsApi } from '@/lib/budgets';
 import type { Budget, SavingsRatePoint } from '@/types/budget';
 import { useNumberFormat } from '@/hooks/useNumberFormat';
+import { ExportDropdown } from '@/components/ui/ExportDropdown';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('SavingsRateReport');
 
 export function SavingsRateReport() {
   const { formatCurrencyCompact: formatCurrency } = useNumberFormat();
+  const chartRef = useRef<HTMLDivElement>(null);
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [selectedBudgetId, setSelectedBudgetId] = useState<string>('');
   const [months, setMonths] = useState(12);
@@ -66,6 +68,32 @@ export function SavingsRateReport() {
     loadData();
   }, [loadData]);
 
+  const handleExportPdf = async () => {
+    const { exportToPdf } = await import('@/lib/pdf-export');
+    await exportToPdf({
+      title: 'Savings Rate',
+      summaryCards: [
+        { label: 'Current Rate', value: `${currentRate.toFixed(1)}%`, color: meetsTarget ? '#16a34a' : '#dc2626' },
+        { label: 'Average Rate', value: `${avgRate.toFixed(1)}%`, color: '#111827' },
+        { label: 'Target Rate', value: `${targetRate}%`, color: '#2563eb' },
+        { label: 'Total Saved', value: formatCurrency(totalSaved), color: totalSaved >= 0 ? '#16a34a' : '#dc2626' },
+      ],
+      chartContainer: chartRef.current,
+      additionalTables: data.length > 0 ? [{
+        title: 'Monthly Breakdown',
+        headers: ['Month', 'Income', 'Expenses', 'Savings', 'Rate'],
+        rows: data.map((point) => [
+          point.month,
+          formatCurrency(point.income),
+          formatCurrency(point.expenses),
+          formatCurrency(point.savings),
+          `${point.savingsRate.toFixed(1)}%`,
+        ]),
+      }] : undefined,
+      filename: 'savings-rate',
+    });
+  };
+
   if (isLoading) {
     return (
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-6">
@@ -95,7 +123,7 @@ export function SavingsRateReport() {
   const meetsTarget = currentRate >= targetRate;
 
   return (
-    <div className="space-y-6">
+    <div ref={chartRef} className="space-y-6">
       {/* Controls */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-4">
         <div className="flex flex-wrap gap-3 items-center">
@@ -118,11 +146,11 @@ export function SavingsRateReport() {
             <option value={24}>24 Months</option>
           </select>
           <div className="flex items-center gap-2">
-            <label className="text-sm text-gray-600 dark:text-gray-400">Target:</label>
+            <label className="text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">Target:</label>
             <select
               value={targetRate}
               onChange={(e) => setTargetRate(Number(e.target.value))}
-              className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+              className="px-2 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
             >
               <option value={10}>10%</option>
               <option value={15}>15%</option>
@@ -131,6 +159,9 @@ export function SavingsRateReport() {
               <option value={30}>30%</option>
               <option value={50}>50%</option>
             </select>
+          </div>
+          <div className="ml-auto">
+            <ExportDropdown onExportPdf={handleExportPdf} />
           </div>
         </div>
       </div>
