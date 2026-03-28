@@ -65,7 +65,7 @@ interface InvestmentTransactionRowProps {
   cellPadding: string;
   defaultCurrency: string;
   formatDate: (date: string) => string;
-  formatCurrency: (amount: number, currencyCode?: string) => string;
+  formatCurrency: (amount: number, currencyCode?: string, fractionDigits?: number) => string;
   formatQuantity: (value: number) => string;
   onRowClick: (tx: InvestmentTransaction) => void;
   onLongPressStart: (tx: InvestmentTransaction, e?: React.TouchEvent) => void;
