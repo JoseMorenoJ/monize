@@ -994,4 +994,134 @@ describe('Combobox', () => {
       });
     });
   });
+
+  describe('alwaysShowSubtitle', () => {
+    it('shows subtitles when dropdown is open without filtering', () => {
+      render(
+        <Combobox options={options} onChange={onChange} alwaysShowSubtitle />,
+      );
+
+      const input = screen.getByRole('textbox');
+      fireEvent.focus(input);
+
+      // Date has subtitle "A tropical fruit"
+      expect(screen.getByText('A tropical fruit')).toBeInTheDocument();
+    });
+
+    it('does not show subtitles by default when not filtering', () => {
+      render(<Combobox options={options} onChange={onChange} />);
+
+      const input = screen.getByRole('textbox');
+      fireEvent.focus(input);
+
+      expect(screen.queryByText('A tropical fruit')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('priorityValues', () => {
+    it('sorts priority values to the top when not filtering', () => {
+      render(
+        <Combobox
+          options={options}
+          onChange={onChange}
+          priorityValues={['3', '4']}
+        />,
+      );
+
+      const input = screen.getByRole('textbox');
+      fireEvent.focus(input);
+
+      // Cherry (value=3) and Date (value=4) should appear before Apple and Banana
+      const items = screen.getAllByText(/Apple|Banana|Cherry|Date/);
+      expect(items[0].textContent).toBe('Cherry');
+      expect(items[1].textContent).toBe('Date');
+    });
+
+    it('does not affect sort order when filtering', () => {
+      render(
+        <Combobox
+          options={options}
+          onChange={onChange}
+          priorityValues={['3']}
+        />,
+      );
+
+      const input = screen.getByRole('textbox');
+      fireEvent.focus(input);
+      fireEvent.change(input, { target: { value: 'a' } });
+
+      // When filtering for "a", prefix matches are prioritized over priorityValues
+      // Apple starts with "a", Banana contains "a", Date contains "a"
+      const items = screen.getAllByText(/Apple|Banana|Date/);
+      expect(items[0].textContent).toBe('Apple');
+    });
+  });
+
+  describe('allowCustomValue display for non-option values', () => {
+    it('displays raw value when allowCustomValue is true and value is not in options', () => {
+      render(
+        <Combobox
+          options={options}
+          onChange={onChange}
+          value="NMS"
+          allowCustomValue
+        />,
+      );
+
+      expect(screen.getByRole('textbox')).toHaveValue('NMS');
+    });
+
+    it('displays option label when value matches an option even with allowCustomValue', () => {
+      render(
+        <Combobox
+          options={options}
+          onChange={onChange}
+          value="1"
+          allowCustomValue
+        />,
+      );
+
+      expect(screen.getByRole('textbox')).toHaveValue('Apple');
+    });
+
+    it('updates display when value changes from non-option to another non-option', () => {
+      const { rerender } = render(
+        <Combobox
+          options={options}
+          onChange={onChange}
+          value="NMS"
+          allowCustomValue
+        />,
+      );
+
+      expect(screen.getByRole('textbox')).toHaveValue('NMS');
+
+      rerender(
+        <Combobox
+          options={options}
+          onChange={onChange}
+          value="LSE"
+          allowCustomValue
+        />,
+      );
+
+      expect(screen.getByRole('textbox')).toHaveValue('LSE');
+    });
+  });
+
+  describe('usePortal', () => {
+    it('renders dropdown content in a portal', () => {
+      render(
+        <Combobox options={options} onChange={onChange} usePortal />,
+      );
+
+      const input = screen.getByRole('textbox');
+      fireEvent.focus(input);
+
+      // The dropdown should be rendered as a direct child of document.body
+      // (not inside the wrapper div)
+      const apple = screen.getByText('Apple');
+      expect(apple.closest('[class*="fixed"]')).not.toBeNull();
+    });
+  });
 });

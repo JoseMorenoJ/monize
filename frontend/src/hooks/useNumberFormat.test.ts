@@ -78,4 +78,16 @@ describe('useNumberFormat', () => {
     const formatted = result.current.formatCurrency(0);
     expect(formatted).toContain('0.00');
   });
+
+  it('formatCurrency uses custom fractionDigits', () => {
+    const { result } = renderHook(() => useNumberFormat());
+    const formatted = result.current.formatCurrency(12.3456, undefined, 4);
+    expect(formatted).toContain('12.3456');
+  });
+
+  it('formatCurrency with fractionDigits rounds correctly', () => {
+    const { result } = renderHook(() => useNumberFormat());
+    const formatted = result.current.formatCurrency(9.99999, 'USD', 4);
+    expect(formatted).toContain('10.0000');
+  });
 });

@@ -25,7 +25,7 @@ const toolsLinks: { href: string; label: string; badge?: string }[] = [
   { href: '/tags', label: 'Tags' },
   { href: '/securities', label: 'Securities' },
   { href: '/currencies', label: 'Currencies' },
-  { href: '/import', label: 'Import Transactions', badge: 'Beta' },
+  { href: '/import', label: 'Import Transactions' },
 ];
 
 const aiLinks = [

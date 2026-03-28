@@ -3,7 +3,8 @@
  *
  * London Stock Exchange (LSE) shares are quoted in GBX (pence) rather than
  * GBP (pounds). Yahoo Finance returns LSE prices with currency "GBp".
- * QIF files exported from UK brokers also use pence pricing.
+ * This conversion applies only to Yahoo Finance price data; QIF files
+ * from brokers already contain prices in GBP (pounds).
  *
  * 1 GBX = 0.01 GBP  (100 pence = 1 pound)
  */

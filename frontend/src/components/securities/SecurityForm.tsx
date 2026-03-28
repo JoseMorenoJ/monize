@@ -9,14 +9,17 @@ import toast from 'react-hot-toast';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
+import { Combobox } from '@/components/ui/Combobox';
 import { Security, CreateSecurityData } from '@/types/investment';
 import { investmentsApi } from '@/lib/investments';
 import { exchangeRatesApi, CurrencyInfo } from '@/lib/exchange-rates';
 import { useNumberFormat } from '@/hooks/useNumberFormat';
+import { usePreferencesStore } from '@/store/preferencesStore';
 import { createLogger } from '@/lib/logger';
 import { useFormSubmitRef } from '@/hooks/useFormSubmitRef';
 import { useFormDirtyNotify } from '@/hooks/useFormDirtyNotify';
 import { FormActions } from '@/components/ui/FormActions';
+import { EXCHANGE_OPTIONS } from '@/lib/constants';
 
 const logger = createLogger('SecurityForm');
 
@@ -51,6 +54,7 @@ const securityTypeOptions = [
 
 export function SecurityForm({ security, onSubmit, onCancel, onDirtyChange, submitRef }: SecurityFormProps) {
   const { defaultCurrency } = useNumberFormat();
+  const preferredExchanges = usePreferencesStore((s) => s.preferences?.preferredExchanges) || [];
   const [isLookingUp, setIsLookingUp] = useState(false);
   const [hasLookupResult, setHasLookupResult] = useState(false);
   const [currencies, setCurrencies] = useState<CurrencyInfo[]>([]);
@@ -76,6 +80,7 @@ export function SecurityForm({ security, onSubmit, onCancel, onDirtyChange, subm
     handleSubmit,
     setValue,
     getValues,
+    watch,
     reset,
     formState: { errors, isSubmitting, isDirty, defaultValues },
   } = useForm<SecurityFormData>({
@@ -91,16 +96,23 @@ export function SecurityForm({ security, onSubmit, onCancel, onDirtyChange, subm
 
   // Manual lookup - prioritize symbol, fall back to name
   const handleLookup = useCallback(async () => {
-    const { symbol, name } = getValues();
+    const { symbol, name, exchange: currentExchange } = getValues();
     const query = (symbol?.trim() || name?.trim() || '');
     if (query.length < 2) {
       toast.error('Enter a symbol or name (at least 2 characters) to lookup');
       return;
     }
 
+    // Merge current exchange selection with preferred exchanges
+    const exchanges = currentExchange
+      ? [currentExchange, ...preferredExchanges.filter((e) => e !== currentExchange)]
+      : preferredExchanges.length > 0
+        ? preferredExchanges
+        : undefined;
+
     setIsLookingUp(true);
     try {
-      const result = await investmentsApi.lookupSecurity(query);
+      const result = await investmentsApi.lookupSecurity(query, exchanges);
       if (result) {
         // Fill in all fields from the lookup result
         setValue('symbol', result.symbol);
@@ -126,7 +138,7 @@ export function SecurityForm({ security, onSubmit, onCancel, onDirtyChange, subm
     } finally {
       setIsLookingUp(false);
     }
-  }, [getValues, setValue]);
+  }, [getValues, setValue, preferredExchanges]);
 
   // Clear all looked-up values back to defaults
   const handleClear = useCallback(() => {
@@ -205,15 +217,22 @@ export function SecurityForm({ security, onSubmit, onCancel, onDirtyChange, subm
       <Select
         label="Type"
         options={securityTypeOptions}
-        {...register('securityType')}
+        value={watch('securityType') || ''}
+        onChange={(e) => setValue('securityType', e.target.value, { shouldDirty: true })}
         error={errors.securityType?.message}
       />
 
-      <Input
+      <Combobox
         label="Exchange"
-        {...register('exchange')}
+        options={EXCHANGE_OPTIONS}
+        value={watch('exchange') || ''}
+        onChange={(value, label) => setValue('exchange', value || label, { shouldDirty: true })}
         error={errors.exchange?.message}
-        placeholder="e.g., NYSE, TSX, NASDAQ"
+        placeholder="Search exchanges..."
+        allowCustomValue
+        usePortal
+        alwaysShowSubtitle
+        priorityValues={preferredExchanges}
       />
 
       <Select

@@ -950,7 +950,7 @@ describe("ImportEntityCreatorService", () => {
       expect(savedArg.currencyCode).toBe("USD");
     });
 
-    it("should use explicit currencyCode from mapping over exchange-derived", async () => {
+    it("should use exchange-derived currency over explicit currencyCode from mapping", async () => {
       queryRunner.manager.findOne.mockResolvedValue(null);
       queryRunner.manager.save.mockImplementation((data: any) => ({
         ...data,
@@ -977,7 +977,39 @@ describe("ImportEntityCreatorService", () => {
       );
 
       const savedArg = queryRunner.manager.save.mock.calls[0][0];
-      expect(savedArg.currencyCode).toBe("EUR");
+      // NYSE maps to USD, which takes priority over the stale EUR from the mapping
+      expect(savedArg.currencyCode).toBe("USD");
+    });
+
+    it("should fall back to mapping currencyCode when exchange is not in the map", async () => {
+      queryRunner.manager.findOne.mockResolvedValue(null);
+      queryRunner.manager.save.mockImplementation((data: any) => ({
+        ...data,
+        id: "sec-unknown-exchange",
+      }));
+
+      const securityMap = new Map<string, string | null>();
+      const securitiesToCreate = [
+        {
+          originalName: "Exotic Stock",
+          createNew: "EX1",
+          exchange: "JSE",
+          currencyCode: "ZAR",
+        },
+      ];
+
+      await service.createSecurities(
+        queryRunner,
+        userId,
+        securitiesToCreate,
+        securityMap,
+        account,
+        importResult,
+      );
+
+      const savedArg = queryRunner.manager.save.mock.calls[0][0];
+      // JSE is not in EXCHANGE_CURRENCY_MAP, so falls back to mapping currencyCode
+      expect(savedArg.currencyCode).toBe("ZAR");
     });
   });
 

@@ -193,7 +193,7 @@ describe('SecurityForm', () => {
   it('shows placeholder text for exchange input', async () => {
     render(<SecurityForm onSubmit={onSubmit} onCancel={onCancel} />);
     await waitFor(() => {
-      expect(screen.getByPlaceholderText('e.g., NYSE, TSX, NASDAQ')).toBeInTheDocument();
+      expect(screen.getByPlaceholderText('Search exchanges...')).toBeInTheDocument();
     });
   });
 
@@ -273,7 +273,7 @@ describe('SecurityForm', () => {
     fireEvent.click(screen.getByText('Lookup'));
 
     await waitFor(() => {
-      expect(investmentsApi.lookupSecurity).toHaveBeenCalledWith('AAPL');
+      expect(investmentsApi.lookupSecurity).toHaveBeenCalledWith('AAPL', undefined);
     });
 
     // After successful lookup, Clear button should appear
@@ -378,6 +378,95 @@ describe('SecurityForm', () => {
     await waitFor(() => {
       const typeSelect = screen.getByLabelText('Type') as HTMLSelectElement;
       expect(typeSelect.value).toBe('ETF');
+    });
+  });
+
+  it('populates security type from lookup result', async () => {
+    (investmentsApi.lookupSecurity as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      symbol: 'XEQT',
+      name: 'iShares Core Equity ETF',
+      exchange: 'TSX',
+      securityType: 'ETF',
+      currencyCode: 'CAD',
+    });
+
+    render(<SecurityForm onSubmit={onSubmit} onCancel={onCancel} />);
+
+    const symbolInput = screen.getByLabelText('Symbol');
+    fireEvent.change(symbolInput, { target: { value: 'XEQT' } });
+
+    fireEvent.click(screen.getByText('Lookup'));
+
+    await waitFor(() => {
+      const typeSelect = screen.getByLabelText('Type') as HTMLSelectElement;
+      expect(typeSelect.value).toBe('ETF');
+    });
+  });
+
+  it('populates security type as STOCK from lookup for equities', async () => {
+    (investmentsApi.lookupSecurity as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      symbol: 'AAPL',
+      name: 'Apple Inc.',
+      exchange: 'NASDAQ',
+      securityType: 'STOCK',
+      currencyCode: 'USD',
+    });
+
+    render(<SecurityForm onSubmit={onSubmit} onCancel={onCancel} />);
+
+    const symbolInput = screen.getByLabelText('Symbol');
+    fireEvent.change(symbolInput, { target: { value: 'AAPL' } });
+
+    fireEvent.click(screen.getByText('Lookup'));
+
+    await waitFor(() => {
+      const typeSelect = screen.getByLabelText('Type') as HTMLSelectElement;
+      expect(typeSelect.value).toBe('STOCK');
+    });
+  });
+
+  it('defaults type to empty when lookup returns null securityType', async () => {
+    (investmentsApi.lookupSecurity as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      symbol: 'XYZ',
+      name: 'Some Security',
+      exchange: null,
+      securityType: null,
+      currencyCode: null,
+    });
+
+    render(<SecurityForm onSubmit={onSubmit} onCancel={onCancel} />);
+
+    const symbolInput = screen.getByLabelText('Symbol');
+    fireEvent.change(symbolInput, { target: { value: 'XYZ' } });
+
+    fireEvent.click(screen.getByText('Lookup'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Clear')).toBeInTheDocument();
+    });
+
+    const typeSelect = screen.getByLabelText('Type') as HTMLSelectElement;
+    expect(typeSelect.value).toBe('');
+  });
+
+  it('lookup falls back to name field when symbol is empty', async () => {
+    (investmentsApi.lookupSecurity as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      symbol: 'AAPL',
+      name: 'Apple Inc.',
+      exchange: 'NASDAQ',
+      securityType: 'STOCK',
+      currencyCode: 'USD',
+    });
+
+    render(<SecurityForm onSubmit={onSubmit} onCancel={onCancel} />);
+
+    const nameInput = screen.getByLabelText('Name');
+    fireEvent.change(nameInput, { target: { value: 'Apple Inc' } });
+
+    fireEvent.click(screen.getByText('Lookup'));
+
+    await waitFor(() => {
+      expect(investmentsApi.lookupSecurity).toHaveBeenCalledWith('Apple Inc', undefined);
     });
   });
 });

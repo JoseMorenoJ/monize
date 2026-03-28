@@ -144,7 +144,10 @@ describe("SecuritiesController", () => {
 
       const result = await controller.lookup("AAPL");
 
-      expect(securityPriceService.lookupSecurity).toHaveBeenCalledWith("AAPL");
+      expect(securityPriceService.lookupSecurity).toHaveBeenCalledWith(
+        "AAPL",
+        undefined,
+      );
       expect(result).toEqual(lookupResult);
     });
 
@@ -154,6 +157,50 @@ describe("SecuritiesController", () => {
       const result = await controller.lookup("INVALID");
 
       expect(result).toBeNull();
+    });
+
+    it("passes preferred exchanges from comma-separated query param", async () => {
+      securityPriceService.lookupSecurity.mockResolvedValue(null);
+
+      await controller.lookup("VOD", "LSE,ASX");
+
+      expect(securityPriceService.lookupSecurity).toHaveBeenCalledWith("VOD", [
+        "LSE",
+        "ASX",
+      ]);
+    });
+
+    it("limits preferred exchanges to 3", async () => {
+      securityPriceService.lookupSecurity.mockResolvedValue(null);
+
+      await controller.lookup("VOD", "LSE,ASX,TSX,NYSE");
+
+      expect(securityPriceService.lookupSecurity).toHaveBeenCalledWith("VOD", [
+        "LSE",
+        "ASX",
+        "TSX",
+      ]);
+    });
+
+    it("handles single exchange in query param", async () => {
+      securityPriceService.lookupSecurity.mockResolvedValue(null);
+
+      await controller.lookup("VOD", "LSE");
+
+      expect(securityPriceService.lookupSecurity).toHaveBeenCalledWith("VOD", [
+        "LSE",
+      ]);
+    });
+
+    it("handles empty exchanges param", async () => {
+      securityPriceService.lookupSecurity.mockResolvedValue(null);
+
+      await controller.lookup("AAPL", "");
+
+      expect(securityPriceService.lookupSecurity).toHaveBeenCalledWith(
+        "AAPL",
+        undefined,
+      );
     });
   });
 

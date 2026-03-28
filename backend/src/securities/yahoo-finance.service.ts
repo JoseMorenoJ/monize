@@ -361,8 +361,13 @@ export class YahooFinanceService {
 
   /**
    * Lookup security information from Yahoo Finance
+   * @param query Symbol or name to search for
+   * @param preferredExchanges Exchanges to prioritize, in order (e.g., ["LSE", "TSX"])
    */
-  async lookupSecurity(query: string): Promise<SecurityLookupResult | null> {
+  async lookupSecurity(
+    query: string,
+    preferredExchanges?: string[],
+  ): Promise<SecurityLookupResult | null> {
     try {
       const url = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=10&newsCount=0`;
 
@@ -388,10 +393,18 @@ export class YahooFinanceService {
         return null;
       }
 
-      // Sort by exchange priority: TSX first, then US, then others
+      // Sort by exchange priority, boosting preferred exchanges if specified
       const sortedQuotes = [...quotes].sort((a, b) => {
-        const priorityA = this.getExchangePriority(a.symbol, a.exchDisp);
-        const priorityB = this.getExchangePriority(b.symbol, b.exchDisp);
+        const priorityA = this.getExchangePriority(
+          a.symbol,
+          a.exchDisp,
+          preferredExchanges,
+        );
+        const priorityB = this.getExchangePriority(
+          b.symbol,
+          b.exchDisp,
+          preferredExchanges,
+        );
         return priorityA - priorityB;
       });
 
@@ -550,13 +563,29 @@ export class YahooFinanceService {
   }
 
   /**
-   * Get exchange priority for sorting (lower = higher priority)
+   * Get exchange priority for sorting (lower = higher priority).
+   * When preferredExchanges are provided, matching results get priority -3, -2, -1
+   * (first preferred = -3, second = -2, third = -1) so they sort before the
+   * default CA(1)/US(2)/other(3) tiers.
    */
-  getExchangePriority(symbol: string, exchDisp?: string): number {
+  getExchangePriority(
+    symbol: string,
+    exchDisp?: string,
+    preferredExchanges?: string[],
+  ): number {
     const suffix = symbol.includes(".")
       ? symbol.substring(symbol.lastIndexOf(".")).toUpperCase()
       : "";
     const exchange = (exchDisp || "").toUpperCase();
+
+    // Check preferred exchanges in order (first = highest priority)
+    if (preferredExchanges && preferredExchanges.length > 0) {
+      for (let i = 0; i < preferredExchanges.length; i++) {
+        if (this.matchesExchange(suffix, exchange, preferredExchanges[i])) {
+          return -(preferredExchanges.length - i);
+        }
+      }
+    }
 
     if (
       suffix === ".TO" ||
@@ -585,6 +614,120 @@ export class YahooFinanceService {
     }
 
     return 3;
+  }
+
+  /**
+   * Check if a Yahoo Finance result matches the user's preferred exchange.
+   * Maps exchange names to Yahoo symbol suffixes and exchDisp values.
+   */
+  private matchesExchange(
+    suffix: string,
+    exchDisp: string,
+    preferredExchange: string,
+  ): boolean {
+    const pref = preferredExchange.toUpperCase().trim();
+
+    // Map preferred exchange names to matching criteria
+    const exchangeMatchers: Record<
+      string,
+      { suffixes: string[]; displays: string[] }
+    > = {
+      TSX: {
+        suffixes: [".TO"],
+        displays: ["TORONTO", "TSX"],
+      },
+      TSE: {
+        suffixes: [".TO"],
+        displays: ["TORONTO", "TSX"],
+      },
+      TORONTO: {
+        suffixes: [".TO"],
+        displays: ["TORONTO", "TSX"],
+      },
+      "TSX-V": {
+        suffixes: [".V"],
+        displays: ["TSX VENTURE", "TSXV"],
+      },
+      TSXV: {
+        suffixes: [".V"],
+        displays: ["TSX VENTURE", "TSXV"],
+      },
+      CSE: {
+        suffixes: [".CN"],
+        displays: ["CSE", "CANADIAN"],
+      },
+      NEO: {
+        suffixes: [".NE"],
+        displays: ["NEO"],
+      },
+      NYSE: {
+        suffixes: [""],
+        displays: ["NYSE", "NYQ"],
+      },
+      NASDAQ: {
+        suffixes: [""],
+        displays: ["NASDAQ", "NMS", "NGM"],
+      },
+      AMEX: {
+        suffixes: [""],
+        displays: ["AMEX"],
+      },
+      ARCA: {
+        suffixes: [""],
+        displays: ["ARCA", "PCX"],
+      },
+      LSE: {
+        suffixes: [".L"],
+        displays: ["LSE", "LONDON"],
+      },
+      LONDON: {
+        suffixes: [".L"],
+        displays: ["LSE", "LONDON"],
+      },
+      ASX: {
+        suffixes: [".AX"],
+        displays: ["ASX", "SYDNEY", "AUSTRALIAN"],
+      },
+      FRANKFURT: {
+        suffixes: [".F"],
+        displays: ["FRANKFURT", "FRA"],
+      },
+      XETRA: {
+        suffixes: [".DE"],
+        displays: ["XETRA", "GER"],
+      },
+      PARIS: {
+        suffixes: [".PA"],
+        displays: ["PARIS", "PAR", "EURONEXT"],
+      },
+      TOKYO: {
+        suffixes: [".T"],
+        displays: ["TOKYO", "JPX", "TSE"],
+      },
+      HKEX: {
+        suffixes: [".HK"],
+        displays: ["HKEX", "HONG KONG"],
+      },
+      "HONG KONG": {
+        suffixes: [".HK"],
+        displays: ["HKEX", "HONG KONG"],
+      },
+    };
+
+    const matcher = exchangeMatchers[pref];
+    if (!matcher) {
+      // Fallback: try matching the exchange display name directly
+      return exchDisp.includes(pref);
+    }
+
+    // For non-empty suffixes, a suffix match is definitive (e.g., .L = LSE)
+    // For empty suffixes (US exchanges), require exchDisp match too since many
+    // symbols lack suffixes regardless of exchange
+    if (matcher.suffixes.some((s) => s !== "" && s === suffix)) {
+      return true;
+    }
+
+    return matcher.displays.some((d) => exchDisp.includes(d));
   }
 
   /**

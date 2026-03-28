@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { cn, inputBaseClasses, inputErrorClasses } from '@/lib/utils';
 
 interface ComboboxOption {
@@ -21,6 +22,12 @@ interface ComboboxProps {
   error?: string;
   disabled?: boolean;
   allowCustomValue?: boolean;
+  /** Render dropdown in a portal to escape overflow clipping (e.g. inside modals) */
+  usePortal?: boolean;
+  /** Always show option subtitles, not just when filtering */
+  alwaysShowSubtitle?: boolean;
+  /** Values to sort to the top of the list when not filtering */
+  priorityValues?: string[];
 }
 
 export function Combobox({
@@ -35,6 +42,9 @@ export function Combobox({
   error,
   disabled = false,
   allowCustomValue = false,
+  usePortal = false,
+  alwaysShowSubtitle = false,
+  priorityValues,
 }: ComboboxProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [inputValue, setInputValue] = useState(initialDisplayValue || '');
@@ -43,12 +53,44 @@ export function Combobox({
   const [filterText, setFilterText] = useState(''); // Separate filter text for searching
   const [hasInitialized, setHasInitialized] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number; width: number } | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const isDeleteRef = useRef(false);
   const isNavigatingRef = useRef(false);
   const prevFilterTextRef = useRef('');
+
+  // Calculate portal dropdown position from input element
+  const updateDropdownPos = useCallback(() => {
+    if (!usePortal || !inputRef.current) return;
+    const rect = inputRef.current.getBoundingClientRect();
+    setDropdownPos({
+      top: rect.bottom + 4,
+      left: rect.left,
+      width: rect.width,
+    });
+  }, [usePortal]);
+
+  // Update position when opening
+  useEffect(() => {
+    if (isOpen && usePortal) updateDropdownPos();
+  }, [isOpen, usePortal, updateDropdownPos]);
+
+  // Close on parent scroll or window resize when using portal (dropdown would be misaligned)
+  useEffect(() => {
+    if (!isOpen || !usePortal) return;
+    const handleScrollOrResize = (event: Event) => {
+      if (listRef.current?.contains(event.target as Node)) return;
+      setIsOpen(false);
+    };
+    window.addEventListener('scroll', handleScrollOrResize, true);
+    window.addEventListener('resize', handleScrollOrResize);
+    return () => {
+      window.removeEventListener('scroll', handleScrollOrResize, true);
+      window.removeEventListener('resize', handleScrollOrResize);
+    };
+  }, [isOpen, usePortal]);
 
   // Find selected option label when value changes (only if not currently typing)
   /* eslint-disable react-hooks/set-state-in-effect -- syncing display state from prop changes */
@@ -60,6 +102,11 @@ export function Combobox({
       if (option) {
         setSelectedLabel(option.label);
         setInputValue(option.label);
+        setHasInitialized(true);
+      } else if (allowCustomValue) {
+        // Display the raw value for custom values not in options list
+        setSelectedLabel(value);
+        setInputValue(value);
         setHasInitialized(true);
       } else if (initialDisplayValue && !hasInitialized) {
         // Use initial display value if option not found yet (still loading)
@@ -82,8 +129,9 @@ export function Combobox({
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       const isInsideWrapper = wrapperRef.current && wrapperRef.current.contains(event.target as Node);
+      const isInsideDropdown = usePortal && listRef.current && listRef.current.contains(event.target as Node);
 
-      if (!isInsideWrapper) {
+      if (!isInsideWrapper && !isInsideDropdown) {
         setIsOpen(false);
         // Only process if user was actively typing AND the click is not on a form submit button
         // This prevents the click-outside handler from interfering with form submission
@@ -125,7 +173,7 @@ export function Combobox({
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [selectedLabel, allowCustomValue, inputValue, options, onChange, isTyping]);
+  }, [selectedLabel, allowCustomValue, inputValue, options, onChange, isTyping, usePortal]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     // Ignore input changes right after opening (caused by select())
@@ -135,6 +183,7 @@ export function Combobox({
 
     const newValue = e.target.value;
     setFilterText(newValue); // Track what user typed for filtering
+    if (usePortal && !isOpen) updateDropdownPos();
     setIsOpen(true);
     setIsTyping(true);
     isNavigatingRef.current = false; // User is typing, not navigating
@@ -162,6 +211,8 @@ export function Combobox({
     // Always reset to show all options when dropdown opens
     setFilterText('');
     setIsTyping(false);
+    // Compute portal position before opening so dropdown renders in portal on first paint
+    if (usePortal) updateDropdownPos();
     setIsOpen(true);
     isNavigatingRef.current = false;
     // Mark that we just opened - this prevents select() from triggering filter
@@ -189,6 +240,7 @@ export function Combobox({
 
   // When dropdown is open and user is typing, filter by what they typed
   // Otherwise show all options. Prefix matches are sorted first for relevance.
+  // When not filtering: priority values first, then alphabetical.
   const filteredOptions = (isTyping && filterText)
     ? options
         .filter(option =>
@@ -203,7 +255,18 @@ export function Combobox({
           if (!aPrefix && bPrefix) return 1;
           return a.label.localeCompare(b.label);
         })
-    : options;
+    : priorityValues && priorityValues.length > 0
+      ? [...options].sort((a, b) => {
+          const aIdx = priorityValues.indexOf(a.value);
+          const bIdx = priorityValues.indexOf(b.value);
+          const aIsPriority = aIdx !== -1;
+          const bIsPriority = bIdx !== -1;
+          if (aIsPriority && !bIsPriority) return -1;
+          if (!aIsPriority && bIsPriority) return 1;
+          if (aIsPriority && bIsPriority) return aIdx - bIdx;
+          return a.label.localeCompare(b.label);
+        })
+      : options;
 
   // Check if input matches an existing option exactly
   const exactMatch = options.some(
@@ -274,6 +337,7 @@ export function Combobox({
     if (!isOpen) {
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         e.preventDefault();
+        if (usePortal) updateDropdownPos();
         setIsOpen(true);
         setHighlightedIndex(0);
       }
@@ -353,6 +417,80 @@ export function Combobox({
     setIsOpen(false);
   };
 
+  const dropdownContent = (
+    <div
+      ref={listRef}
+      className={cn(
+        'bg-white dark:bg-gray-800 shadow-lg dark:shadow-gray-700/50 max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 dark:ring-gray-600 overflow-auto focus:outline-none sm:text-sm',
+        usePortal ? 'fixed z-[100]' : 'absolute z-10 mt-1 w-full',
+      )}
+      style={usePortal && dropdownPos ? { top: dropdownPos.top, left: dropdownPos.left, width: dropdownPos.width } : undefined}
+    >
+      {showCreateOption && (
+        <div
+          data-option-index="0"
+          onClick={handleCreateNew}
+          className={cn(
+            'cursor-pointer select-none relative py-2 pl-3 pr-9 border-b border-gray-100 dark:border-gray-700',
+            highlightedIndex === 0 ? 'bg-green-100 dark:bg-green-900' : 'hover:bg-green-50 dark:hover:bg-green-900/50'
+          )}
+        >
+          <div className="flex items-center">
+            <span className="text-green-600 dark:text-green-400 mr-2">+</span>
+            <span className="font-medium text-green-700 dark:text-green-300">
+              Create "{inputValue.trim()}"
+            </span>
+          </div>
+        </div>
+      )}
+      {filteredOptions.map((option, index) => {
+        const optionIndex = showCreateOption ? index + 1 : index;
+        const isSelected = option.value === value;
+        const isHighlighted = highlightedIndex === optionIndex;
+        return (
+          <div
+            key={option.value}
+            data-option-index={optionIndex}
+            onClick={() => handleSelectOption(option)}
+            className={cn(
+              'cursor-pointer select-none relative py-2 pl-3 pr-9',
+              isHighlighted ? 'bg-blue-100 dark:bg-blue-900' : 'hover:bg-blue-50 dark:hover:bg-blue-900/50',
+              isSelected && !isHighlighted && 'bg-blue-50 dark:bg-blue-900/30'
+            )}
+          >
+            <div className="flex flex-col">
+              <span className={cn(
+                'block truncate dark:text-gray-100',
+                isSelected ? 'font-semibold' : 'font-medium'
+              )}>
+                {option.label}
+              </span>
+              {option.subtitle && (alwaysShowSubtitle || (isTyping && filterText)) && (
+                <span className="text-gray-500 dark:text-gray-400 text-xs truncate">
+                  {option.subtitle}
+                </span>
+              )}
+            </div>
+            {isSelected && (
+              <span className="absolute inset-y-0 right-0 flex items-center pr-4 text-blue-600 dark:text-blue-400">
+                <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                </svg>
+              </span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  const renderDropdown = () => {
+    if (usePortal && dropdownPos) {
+      return createPortal(dropdownContent, document.body);
+    }
+    return dropdownContent;
+  };
+
   return (
     <div ref={wrapperRef} className="w-full relative">
       {label && (
@@ -376,69 +514,7 @@ export function Combobox({
             error && inputErrorClasses
           )}
         />
-        {isOpen && (filteredOptions.length > 0 || showCreateOption) && (
-          <div
-            ref={listRef}
-            className="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg dark:shadow-gray-700/50 max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 dark:ring-gray-600 overflow-auto focus:outline-none sm:text-sm"
-          >
-            {showCreateOption && (
-              <div
-                data-option-index="0"
-                onClick={handleCreateNew}
-                className={cn(
-                  'cursor-pointer select-none relative py-2 pl-3 pr-9 border-b border-gray-100 dark:border-gray-700',
-                  highlightedIndex === 0 ? 'bg-green-100 dark:bg-green-900' : 'hover:bg-green-50 dark:hover:bg-green-900/50'
-                )}
-              >
-                <div className="flex items-center">
-                  <span className="text-green-600 dark:text-green-400 mr-2">+</span>
-                  <span className="font-medium text-green-700 dark:text-green-300">
-                    Create "{inputValue.trim()}"
-                  </span>
-                </div>
-              </div>
-            )}
-            {filteredOptions.map((option, index) => {
-              const optionIndex = showCreateOption ? index + 1 : index;
-              const isSelected = option.value === value;
-              const isHighlighted = highlightedIndex === optionIndex;
-              return (
-                <div
-                  key={option.value}
-                  data-option-index={optionIndex}
-                  onClick={() => handleSelectOption(option)}
-                  className={cn(
-                    'cursor-pointer select-none relative py-2 pl-3 pr-9',
-                    isHighlighted ? 'bg-blue-100 dark:bg-blue-900' : 'hover:bg-blue-50 dark:hover:bg-blue-900/50',
-                    isSelected && !isHighlighted && 'bg-blue-50 dark:bg-blue-900/30'
-                  )}
-                >
-                  <div className="flex flex-col">
-                    <span className={cn(
-                      'block truncate dark:text-gray-100',
-                      isSelected ? 'font-semibold' : 'font-medium'
-                    )}>
-                      {option.label}
-                    </span>
-                    {/* Only show subtitle when filtering to provide context */}
-                    {option.subtitle && isTyping && filterText && (
-                      <span className="text-gray-500 dark:text-gray-400 text-xs truncate">
-                        {option.subtitle}
-                      </span>
-                    )}
-                  </div>
-                  {isSelected && (
-                    <span className="absolute inset-y-0 right-0 flex items-center pr-4 text-blue-600 dark:text-blue-400">
-                      <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                      </svg>
-                    </span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
+        {isOpen && (filteredOptions.length > 0 || showCreateOption) && renderDropdown()}
       </div>
       {error && (
         <p className="mt-1 text-sm text-red-600 dark:text-red-400">{error}</p>

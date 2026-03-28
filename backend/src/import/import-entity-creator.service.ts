@@ -288,9 +288,12 @@ export class ImportEntityCreatorService {
       if (existingSecurity) {
         securityMap.set(secMapping.originalName, existingSecurity.id);
       } else {
+        // Exchange-derived currency takes priority over frontend-supplied value,
+        // because the user may have changed the exchange after an auto-lookup
+        // that set a stale currencyCode (e.g., lookup found USD, user changed to LSE).
         const currencyCode =
-          secMapping.currencyCode ||
           getCurrencyFromExchange(secMapping.exchange) ||
+          secMapping.currencyCode ||
           account.currencyCode;
 
         const newSecurity = new Security();

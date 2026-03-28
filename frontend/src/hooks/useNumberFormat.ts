@@ -24,18 +24,23 @@ export function useNumberFormat() {
   const defaultCurrency = usePreferencesStore((state) => state.preferences?.defaultCurrency) || 'CAD';
 
   const formatCurrency = useCallback(
-    (amount: number, currencyCode?: string): string => {
+    (amount: number, currencyCode?: string, fractionDigits?: number): string => {
       const currency = currencyCode || defaultCurrency;
       const locale = getEffectiveLocale(numberFormat);
-      const formatter = new Intl.NumberFormat(locale, {
+      const options: Intl.NumberFormatOptions = {
         style: 'currency',
         currency,
         currencyDisplay: 'narrowSymbol',
-      });
-      // Pre-round to the currency's native decimal places to avoid IEEE 754
+      };
+      if (fractionDigits !== undefined) {
+        options.minimumFractionDigits = fractionDigits;
+        options.maximumFractionDigits = fractionDigits;
+      }
+      const formatter = new Intl.NumberFormat(locale, options);
+      // Pre-round to the target decimal places to avoid IEEE 754
       // midpoint errors (e.g., 159.735 stored as 159.73499... rounding to
       // 159.73 instead of 159.74).
-      const decimals = formatter.resolvedOptions().minimumFractionDigits ?? 2;
+      const decimals = fractionDigits ?? formatter.resolvedOptions().minimumFractionDigits ?? 2;
       return formatter.format(roundToDecimals(amount, decimals));
     },
     [numberFormat, defaultCurrency]

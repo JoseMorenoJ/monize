@@ -46,6 +46,7 @@ const mockPreferences: UserPreferences = {
   budgetDigestDay: 'MONDAY',
   showCreatedAt: false,
   favouriteReportIds: [],
+  preferredExchanges: [],
   createdAt: '2024-01-01T00:00:00Z',
   updatedAt: '2024-01-01T00:00:00Z',
 };
@@ -239,6 +240,44 @@ describe('PreferencesSection', () => {
 
     await waitFor(() => {
       expect(mockOnPreferencesUpdated).toHaveBeenCalledWith(updatedPrefs);
+    });
+  });
+
+  it('renders the preferred exchanges section', async () => {
+    render(<PreferencesSection preferences={mockPreferences} onPreferencesUpdated={mockOnPreferencesUpdated} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Preferred Exchanges (for security lookups)')).toBeInTheDocument();
+    });
+    expect(screen.getByText(/Select up to 3 exchanges/)).toBeInTheDocument();
+  });
+
+  it('renders preferred exchanges from preferences', async () => {
+    const prefsWithExchanges = {
+      ...mockPreferences,
+      preferredExchanges: ['LSE', 'ASX'],
+    };
+
+    render(<PreferencesSection preferences={prefsWithExchanges} onPreferencesUpdated={mockOnPreferencesUpdated} />);
+
+    // The Combobox should display the exchange labels
+    await waitFor(() => {
+      const inputs = screen.getAllByPlaceholderText(/Priority/);
+      expect(inputs.length).toBe(3);
+    });
+  });
+
+  it('sends preferredExchanges when saving', async () => {
+    (userSettingsApi.updatePreferences as ReturnType<typeof vi.fn>).mockResolvedValue(mockPreferences);
+
+    render(<PreferencesSection preferences={mockPreferences} onPreferencesUpdated={mockOnPreferencesUpdated} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save Preferences' }));
+
+    await waitFor(() => {
+      expect(userSettingsApi.updatePreferences).toHaveBeenCalledWith(
+        expect.objectContaining({ preferredExchanges: [] })
+      );
     });
   });
 });

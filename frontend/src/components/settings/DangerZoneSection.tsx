@@ -141,6 +141,7 @@ export function DangerZoneSection({ user }: DangerZoneSectionProps) {
               <li>All budgets and budget alerts</li>
               <li>Monthly account balance summaries</li>
               <li>Custom reports, tags, and import mappings</li>
+              <li>Action history (undo/redo)</li>
             </ul>
 
             <p className="text-sm font-medium text-red-700 dark:text-red-300 pt-2">

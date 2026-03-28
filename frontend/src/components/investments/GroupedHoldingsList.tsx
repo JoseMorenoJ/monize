@@ -45,6 +45,11 @@ export function GroupedHoldingsList({
     return formatCurrencyBase(value);
   };
 
+  const formatPrice = (value: number | null, currencyCode?: string) => {
+    if (value === null) return '-';
+    return formatCurrencyBase(value, currencyCode, 4);
+  };
+
   const formatPercent = (value: number | null, showSign = true) => {
     if (value === null) return '-';
     const sign = showSign && value >= 0 ? '+' : '';
@@ -221,6 +226,7 @@ export function GroupedHoldingsList({
                           defaultCurrency={defaultCurrency}
                           formatCurrency={formatCurrency}
                           formatCurrencyWithCode={formatCurrencyBase}
+                          formatPrice={formatPrice}
                           formatQuantity={formatQuantity}
                           formatPercent={formatPercent}
                           getGainLossColor={getGainLossColor}
@@ -316,6 +322,7 @@ interface HoldingRowProps {
   defaultCurrency: string;
   formatCurrency: (value: number | null) => string;
   formatCurrencyWithCode: (value: number, currencyCode: string) => string;
+  formatPrice: (value: number | null, currencyCode?: string) => string;
   formatQuantity: (value: number) => string;
   formatPercent: (value: number | null, showSign?: boolean) => string;
   getGainLossColor: (value: number | null) => string;
@@ -328,6 +335,7 @@ const HoldingRow = memo(function HoldingRow({
   defaultCurrency,
   formatCurrency,
   formatCurrencyWithCode,
+  formatPrice,
   formatQuantity,
   formatPercent,
   getGainLossColor,
@@ -340,6 +348,12 @@ const HoldingRow = memo(function HoldingRow({
     if (value === null) return '-';
     if (isForeign) return `${formatCurrencyWithCode(value, holding.currencyCode)} ${holding.currencyCode}`;
     return formatCurrency(value);
+  };
+
+  const fmtPrice = (value: number | null) => {
+    if (value === null) return '-';
+    if (isForeign) return `${formatPrice(value, holding.currencyCode)} ${holding.currencyCode}`;
+    return formatPrice(value);
   };
 
   return (
@@ -362,10 +376,10 @@ const HoldingRow = memo(function HoldingRow({
         {formatQuantity(holding.quantity)}
       </td>
       <td className="px-1.5 sm:px-4 py-3 whitespace-nowrap text-right text-sm text-gray-900 dark:text-gray-100">
-        {fmtVal(holding.averageCost)}
+        {fmtPrice(holding.averageCost)}
       </td>
       <td className="px-1.5 sm:px-4 py-3 whitespace-nowrap text-right text-sm text-gray-900 dark:text-gray-100">
-        {fmtVal(holding.currentPrice)}
+        {fmtPrice(holding.currentPrice)}
       </td>
       <td className="px-1.5 sm:px-4 py-3 whitespace-nowrap text-right text-sm text-gray-900 dark:text-gray-100">
         {fmtVal(holding.costBasis)}

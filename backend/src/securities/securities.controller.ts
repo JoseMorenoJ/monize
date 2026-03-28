@@ -121,6 +121,12 @@ export class SecuritiesController {
     required: true,
     description: "Symbol or name to lookup",
   })
+  @ApiQuery({
+    name: "exchanges",
+    required: false,
+    description:
+      "Preferred exchanges in priority order, comma-separated (e.g., LSE,TSX,NYSE)",
+  })
   @ApiResponse({
     status: 200,
     description: "Security lookup result",
@@ -136,9 +142,22 @@ export class SecuritiesController {
       },
     },
   })
-  lookup(@Query("q") query: string): Promise<SecurityLookupResult | null> {
+  lookup(
+    @Query("q") query: string,
+    @Query("exchanges") exchanges?: string,
+  ): Promise<SecurityLookupResult | null> {
     const safeQuery = query ? query.slice(0, 200) : "";
-    return this.securityPriceService.lookupSecurity(safeQuery);
+    const preferredExchanges = exchanges
+      ? exchanges
+          .split(",")
+          .map((e) => e.trim().slice(0, 20))
+          .filter(Boolean)
+          .slice(0, 3)
+      : undefined;
+    return this.securityPriceService.lookupSecurity(
+      safeQuery,
+      preferredExchanges,
+    );
   }
 
   @Get(":id")

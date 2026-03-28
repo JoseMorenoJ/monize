@@ -327,8 +327,11 @@ export class SecurityPriceService {
   /**
    * Lookup security information (delegates to Yahoo Finance)
    */
-  async lookupSecurity(query: string): Promise<SecurityLookupResult | null> {
-    return this.yahooFinance.lookupSecurity(query);
+  async lookupSecurity(
+    query: string,
+    preferredExchanges?: string[],
+  ): Promise<SecurityLookupResult | null> {
+    return this.yahooFinance.lookupSecurity(query, preferredExchanges);
   }
 
   /**

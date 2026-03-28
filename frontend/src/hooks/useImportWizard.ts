@@ -71,6 +71,7 @@ export function useImportWizard() {
   const searchParams = useSearchParams();
   const preselectedAccountId = searchParams.get('accountId');
   const defaultCurrency = usePreferencesStore((s) => s.preferences?.defaultCurrency) || 'USD';
+  const preferredExchanges = usePreferencesStore((s) => s.preferences?.preferredExchanges) || [];
 
   const [step, setStep] = useState<ImportStep>('upload');
   const [importFiles, setImportFiles] = useState<ImportFileData[]>([]);
@@ -155,7 +156,9 @@ export function useImportWizard() {
       if (newAccountType === 'INVESTMENT') {
         const pair = await accountsApi.createInvestmentPair(accountData);
         setAccounts(prev => [...prev, pair.cashAccount, pair.brokerageAccount]);
-        setFileAccountId(fileIndex, pair.brokerageAccount.id);
+        // Investment files go to brokerage account; regular banking files go to cash account
+        const isFileInvestment = importFiles[fileIndex]?.parsedData?.accountType === 'INVESTMENT';
+        setFileAccountId(fileIndex, isFileInvestment ? pair.brokerageAccount.id : pair.cashAccount.id);
         toast.success(`Investment accounts "${pair.cashAccount.name}" and "${pair.brokerageAccount.name}" created`);
       } else {
         const created = await accountsApi.create(accountData);
@@ -284,7 +287,10 @@ export function useImportWizard() {
         if (!query || query.length < 2) continue;
 
         try {
-          const result = await investmentsApi.lookupSecurity(query);
+          const result = await investmentsApi.lookupSecurity(
+            query,
+            preferredExchanges.length > 0 ? preferredExchanges : undefined,
+          );
           if (result && result.symbol.length <= 6) {
             setSecurityMappings((prev) => {
               const updated = [...prev];
@@ -654,21 +660,30 @@ export function useImportWizard() {
       } else if (field === 'securityType') {
         updated[index] = { ...updated[index], securityType: value || undefined };
       } else if (field === 'exchange') {
-        updated[index] = { ...updated[index], exchange: value || undefined };
+        // Clear stale currencyCode when exchange changes so the backend
+        // derives the correct currency from the new exchange
+        updated[index] = { ...updated[index], exchange: value || undefined, currencyCode: undefined };
       }
       return updated;
     });
   };
 
-  const handleSecurityLookup = async (index: number, query: string) => {
+  const handleSecurityLookup = async (index: number, query: string, exchange?: string) => {
     if (!query || query.length < 2) {
       toast.error('Enter at least 2 characters to lookup');
       return;
     }
 
+    // Merge per-mapping exchange (highest priority) with user's preferred exchanges
+    const exchanges = exchange
+      ? [exchange, ...preferredExchanges.filter((e) => e !== exchange)]
+      : preferredExchanges.length > 0
+        ? preferredExchanges
+        : undefined;
+
     setLookupLoadingIndex(index);
     try {
-      const result = await investmentsApi.lookupSecurity(query);
+      const result = await investmentsApi.lookupSecurity(query, exchanges);
       if (result) {
         const existingSecurity = findMatchingSecurityBySymbol(result.symbol, securities);
         setSecurityMappings((prev) => {
