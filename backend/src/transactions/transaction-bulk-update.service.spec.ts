@@ -1331,8 +1331,8 @@ describe("TransactionBulkUpdateService", () => {
     });
 
     it("does not adjust balance for future-dated transactions", async () => {
-      const { isTransactionInFuture } = require("../common/date-utils");
-      isTransactionInFuture.mockReturnValueOnce(true);
+      const dateUtils = jest.requireMock("../common/date-utils");
+      dateUtils.isTransactionInFuture.mockReturnValueOnce(true);
 
       const futureTx = makeTransaction({
         id: "tx-1",
@@ -1501,11 +1501,7 @@ describe("TransactionBulkUpdateService", () => {
       const resolveQb = createMockQueryBuilder({
         getMany: jest
           .fn()
-          .mockResolvedValue([
-            { id: "tx-1" },
-            { id: "tx-2" },
-            { id: "tx-3" },
-          ]),
+          .mockResolvedValue([{ id: "tx-1" }, { id: "tx-2" }, { id: "tx-3" }]),
       });
       const exclusionsQb = createMockQueryBuilder({
         getMany: jest.fn().mockResolvedValue([tx1, tx2, tx3]),

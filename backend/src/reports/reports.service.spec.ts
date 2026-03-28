@@ -113,7 +113,10 @@ describe("ReportsService", () => {
     const inner = {} as Record<string, jest.Mock>;
     const handleArg = (arg: any) => {
       if (arg && arg.whereFactory) {
-        const nestedQb = { where: jest.fn().mockReturnThis(), orWhere: jest.fn().mockReturnThis() };
+        const nestedQb = {
+          where: jest.fn().mockReturnThis(),
+          orWhere: jest.fn().mockReturnThis(),
+        };
         arg.whereFactory(nestedQb);
       }
       return inner;
@@ -1798,9 +1801,7 @@ describe("ReportsService", () => {
           filters: {
             filterGroups: [
               {
-                conditions: [
-                  { field: "category", value: ["cat-1", "cat-2"] },
-                ],
+                conditions: [{ field: "category", value: ["cat-1", "cat-2"] }],
               },
             ],
           },
@@ -1832,9 +1833,7 @@ describe("ReportsService", () => {
           filters: {
             filterGroups: [
               {
-                conditions: [
-                  { field: "payee", value: ["payee-1", "payee-2"] },
-                ],
+                conditions: [{ field: "payee", value: ["payee-1", "payee-2"] }],
               },
             ],
           },
@@ -2270,9 +2269,7 @@ describe("ReportsService", () => {
           createMockTransaction({
             id: "tx-3",
             amount: -20,
-            tags: [
-              { id: "tag-2", name: "Luxury", color: "#0000ff" },
-            ] as any,
+            tags: [{ id: "tag-2", name: "Luxury", color: "#0000ff" }] as any,
           }),
         ];
         setupExecuteMocks(
@@ -2474,9 +2471,7 @@ describe("ReportsService", () => {
         ]);
         budgetsService.findOne.mockResolvedValue({
           id: "budget-1",
-          categories: [
-            { categoryId: "cat-1", amount: 100, isIncome: false },
-          ],
+          categories: [{ categoryId: "cat-1", amount: 100, isIncome: false }],
         });
 
         const result = await service.execute("user-1", "report-1");
@@ -2514,9 +2509,7 @@ describe("ReportsService", () => {
         ]);
         budgetsService.findOne.mockResolvedValue({
           id: "budget-1",
-          categories: [
-            { categoryId: "cat-1", amount: 200, isIncome: false },
-          ],
+          categories: [{ categoryId: "cat-1", amount: 200, isIncome: false }],
         });
 
         const result = await service.execute("user-1", "report-1");
@@ -2611,9 +2604,7 @@ describe("ReportsService", () => {
         ]);
         budgetsService.findOne.mockResolvedValue({
           id: "budget-1",
-          categories: [
-            { categoryId: "cat-1", amount: 100, isIncome: true },
-          ],
+          categories: [{ categoryId: "cat-1", amount: 100, isIncome: true }],
         });
 
         const result = await service.execute("user-1", "report-1");
@@ -2644,7 +2635,7 @@ describe("ReportsService", () => {
 
         budgetsService.findAll.mockResolvedValue([]);
 
-        const result = await service.execute("user-1", "report-1");
+        await service.execute("user-1", "report-1");
 
         // budgetsService should not be called
         expect(budgetsService.findAll).not.toHaveBeenCalled();

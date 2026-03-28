@@ -5,7 +5,7 @@ import {
   Logger,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository, DataSource, QueryRunner, In } from "typeorm";
+import { Repository, DataSource, QueryRunner } from "typeorm";
 import { Cron } from "@nestjs/schedule";
 import { ActionHistory } from "./entities/action-history.entity";
 import { Transaction } from "../transactions/entities/transaction.entity";
@@ -42,55 +42,169 @@ const MAX_JSONB_SIZE_BYTES = 512 * 1024; // 500 KB
 // to prevent SQL injection via crafted JSONB keys
 const ALLOWED_COLUMNS: Record<string, Set<string>> = {
   categories: new Set([
-    "id", "user_id", "parent_id", "name", "description", "icon", "color",
-    "is_income", "is_system", "created_at",
+    "id",
+    "user_id",
+    "parent_id",
+    "name",
+    "description",
+    "icon",
+    "color",
+    "is_income",
+    "is_system",
+    "created_at",
   ]),
   payees: new Set([
-    "id", "user_id", "name", "default_category_id", "notes", "is_active",
+    "id",
+    "user_id",
+    "name",
+    "default_category_id",
+    "notes",
+    "is_active",
     "created_at",
   ]),
   tags: new Set([
-    "id", "user_id", "name", "color", "icon", "created_at", "updated_at",
+    "id",
+    "user_id",
+    "name",
+    "color",
+    "icon",
+    "created_at",
+    "updated_at",
   ]),
   accounts: new Set([
-    "id", "user_id", "account_type", "name", "description", "currency_code",
-    "account_number", "institution", "opening_balance", "current_balance",
-    "credit_limit", "interest_rate", "statement_due_day",
-    "statement_settlement_day", "is_closed", "closed_date", "is_favourite",
-    "exclude_from_net_worth", "account_sub_type", "linked_account_id",
-    "payment_amount", "payment_frequency", "payment_start_date",
-    "source_account_id", "principal_category_id", "interest_category_id",
-    "asset_category_id", "date_acquired", "is_canadian_mortgage",
-    "is_variable_rate", "term_months", "term_end_date", "amortization_months",
-    "original_principal", "scheduled_transaction_id", "created_at", "updated_at",
+    "id",
+    "user_id",
+    "account_type",
+    "name",
+    "description",
+    "currency_code",
+    "account_number",
+    "institution",
+    "opening_balance",
+    "current_balance",
+    "credit_limit",
+    "interest_rate",
+    "statement_due_day",
+    "statement_settlement_day",
+    "is_closed",
+    "closed_date",
+    "is_favourite",
+    "exclude_from_net_worth",
+    "account_sub_type",
+    "linked_account_id",
+    "payment_amount",
+    "payment_frequency",
+    "payment_start_date",
+    "source_account_id",
+    "principal_category_id",
+    "interest_category_id",
+    "asset_category_id",
+    "date_acquired",
+    "is_canadian_mortgage",
+    "is_variable_rate",
+    "term_months",
+    "term_end_date",
+    "amortization_months",
+    "original_principal",
+    "scheduled_transaction_id",
+    "created_at",
+    "updated_at",
   ]),
   scheduled_transactions: new Set([
-    "id", "user_id", "account_id", "name", "payee_id", "payee_name",
-    "category_id", "amount", "currency_code", "description", "frequency",
-    "next_due_date", "start_date", "end_date", "occurrences_remaining",
-    "total_occurrences", "is_active", "auto_post", "reminder_days_before",
-    "last_posted_date", "is_split", "is_transfer", "transfer_account_id",
-    "tag_ids", "created_at", "updated_at",
+    "id",
+    "user_id",
+    "account_id",
+    "name",
+    "payee_id",
+    "payee_name",
+    "category_id",
+    "amount",
+    "currency_code",
+    "description",
+    "frequency",
+    "next_due_date",
+    "start_date",
+    "end_date",
+    "occurrences_remaining",
+    "total_occurrences",
+    "is_active",
+    "auto_post",
+    "reminder_days_before",
+    "last_posted_date",
+    "is_split",
+    "is_transfer",
+    "transfer_account_id",
+    "tag_ids",
+    "created_at",
+    "updated_at",
   ]),
   securities: new Set([
-    "id", "user_id", "symbol", "name", "security_type", "exchange",
-    "currency_code", "is_active", "skip_price_updates", "sector", "industry",
-    "sector_weightings", "sector_data_updated_at", "created_at", "updated_at",
+    "id",
+    "user_id",
+    "symbol",
+    "name",
+    "security_type",
+    "exchange",
+    "currency_code",
+    "is_active",
+    "skip_price_updates",
+    "sector",
+    "industry",
+    "sector_weightings",
+    "sector_data_updated_at",
+    "created_at",
+    "updated_at",
   ]),
   investment_transactions: new Set([
-    "id", "user_id", "account_id", "transaction_id", "security_id",
-    "funding_account_id", "action", "transaction_date", "quantity", "price",
-    "commission", "total_amount", "description", "created_at", "updated_at",
+    "id",
+    "user_id",
+    "account_id",
+    "transaction_id",
+    "security_id",
+    "funding_account_id",
+    "action",
+    "transaction_date",
+    "quantity",
+    "price",
+    "commission",
+    "total_amount",
+    "description",
+    "created_at",
+    "updated_at",
   ]),
   budgets: new Set([
-    "id", "user_id", "name", "description", "budget_type", "period_start",
-    "period_end", "base_income", "income_linked", "strategy", "is_active",
-    "currency_code", "config", "created_at", "updated_at",
+    "id",
+    "user_id",
+    "name",
+    "description",
+    "budget_type",
+    "period_start",
+    "period_end",
+    "base_income",
+    "income_linked",
+    "strategy",
+    "is_active",
+    "currency_code",
+    "config",
+    "created_at",
+    "updated_at",
   ]),
   custom_reports: new Set([
-    "id", "user_id", "name", "description", "icon", "background_color",
-    "view_type", "timeframe_type", "group_by", "filters", "config",
-    "is_favourite", "sort_order", "created_at", "updated_at",
+    "id",
+    "user_id",
+    "name",
+    "description",
+    "icon",
+    "background_color",
+    "view_type",
+    "timeframe_type",
+    "group_by",
+    "filters",
+    "config",
+    "is_favourite",
+    "sort_order",
+    "created_at",
+    "updated_at",
   ]),
 };
 const MAX_HISTORY_AGE_DAYS = 30;
@@ -157,7 +271,10 @@ export class ActionHistoryService {
     }
   }
 
-  async getHistory(userId: string, limit: number = 50): Promise<ActionHistory[]> {
+  async getHistory(
+    userId: string,
+    limit: number = 50,
+  ): Promise<ActionHistory[]> {
     return this.actionHistoryRepository.find({
       where: { userId },
       order: { createdAt: "DESC" },
@@ -237,7 +354,12 @@ export class ActionHistoryService {
         await this.undoTransfer(action, queryRunner);
         break;
       case "category":
-        await this.undoSimpleEntity(action, queryRunner, Category, "categories");
+        await this.undoSimpleEntity(
+          action,
+          queryRunner,
+          Category,
+          "categories",
+        );
         break;
       case "payee":
         await this.undoSimpleEntity(action, queryRunner, Payee, "payees");
@@ -249,10 +371,20 @@ export class ActionHistoryService {
         await this.undoSimpleEntity(action, queryRunner, Account, "accounts");
         break;
       case "scheduled_transaction":
-        await this.undoSimpleEntity(action, queryRunner, ScheduledTransaction, "scheduled_transactions");
+        await this.undoSimpleEntity(
+          action,
+          queryRunner,
+          ScheduledTransaction,
+          "scheduled_transactions",
+        );
         break;
       case "security":
-        await this.undoSimpleEntity(action, queryRunner, Security, "securities");
+        await this.undoSimpleEntity(
+          action,
+          queryRunner,
+          Security,
+          "securities",
+        );
         break;
       case "investment_transaction":
         await this.undoInvestmentTransaction(action, queryRunner);
@@ -261,7 +393,12 @@ export class ActionHistoryService {
         await this.undoSimpleEntity(action, queryRunner, Budget, "budgets");
         break;
       case "custom_report":
-        await this.undoSimpleEntity(action, queryRunner, CustomReport, "custom_reports");
+        await this.undoSimpleEntity(
+          action,
+          queryRunner,
+          CustomReport,
+          "custom_reports",
+        );
         break;
       case "bulk_transaction":
         await this.undoBulkTransaction(action, queryRunner);
@@ -353,7 +490,6 @@ export class ActionHistoryService {
     );
 
     const accountId = transaction.accountId;
-    const amount = Number(transaction.amount);
 
     await queryRunner.manager.remove(transaction);
 
@@ -371,9 +507,7 @@ export class ActionHistoryService {
       where: { id: action.entityId, userId: action.userId },
     });
     if (!transaction) {
-      throw new ConflictException(
-        "Cannot undo: transaction no longer exists",
-      );
+      throw new ConflictException("Cannot undo: transaction no longer exists");
     }
 
     const before = action.beforeData;
@@ -469,9 +603,7 @@ export class ActionHistoryService {
       where: { id: before.accountId, userId: action.userId },
     });
     if (!account) {
-      throw new ConflictException(
-        "Cannot undo: the account no longer exists",
-      );
+      throw new ConflictException("Cannot undo: the account no longer exists");
     }
 
     // Re-insert the transaction
@@ -884,7 +1016,9 @@ export class ActionHistoryService {
     switch (action.action) {
       case "create":
         if (action.entityId) {
-          await queryRunner.manager.delete(entityClass, { id: action.entityId });
+          await queryRunner.manager.delete(entityClass, {
+            id: action.entityId,
+          });
         }
         break;
       case "update":
@@ -922,22 +1056,15 @@ export class ActionHistoryService {
           const data = { ...action.beforeData };
           // Ensure userId is set from the action
           data.userId = action.userId;
-          await this.reinsertEntity(
-            queryRunner,
-            tableName,
-            data,
-          );
+          await this.reinsertEntity(queryRunner, tableName, data);
         }
         break;
       default:
-        throw new ConflictException(
-          `Unsupported action: ${action.action}`,
-        );
+        throw new ConflictException(`Unsupported action: ${action.action}`);
     }
   }
 
   // --- Utility methods ---
-
 
   private async recalculateBalance(
     accountId: string,
@@ -989,10 +1116,7 @@ export class ActionHistoryService {
       [accountId, userId],
     );
 
-    const holdings = new Map<
-      string,
-      { quantity: number; totalCost: number }
-    >();
+    const holdings = new Map<string, { quantity: number; totalCost: number }>();
 
     for (const tx of invTransactions) {
       const securityId = tx.security_id;
