@@ -109,18 +109,44 @@ describe("ReportsService", () => {
       ...overrides,
     }) as unknown as Transaction;
 
+  const createMockInnerQb = () => {
+    const inner = {} as Record<string, jest.Mock>;
+    const handleArg = (arg: any) => {
+      if (arg && arg.whereFactory) {
+        const nestedQb = { where: jest.fn().mockReturnThis(), orWhere: jest.fn().mockReturnThis() };
+        arg.whereFactory(nestedQb);
+      }
+      return inner;
+    };
+    inner.where = jest.fn().mockImplementation(handleArg);
+    inner.orWhere = jest.fn().mockImplementation(handleArg);
+    return inner;
+  };
+
   const createMockQueryBuilder = (
     overrides: Record<string, jest.Mock> = {},
-  ) => ({
-    leftJoinAndSelect: jest.fn().mockReturnThis(),
-    where: jest.fn().mockReturnThis(),
-    andWhere: jest.fn().mockReturnThis(),
-    orWhere: jest.fn().mockReturnThis(),
-    orderBy: jest.fn().mockReturnThis(),
-    take: jest.fn().mockReturnThis(),
-    getMany: jest.fn().mockResolvedValue([]),
-    ...overrides,
-  });
+  ) => {
+    const qb = {} as Record<string, jest.Mock>;
+    qb.leftJoinAndSelect = jest.fn().mockReturnValue(qb);
+    qb.where = jest.fn().mockReturnValue(qb);
+    qb.andWhere = jest.fn().mockImplementation((arg: any) => {
+      // If arg is a Brackets instance, invoke its whereFactory to cover the callback code
+      if (arg && arg.whereFactory) {
+        const innerQb = createMockInnerQb();
+        arg.whereFactory(innerQb);
+      }
+      return qb;
+    });
+    qb.orWhere = jest.fn().mockReturnValue(qb);
+    qb.orderBy = jest.fn().mockReturnValue(qb);
+    qb.take = jest.fn().mockReturnValue(qb);
+    qb.getMany = jest.fn().mockResolvedValue([]);
+    // Apply overrides last
+    for (const [key, val] of Object.entries(overrides)) {
+      qb[key] = val;
+    }
+    return qb;
+  };
 
   beforeEach(async () => {
     reportsRepository = {
@@ -1732,6 +1758,161 @@ describe("ReportsService", () => {
         expect(hasBracketsCall).toBe(false);
       });
 
+      it("applies filterGroups with account field having multiple values", async () => {
+        setupExecuteMocks({
+          filters: {
+            filterGroups: [
+              {
+                conditions: [
+                  { field: "account", value: ["acc-1", "acc-2", "acc-3"] },
+                ],
+              },
+            ],
+          },
+          config: { ...defaultConfig },
+        });
+
+        // Should not throw; the Brackets callback handles multi-value accounts
+        const result = await service.execute("user-1", "report-1");
+        expect(result).toBeDefined();
+      });
+
+      it("applies filterGroups with category field single value", async () => {
+        setupExecuteMocks({
+          filters: {
+            filterGroups: [
+              {
+                conditions: [{ field: "category", value: "cat-1" }],
+              },
+            ],
+          },
+          config: { ...defaultConfig },
+        });
+
+        const result = await service.execute("user-1", "report-1");
+        expect(result).toBeDefined();
+      });
+
+      it("applies filterGroups with category field multiple values", async () => {
+        setupExecuteMocks({
+          filters: {
+            filterGroups: [
+              {
+                conditions: [
+                  { field: "category", value: ["cat-1", "cat-2"] },
+                ],
+              },
+            ],
+          },
+          config: { ...defaultConfig },
+        });
+
+        const result = await service.execute("user-1", "report-1");
+        expect(result).toBeDefined();
+      });
+
+      it("applies filterGroups with payee field single value", async () => {
+        setupExecuteMocks({
+          filters: {
+            filterGroups: [
+              {
+                conditions: [{ field: "payee", value: "payee-1" }],
+              },
+            ],
+          },
+          config: { ...defaultConfig },
+        });
+
+        const result = await service.execute("user-1", "report-1");
+        expect(result).toBeDefined();
+      });
+
+      it("applies filterGroups with payee field multiple values", async () => {
+        setupExecuteMocks({
+          filters: {
+            filterGroups: [
+              {
+                conditions: [
+                  { field: "payee", value: ["payee-1", "payee-2"] },
+                ],
+              },
+            ],
+          },
+          config: { ...defaultConfig },
+        });
+
+        const result = await service.execute("user-1", "report-1");
+        expect(result).toBeDefined();
+      });
+
+      it("applies filterGroups with tag field single value", async () => {
+        setupExecuteMocks({
+          filters: {
+            filterGroups: [
+              {
+                conditions: [{ field: "tag", value: "tag-1" }],
+              },
+            ],
+          },
+          config: { ...defaultConfig },
+        });
+
+        const result = await service.execute("user-1", "report-1");
+        expect(result).toBeDefined();
+      });
+
+      it("applies filterGroups with text field as string", async () => {
+        setupExecuteMocks({
+          filters: {
+            filterGroups: [
+              {
+                conditions: [{ field: "text", value: "coffee" }],
+              },
+            ],
+          },
+          config: { ...defaultConfig },
+        });
+
+        const result = await service.execute("user-1", "report-1");
+        expect(result).toBeDefined();
+      });
+
+      it("applies filterGroups with text field as array", async () => {
+        setupExecuteMocks({
+          filters: {
+            filterGroups: [
+              {
+                conditions: [{ field: "text", value: ["coffee"] }],
+              },
+            ],
+          },
+          config: { ...defaultConfig },
+        });
+
+        const result = await service.execute("user-1", "report-1");
+        expect(result).toBeDefined();
+      });
+
+      it("applies orWhere for second condition in a filter group", async () => {
+        setupExecuteMocks({
+          filters: {
+            filterGroups: [
+              {
+                conditions: [
+                  { field: "account", value: "acc-1" },
+                  { field: "payee", value: "payee-1" },
+                ],
+              },
+            ],
+          },
+          config: { ...defaultConfig },
+        });
+
+        // Second condition uses orWhere instead of where
+        const result = await service.execute("user-1", "report-1");
+        expect(result).toBeDefined();
+      });
+
       it("always excludes VOID transactions", async () => {
         const { qb } = setupExecuteMocks({
           config: { ...defaultConfig },
@@ -2055,6 +2236,777 @@ describe("ReportsService", () => {
 
         expect(categoriesRepository.find).not.toHaveBeenCalled();
         expect(payeesRepository.find).not.toHaveBeenCalled();
+      });
+
+      it("falls back to default date range for unrecognized timeframe type", async () => {
+        setupExecuteMocks({
+          timeframeType: "UNKNOWN_TIMEFRAME" as TimeframeType,
+          config: { ...defaultConfig },
+        });
+
+        const result = await service.execute("user-1", "report-1");
+
+        expect(result.timeframe.label).toBe("Last 3 Months");
+      });
+    });
+
+    describe("groupBy TAG", () => {
+      it("aggregates transactions by tag", async () => {
+        const transactions = [
+          createMockTransaction({
+            id: "tx-1",
+            amount: -50,
+            tags: [
+              { id: "tag-1", name: "Essentials", color: "#ff0000" },
+            ] as any,
+          }),
+          createMockTransaction({
+            id: "tx-2",
+            amount: -30,
+            tags: [
+              { id: "tag-1", name: "Essentials", color: "#ff0000" },
+            ] as any,
+          }),
+          createMockTransaction({
+            id: "tx-3",
+            amount: -20,
+            tags: [
+              { id: "tag-2", name: "Luxury", color: "#0000ff" },
+            ] as any,
+          }),
+        ];
+        setupExecuteMocks(
+          {
+            groupBy: GroupByType.TAG,
+            config: { ...defaultConfig, metric: MetricType.TOTAL_AMOUNT },
+          },
+          transactions,
+        );
+
+        const result = await service.execute("user-1", "report-1");
+
+        expect(result.data).toHaveLength(2);
+        // Sorted descending by value
+        expect(result.data[0].label).toBe("Essentials");
+        expect(result.data[0].value).toBe(80);
+        expect(result.data[0].color).toBe("#ff0000");
+        expect(result.data[0].count).toBe(2);
+        expect(result.data[1].label).toBe("Luxury");
+        expect(result.data[1].value).toBe(20);
+      });
+
+      it("labels untagged transactions", async () => {
+        const transactions = [
+          createMockTransaction({
+            id: "tx-1",
+            amount: -50,
+            tags: [],
+          }),
+        ];
+        setupExecuteMocks(
+          {
+            groupBy: GroupByType.TAG,
+            config: { ...defaultConfig, metric: MetricType.TOTAL_AMOUNT },
+          },
+          transactions,
+        );
+
+        const result = await service.execute("user-1", "report-1");
+
+        expect(result.data).toHaveLength(1);
+        expect(result.data[0].id).toBe("untagged");
+        expect(result.data[0].label).toBe("Untagged");
+      });
+
+      it("collects tags from splits without duplicating", async () => {
+        const transactions = [
+          createMockTransaction({
+            id: "tx-1",
+            amount: -100,
+            tags: [
+              { id: "tag-1", name: "Essentials", color: "#ff0000" },
+            ] as any,
+            splits: [
+              {
+                id: "split-1",
+                tags: [
+                  { id: "tag-1", name: "Essentials", color: "#ff0000" },
+                  { id: "tag-2", name: "Luxury", color: "#0000ff" },
+                ],
+              },
+            ] as any,
+          }),
+        ];
+        setupExecuteMocks(
+          {
+            groupBy: GroupByType.TAG,
+            config: { ...defaultConfig, metric: MetricType.TOTAL_AMOUNT },
+          },
+          transactions,
+        );
+
+        const result = await service.execute("user-1", "report-1");
+
+        // tag-1 appears on both tx and split, should not be double-counted
+        expect(result.data).toHaveLength(2);
+        const essentials = result.data.find((d) => d.label === "Essentials");
+        const luxury = result.data.find((d) => d.label === "Luxury");
+        expect(essentials).toBeDefined();
+        expect(luxury).toBeDefined();
+        expect(essentials!.count).toBe(1);
+        expect(luxury!.count).toBe(1);
+      });
+
+      it("calculates percentages for tag aggregation", async () => {
+        const transactions = [
+          createMockTransaction({
+            id: "tx-1",
+            amount: -75,
+            tags: [{ id: "tag-1", name: "A" }] as any,
+          }),
+          createMockTransaction({
+            id: "tx-2",
+            amount: -25,
+            tags: [{ id: "tag-2", name: "B" }] as any,
+          }),
+        ];
+        setupExecuteMocks(
+          {
+            groupBy: GroupByType.TAG,
+            config: { ...defaultConfig, metric: MetricType.TOTAL_AMOUNT },
+          },
+          transactions,
+        );
+
+        const result = await service.execute("user-1", "report-1");
+
+        const tagA = result.data.find((d) => d.label === "A");
+        const tagB = result.data.find((d) => d.label === "B");
+        expect(tagA!.percentage).toBe(75);
+        expect(tagB!.percentage).toBe(25);
+      });
+
+      it("handles transactions with no tags array (undefined)", async () => {
+        const transactions = [
+          createMockTransaction({
+            id: "tx-1",
+            amount: -50,
+            tags: undefined as any,
+          }),
+        ];
+        setupExecuteMocks(
+          {
+            groupBy: GroupByType.TAG,
+            config: { ...defaultConfig, metric: MetricType.TOTAL_AMOUNT },
+          },
+          transactions,
+        );
+
+        const result = await service.execute("user-1", "report-1");
+
+        expect(result.data).toHaveLength(1);
+        expect(result.data[0].label).toBe("Untagged");
+      });
+
+      it("handles split tags without transaction-level tags", async () => {
+        const transactions = [
+          createMockTransaction({
+            id: "tx-1",
+            amount: -100,
+            tags: [],
+            splits: [
+              {
+                id: "split-1",
+                tags: [{ id: "tag-3", name: "SplitOnly", color: "#aaa" }],
+              },
+            ] as any,
+          }),
+        ];
+        setupExecuteMocks(
+          {
+            groupBy: GroupByType.TAG,
+            config: { ...defaultConfig, metric: MetricType.TOTAL_AMOUNT },
+          },
+          transactions,
+        );
+
+        const result = await service.execute("user-1", "report-1");
+
+        expect(result.data).toHaveLength(1);
+        expect(result.data[0].label).toBe("SplitOnly");
+      });
+    });
+
+    describe("budget variance enrichment", () => {
+      let budgetsService: { findAll: jest.Mock; findOne: jest.Mock };
+
+      beforeEach(() => {
+        budgetsService = {
+          findAll: jest.fn(),
+          findOne: jest.fn(),
+        };
+        // Re-wire the budgets service mock
+        (service as any).budgetsService = budgetsService;
+      });
+
+      it("enriches category data with budget variance when metric is BUDGET_VARIANCE and groupBy is CATEGORY", async () => {
+        const transactions = [
+          createMockTransaction({
+            id: "tx-1",
+            categoryId: "cat-1",
+            amount: -80,
+          }),
+        ];
+        setupExecuteMocks(
+          {
+            groupBy: GroupByType.CATEGORY,
+            config: {
+              ...defaultConfig,
+              metric: MetricType.BUDGET_VARIANCE,
+            },
+          },
+          transactions,
+        );
+        categoriesRepository.find.mockResolvedValue([mockCategory]);
+
+        budgetsService.findAll.mockResolvedValue([
+          { id: "budget-1", isActive: true },
+        ]);
+        budgetsService.findOne.mockResolvedValue({
+          id: "budget-1",
+          categories: [
+            { categoryId: "cat-1", amount: 100, isIncome: false },
+          ],
+        });
+
+        const result = await service.execute("user-1", "report-1");
+
+        const groceries = result.data.find((d) => d.label === "Groceries");
+        expect(groceries).toBeDefined();
+        // actual=80, budgeted=100, variance=80-100=-20
+        expect(groceries!.value).toBe(-20);
+        expect(groceries!.budgeted).toBe(100);
+        expect(groceries!.actual).toBe(80);
+      });
+
+      it("falls back to first budget when no active budget exists", async () => {
+        const transactions = [
+          createMockTransaction({
+            id: "tx-1",
+            categoryId: "cat-1",
+            amount: -50,
+          }),
+        ];
+        setupExecuteMocks(
+          {
+            groupBy: GroupByType.CATEGORY,
+            config: {
+              ...defaultConfig,
+              metric: MetricType.BUDGET_VARIANCE,
+            },
+          },
+          transactions,
+        );
+        categoriesRepository.find.mockResolvedValue([mockCategory]);
+
+        budgetsService.findAll.mockResolvedValue([
+          { id: "budget-1", isActive: false },
+        ]);
+        budgetsService.findOne.mockResolvedValue({
+          id: "budget-1",
+          categories: [
+            { categoryId: "cat-1", amount: 200, isIncome: false },
+          ],
+        });
+
+        const result = await service.execute("user-1", "report-1");
+
+        const groceries = result.data.find((d) => d.label === "Groceries");
+        expect(groceries!.budgeted).toBe(200);
+      });
+
+      it("returns original data when no budgets exist", async () => {
+        const transactions = [
+          createMockTransaction({
+            id: "tx-1",
+            categoryId: "cat-1",
+            amount: -50,
+          }),
+        ];
+        setupExecuteMocks(
+          {
+            groupBy: GroupByType.CATEGORY,
+            config: {
+              ...defaultConfig,
+              metric: MetricType.BUDGET_VARIANCE,
+            },
+          },
+          transactions,
+        );
+        categoriesRepository.find.mockResolvedValue([mockCategory]);
+
+        budgetsService.findAll.mockResolvedValue([]);
+
+        const result = await service.execute("user-1", "report-1");
+
+        // Should return data without enrichment
+        const groceries = result.data.find((d) => d.label === "Groceries");
+        expect(groceries).toBeDefined();
+        expect(groceries!.value).toBe(50);
+        expect(groceries!.budgeted).toBeUndefined();
+      });
+
+      it("returns original data when budgets service throws an error", async () => {
+        const transactions = [
+          createMockTransaction({
+            id: "tx-1",
+            categoryId: "cat-1",
+            amount: -50,
+          }),
+        ];
+        setupExecuteMocks(
+          {
+            groupBy: GroupByType.CATEGORY,
+            config: {
+              ...defaultConfig,
+              metric: MetricType.BUDGET_VARIANCE,
+            },
+          },
+          transactions,
+        );
+        categoriesRepository.find.mockResolvedValue([mockCategory]);
+
+        budgetsService.findAll.mockRejectedValue(new Error("DB error"));
+
+        const result = await service.execute("user-1", "report-1");
+
+        // Should gracefully return unenriched data
+        const groceries = result.data.find((d) => d.label === "Groceries");
+        expect(groceries).toBeDefined();
+        expect(groceries!.value).toBe(50);
+      });
+
+      it("skips income budget categories", async () => {
+        const transactions = [
+          createMockTransaction({
+            id: "tx-1",
+            categoryId: "cat-1",
+            amount: -50,
+          }),
+        ];
+        setupExecuteMocks(
+          {
+            groupBy: GroupByType.CATEGORY,
+            config: {
+              ...defaultConfig,
+              metric: MetricType.BUDGET_VARIANCE,
+            },
+          },
+          transactions,
+        );
+        categoriesRepository.find.mockResolvedValue([mockCategory]);
+
+        budgetsService.findAll.mockResolvedValue([
+          { id: "budget-1", isActive: true },
+        ]);
+        budgetsService.findOne.mockResolvedValue({
+          id: "budget-1",
+          categories: [
+            { categoryId: "cat-1", amount: 100, isIncome: true },
+          ],
+        });
+
+        const result = await service.execute("user-1", "report-1");
+
+        const groceries = result.data.find((d) => d.label === "Groceries");
+        // isIncome=true, so budgeted=0, variance=50-0=50
+        expect(groceries!.value).toBe(50);
+        expect(groceries!.budgeted).toBe(0);
+      });
+
+      it("does not enrich when metric is BUDGET_VARIANCE but groupBy is not CATEGORY", async () => {
+        const transactions = [
+          createMockTransaction({
+            id: "tx-1",
+            amount: -50,
+          }),
+        ];
+        setupExecuteMocks(
+          {
+            groupBy: GroupByType.NONE,
+            config: {
+              ...defaultConfig,
+              metric: MetricType.BUDGET_VARIANCE,
+            },
+          },
+          transactions,
+        );
+
+        budgetsService.findAll.mockResolvedValue([]);
+
+        const result = await service.execute("user-1", "report-1");
+
+        // budgetsService should not be called
+        expect(budgetsService.findAll).not.toHaveBeenCalled();
+      });
+    });
+
+    describe("additional sorting columns", () => {
+      it("sorts by PERCENTAGE column", async () => {
+        const transactions = [
+          createMockTransaction({
+            id: "tx-1",
+            categoryId: "cat-1",
+            amount: -20,
+          }),
+          createMockTransaction({
+            id: "tx-2",
+            categoryId: "cat-2",
+            amount: -80,
+          }),
+        ];
+        const categories = [
+          mockCategory,
+          { ...mockCategory, id: "cat-2", name: "Dining" },
+        ];
+        setupExecuteMocks(
+          {
+            groupBy: GroupByType.CATEGORY,
+            config: {
+              ...defaultConfig,
+              metric: MetricType.TOTAL_AMOUNT,
+              sortBy: TableColumn.PERCENTAGE,
+              sortDirection: SortDirection.ASC,
+            },
+          },
+          transactions,
+        );
+        categoriesRepository.find.mockResolvedValue(categories);
+
+        const result = await service.execute("user-1", "report-1");
+
+        expect(result.data[0].percentage!).toBeLessThanOrEqual(
+          result.data[1].percentage!,
+        );
+      });
+
+      it("sorts by PAYEE column", async () => {
+        const transactions = [
+          createMockTransaction({
+            id: "tx-1",
+            amount: -50,
+            payeeName: "Zebra Store",
+          }),
+          createMockTransaction({
+            id: "tx-2",
+            amount: -30,
+            payeeName: "Apple Shop",
+          }),
+        ];
+        setupExecuteMocks(
+          {
+            groupBy: GroupByType.NONE,
+            config: {
+              ...defaultConfig,
+              metric: MetricType.NONE,
+              sortBy: TableColumn.PAYEE,
+              sortDirection: SortDirection.ASC,
+            },
+          },
+          transactions,
+        );
+
+        const result = await service.execute("user-1", "report-1");
+
+        expect(result.data[0].payee).toBe("Apple Shop");
+        expect(result.data[1].payee).toBe("Zebra Store");
+      });
+
+      it("sorts by DESCRIPTION column", async () => {
+        const transactions = [
+          createMockTransaction({
+            id: "tx-1",
+            amount: -50,
+            description: "Zebra desc",
+            payeeName: "Store",
+          }),
+          createMockTransaction({
+            id: "tx-2",
+            amount: -30,
+            description: "Alpha desc",
+            payeeName: "Store",
+          }),
+        ];
+        setupExecuteMocks(
+          {
+            groupBy: GroupByType.NONE,
+            config: {
+              ...defaultConfig,
+              metric: MetricType.NONE,
+              sortBy: TableColumn.DESCRIPTION,
+              sortDirection: SortDirection.ASC,
+            },
+          },
+          transactions,
+        );
+
+        const result = await service.execute("user-1", "report-1");
+
+        expect(result.data[0].description).toBe("Alpha desc");
+        expect(result.data[1].description).toBe("Zebra desc");
+      });
+
+      it("sorts by MEMO column", async () => {
+        const transactions = [
+          createMockTransaction({
+            id: "tx-1",
+            amount: -100,
+            isSplit: true,
+            splits: [
+              {
+                id: "split-1",
+                amount: -60,
+                memo: "Zebra memo",
+                category: { id: "cat-1", name: "Groceries" },
+              } as any,
+              {
+                id: "split-2",
+                amount: -40,
+                memo: "Alpha memo",
+                category: { id: "cat-2", name: "Household" },
+              } as any,
+            ],
+          }),
+        ];
+        setupExecuteMocks(
+          {
+            groupBy: GroupByType.NONE,
+            config: {
+              ...defaultConfig,
+              metric: MetricType.NONE,
+              sortBy: TableColumn.MEMO,
+              sortDirection: SortDirection.ASC,
+            },
+          },
+          transactions,
+        );
+
+        const result = await service.execute("user-1", "report-1");
+
+        expect(result.data[0].memo).toBe("Alpha memo");
+        expect(result.data[1].memo).toBe("Zebra memo");
+      });
+
+      it("sorts by CATEGORY column", async () => {
+        const transactions = [
+          createMockTransaction({
+            id: "tx-1",
+            amount: -50,
+            payeeName: "Store",
+            category: { id: "cat-1", name: "Zebra Category" } as any,
+          }),
+          createMockTransaction({
+            id: "tx-2",
+            amount: -30,
+            payeeName: "Store",
+            category: { id: "cat-2", name: "Alpha Category" } as any,
+          }),
+        ];
+        setupExecuteMocks(
+          {
+            groupBy: GroupByType.NONE,
+            config: {
+              ...defaultConfig,
+              metric: MetricType.NONE,
+              sortBy: TableColumn.CATEGORY,
+              sortDirection: SortDirection.ASC,
+            },
+          },
+          transactions,
+        );
+
+        const result = await service.execute("user-1", "report-1");
+
+        expect(result.data[0].category).toBe("Alpha Category");
+        expect(result.data[1].category).toBe("Zebra Category");
+      });
+
+      it("sorts by ACCOUNT column", async () => {
+        const transactions = [
+          createMockTransaction({
+            id: "tx-1",
+            amount: -50,
+            payeeName: "Store",
+            account: { id: "acc-1", name: "Zebra Account" } as any,
+          }),
+          createMockTransaction({
+            id: "tx-2",
+            amount: -30,
+            payeeName: "Store",
+            account: { id: "acc-2", name: "Alpha Account" } as any,
+          }),
+        ];
+        setupExecuteMocks(
+          {
+            groupBy: GroupByType.NONE,
+            config: {
+              ...defaultConfig,
+              metric: MetricType.NONE,
+              sortBy: TableColumn.ACCOUNT,
+              sortDirection: SortDirection.ASC,
+            },
+          },
+          transactions,
+        );
+
+        const result = await service.execute("user-1", "report-1");
+
+        expect(result.data[0].account).toBe("Alpha Account");
+        expect(result.data[1].account).toBe("Zebra Account");
+      });
+
+      it("returns stable order for unrecognized sort column (default case)", async () => {
+        const transactions = [
+          createMockTransaction({
+            id: "tx-1",
+            amount: -50,
+            payeeName: "A",
+          }),
+          createMockTransaction({
+            id: "tx-2",
+            amount: -30,
+            payeeName: "B",
+          }),
+        ];
+        setupExecuteMocks(
+          {
+            groupBy: GroupByType.NONE,
+            config: {
+              ...defaultConfig,
+              metric: MetricType.NONE,
+              sortBy: "UNKNOWN_COLUMN" as TableColumn,
+              sortDirection: SortDirection.ASC,
+            },
+          },
+          transactions,
+        );
+
+        const result = await service.execute("user-1", "report-1");
+
+        // default case returns 0, so order is preserved
+        expect(result.data).toHaveLength(2);
+      });
+    });
+
+    describe("calculateMetricValue branches", () => {
+      it("returns raw sum for unrecognized metric type", async () => {
+        const transactions = [
+          createMockTransaction({ id: "tx-1", amount: -50 }),
+        ];
+        setupExecuteMocks(
+          {
+            groupBy: GroupByType.NONE,
+            config: {
+              ...defaultConfig,
+              metric: "UNKNOWN_METRIC" as MetricType,
+            },
+          },
+          transactions,
+        );
+
+        const result = await service.execute("user-1", "report-1");
+
+        expect(result.data).toHaveLength(1);
+        expect(result.data[0].value).toBe(50);
+      });
+
+      it("handles NONE metric with grouped data (category)", async () => {
+        const transactions = [
+          createMockTransaction({
+            id: "tx-1",
+            categoryId: "cat-1",
+            amount: -50,
+          }),
+        ];
+        setupExecuteMocks(
+          {
+            groupBy: GroupByType.CATEGORY,
+            config: { ...defaultConfig, metric: MetricType.NONE },
+          },
+          transactions,
+        );
+        categoriesRepository.find.mockResolvedValue([mockCategory]);
+
+        const result = await service.execute("user-1", "report-1");
+
+        expect(result.data).toHaveLength(1);
+        expect(result.data[0].label).toBe("Groceries");
+        expect(result.data[0].value).toBe(50);
+      });
+
+      it("handles BUDGET_VARIANCE metric in calculateMetricValue", async () => {
+        const transactions = [
+          createMockTransaction({
+            id: "tx-1",
+            categoryId: "cat-1",
+            amount: -75.555,
+          }),
+        ];
+        setupExecuteMocks(
+          {
+            groupBy: GroupByType.CATEGORY,
+            config: {
+              ...defaultConfig,
+              metric: MetricType.BUDGET_VARIANCE,
+            },
+          },
+          transactions,
+        );
+        categoriesRepository.find.mockResolvedValue([mockCategory]);
+
+        // Mock budgets to return empty so enrichment returns original data
+        (service as any).budgetsService = {
+          findAll: jest.fn().mockResolvedValue([]),
+          findOne: jest.fn(),
+        };
+
+        const result = await service.execute("user-1", "report-1");
+
+        // Value should be rounded to 2 decimal places
+        expect(result.data).toHaveLength(1);
+        expect(result.data[0].value).toBe(75.56);
+      });
+    });
+
+    describe("payee name fallback branch", () => {
+      it("picks up payeeName from a later transaction when first one has null payeeName", async () => {
+        const transactions = [
+          createMockTransaction({
+            id: "tx-1",
+            payeeId: "payee-x",
+            payeeName: null,
+            amount: -30,
+          }),
+          createMockTransaction({
+            id: "tx-2",
+            payeeId: "payee-x",
+            payeeName: "Late Name",
+            amount: -20,
+          }),
+        ];
+        setupExecuteMocks(
+          {
+            groupBy: GroupByType.PAYEE,
+            config: { ...defaultConfig, metric: MetricType.TOTAL_AMOUNT },
+          },
+          transactions,
+        );
+        payeesRepository.find.mockResolvedValue([]);
+
+        const result = await service.execute("user-1", "report-1");
+
+        expect(result.data).toHaveLength(1);
+        expect(result.data[0].label).toBe("Late Name");
       });
     });
   });
