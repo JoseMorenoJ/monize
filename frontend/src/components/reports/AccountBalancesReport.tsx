@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { accountsApi } from '@/lib/accounts';
@@ -10,6 +10,7 @@ import { PortfolioSummary } from '@/types/investment';
 import { useNumberFormat } from '@/hooks/useNumberFormat';
 import { useExchangeRates } from '@/hooks/useExchangeRates';
 import { CHART_COLOURS } from '@/lib/chart-colours';
+import { ExportDropdown } from '@/components/ui/ExportDropdown';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('AccountBalancesReport');
@@ -44,6 +45,7 @@ export function AccountBalancesReport() {
   const [typeFilter, setTypeFilter] = useState<AccountTypeFilter>('all');
   const [viewMode, setViewMode] = useState<ViewMode>('table');
   const [chartGrouping, setChartGrouping] = useState<ChartGrouping>('type');
+  const chartRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const loadData = async () => {
@@ -209,6 +211,27 @@ export function AccountBalancesReport() {
     router.push(`/transactions?accountId=${accountId}`);
   };
 
+  const handleExportPdf = async () => {
+    const { exportToPdf } = await import('@/lib/pdf-export');
+    const headers = ['Account', 'Type', 'Balance'];
+    const rows = filteredAccounts.map(acc => [
+      acc.name,
+      accountTypeLabels[acc.accountType] || acc.accountType,
+      formatCurrency(getEffectiveBalance(acc), acc.currencyCode),
+    ]);
+    await exportToPdf({
+      title: 'Account Balances',
+      summaryCards: [
+        { label: 'Total Assets', value: formatCurrency(totals.assets), color: '#16a34a' },
+        { label: 'Total Liabilities', value: formatCurrency(totals.liabilities), color: '#dc2626' },
+        { label: 'Net Worth', value: formatCurrency(totals.netWorth), color: totals.netWorth >= 0 ? '#2563eb' : '#ea580c' },
+      ],
+      chartContainer: chartRef.current,
+      tableData: { headers, rows },
+      filename: 'account-balances',
+    });
+  };
+
   if (isLoading) {
     return (
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-6">
@@ -268,40 +291,43 @@ export function AccountBalancesReport() {
               </button>
             ))}
           </div>
-          <div className="flex gap-1">
-            <button
-              onClick={() => setViewMode('table')}
-              className={`p-2 rounded-md transition-colors ${
-                viewMode === 'table'
-                  ? 'bg-blue-600 text-white'
-                  : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
-              }`}
-              title="Table view"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-              </svg>
-            </button>
-            <button
-              onClick={() => setViewMode('chart')}
-              className={`p-2 rounded-md transition-colors ${
-                viewMode === 'chart'
-                  ? 'bg-blue-600 text-white'
-                  : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
-              }`}
-              title="Chart view"
-            >
-              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M11 2v20c-5.07-.5-9-4.79-9-10s3.93-9.5 9-10zm2.03 0v8.99H22c-.47-4.74-4.24-8.52-8.97-8.99zm0 11.01V22c4.74-.47 8.5-4.25 8.97-8.99h-8.97z" />
-              </svg>
-            </button>
+          <div className="flex items-center gap-2">
+            <div className="flex gap-1">
+              <button
+                onClick={() => setViewMode('table')}
+                className={`p-2 rounded-md transition-colors ${
+                  viewMode === 'table'
+                    ? 'bg-blue-600 text-white'
+                    : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
+                }`}
+                title="Table view"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                </svg>
+              </button>
+              <button
+                onClick={() => setViewMode('chart')}
+                className={`p-2 rounded-md transition-colors ${
+                  viewMode === 'chart'
+                    ? 'bg-blue-600 text-white'
+                    : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
+                }`}
+                title="Chart view"
+              >
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M11 2v20c-5.07-.5-9-4.79-9-10s3.93-9.5 9-10zm2.03 0v8.99H22c-.47-4.74-4.24-8.52-8.97-8.99zm0 11.01V22c4.74-.47 8.5-4.25 8.97-8.99h-8.97z" />
+                </svg>
+              </button>
+            </div>
+            <ExportDropdown onExportPdf={handleExportPdf} />
           </div>
         </div>
       </div>
 
       {/* Chart View */}
       {viewMode === 'chart' && (
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-6">
+        <div ref={chartRef} className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-6">
           {/* Grouping toggle */}
           <div className="flex gap-2 mb-6">
             {(['type', 'account'] as ChartGrouping[]).map((g) => (

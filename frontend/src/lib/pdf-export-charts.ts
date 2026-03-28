@@ -10,25 +10,75 @@ export interface CapturedChart {
 }
 
 /**
- * Captures a Recharts SVG element from a container and converts it to a PNG data URL.
- * Forces a white background regardless of dark mode for print-friendly output.
+ * Resolves chart dimensions from multiple sources for reliability.
+ * Recharts sets width/height attributes on the SVG element, which are the most
+ * reliable source. Falls back to getBoundingClientRect and container dimensions.
  */
-export async function captureSvgAsImage(
+function resolveChartDimensions(
+  svg: SVGSVGElement,
   container: HTMLElement,
-  scale: number = 2,
+): { width: number; height: number } | null {
+  // Source 1: SVG element's own width/height attributes (set by Recharts)
+  const attrWidth = parseFloat(svg.getAttribute('width') || '0');
+  const attrHeight = parseFloat(svg.getAttribute('height') || '0');
+  if (attrWidth > 50 && attrHeight > 50) {
+    return { width: attrWidth, height: attrHeight };
+  }
+
+  // Source 2: SVG bounding client rect (CSS-computed layout)
+  const svgRect = svg.getBoundingClientRect();
+  if (svgRect.width > 50 && svgRect.height > 50) {
+    return { width: svgRect.width, height: svgRect.height };
+  }
+
+  // Source 3: Container element dimensions
+  const containerRect = container.getBoundingClientRect();
+  if (containerRect.width > 50 && containerRect.height > 50) {
+    return { width: containerRect.width, height: containerRect.height };
+  }
+
+  return null;
+}
+
+/**
+ * Captures a single SVG element and converts it to a PNG data URL.
+ * Forces a white background regardless of dark mode for print-friendly output.
+ *
+ * The SVG clone is rendered at (width*scale x height*scale) with a viewBox at the
+ * original dimensions, so the browser's SVG renderer natively produces a high-resolution
+ * raster without canvas upscaling artifacts.
+ */
+function captureSingleSvg(
+  svg: SVGSVGElement,
+  container: HTMLElement,
+  scale: number,
 ): Promise<CapturedChart | null> {
-  const svg = container.querySelector('svg.recharts-surface') as SVGSVGElement | null;
-  if (!svg) return null;
+  const dims = resolveChartDimensions(svg, container);
+  if (!dims) return Promise.resolve(null);
+
+  const { width, height } = dims;
+  const scaledWidth = Math.round(width * scale);
+  const scaledHeight = Math.round(height * scale);
 
   const svgClone = svg.cloneNode(true) as SVGSVGElement;
-  const svgRect = svg.getBoundingClientRect();
-  const width = svgRect.width;
-  const height = svgRect.height;
 
-  // Ensure the clone has explicit dimensions and a white background
-  svgClone.setAttribute('width', String(width));
-  svgClone.setAttribute('height', String(height));
+  // Remove inline style -- Recharts sets "width: 100%; height: 100%" which,
+  // in a standalone context (no parent container), overrides the explicit
+  // width/height attributes and collapses to ~150px default.
+  svgClone.removeAttribute('style');
+
+  // Also remove style from direct SVG children (Recharts wrapper groups)
+  svgClone.querySelectorAll(':scope > g[style], :scope > svg[style]').forEach((el) => {
+    (el as SVGElement).removeAttribute('style');
+  });
+
+  // Set the clone to render at scaled resolution natively.
+  // viewBox preserves the original coordinate system while width/height
+  // at scaled values makes the SVG renderer produce a high-res raster.
   svgClone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+  svgClone.setAttribute('viewBox', `0 0 ${width} ${height}`);
+  svgClone.setAttribute('width', String(scaledWidth));
+  svgClone.setAttribute('height', String(scaledHeight));
 
   // Add white background rect as the first child
   const bgRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
@@ -59,26 +109,24 @@ export async function captureSvgAsImage(
 
   const serializer = new XMLSerializer();
   const svgString = serializer.serializeToString(svgClone);
-  const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
-  const url = URL.createObjectURL(svgBlob);
+  const base64 = btoa(unescape(encodeURIComponent(svgString)));
+  const dataUri = `data:image/svg+xml;base64,${base64}`;
 
   return new Promise<CapturedChart>((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
       const canvas = document.createElement('canvas');
-      canvas.width = width * scale;
-      canvas.height = height * scale;
+      canvas.width = scaledWidth;
+      canvas.height = scaledHeight;
       const ctx = canvas.getContext('2d');
       if (!ctx) {
-        URL.revokeObjectURL(url);
         reject(new Error('Failed to get canvas 2d context'));
         return;
       }
       ctx.fillStyle = 'white';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.scale(scale, scale);
-      ctx.drawImage(img, 0, 0, width, height);
-      URL.revokeObjectURL(url);
+      ctx.fillRect(0, 0, scaledWidth, scaledHeight);
+      // Draw at 1:1 -- the SVG was already rendered at scaled resolution
+      ctx.drawImage(img, 0, 0, scaledWidth, scaledHeight);
       resolve({
         dataUrl: canvas.toDataURL('image/png'),
         width,
@@ -86,9 +134,56 @@ export async function captureSvgAsImage(
       });
     };
     img.onerror = () => {
-      URL.revokeObjectURL(url);
       reject(new Error('Failed to load SVG image'));
     };
-    img.src = url;
+    img.src = dataUri;
   });
+}
+
+/**
+ * Captures all main Recharts chart SVGs from a container and converts them to PNG data URLs.
+ * Uses a selector that targets only direct-child SVGs of `.recharts-wrapper`, which excludes
+ * the small legend icon SVGs that Recharts renders inside `.recharts-legend-wrapper`.
+ * Returns an array of captured charts in DOM order.
+ */
+export async function captureAllChartsAsImages(
+  container: HTMLElement,
+  scale: number = 3,
+): Promise<CapturedChart[]> {
+  // Target only main chart SVGs (direct children of .recharts-wrapper).
+  // Recharts also renders tiny svg.recharts-surface elements for legend icons
+  // inside .recharts-legend-wrapper -- those must be excluded.
+  const svgs = container.querySelectorAll('.recharts-wrapper > svg.recharts-surface');
+  const results: CapturedChart[] = [];
+
+  for (const svg of Array.from(svgs)) {
+    try {
+      const chart = await captureSingleSvg(svg as SVGSVGElement, container, scale);
+      if (chart) {
+        results.push(chart);
+      }
+    } catch {
+      // Skip failed individual charts, continue with the rest
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Captures the first Recharts SVG element from a container and converts it to a PNG data URL.
+ * Backward-compatible single-chart capture.
+ */
+export async function captureSvgAsImage(
+  container: HTMLElement,
+  scale: number = 3,
+): Promise<CapturedChart | null> {
+  const svg = container.querySelector('svg.recharts-surface') as SVGSVGElement | null;
+  if (!svg) return null;
+
+  try {
+    return await captureSingleSvg(svg, container, scale);
+  } catch {
+    return null;
+  }
 }

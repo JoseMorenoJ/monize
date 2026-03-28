@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { budgetsApi } from '@/lib/budgets';
 import type { Budget, CategoryTrendSeries } from '@/types/budget';
 import { useNumberFormat } from '@/hooks/useNumberFormat';
+import { ExportDropdown } from '@/components/ui/ExportDropdown';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('CategoryPerformanceReport');
@@ -146,6 +147,26 @@ export function CategoryPerformanceReport() {
     }
   };
 
+  const handleExportPdf = async () => {
+    const { exportToPdf } = await import('@/lib/pdf-export');
+    const headers = ['Category', 'Avg Budget', 'Avg Actual', '% Used', 'Total Variance', 'Over/Total', 'Trend', 'Status'];
+    const rows = sortedData.map(row => [
+      row.categoryName,
+      formatCurrency(row.avgBudgeted),
+      formatCurrency(row.avgActual),
+      `${row.avgPercent}%`,
+      `${row.totalVariance > 0 ? '+' : ''}${formatCurrency(row.totalVariance)}`,
+      `${row.overCount}/${row.monthCount}`,
+      row.trend.arrow,
+      row.status.label,
+    ]);
+    await exportToPdf({
+      title: 'Category Performance',
+      tableData: { headers, rows },
+      filename: 'category-performance',
+    });
+  };
+
   if (isLoading) {
     return (
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-6">
@@ -190,6 +211,9 @@ export function CategoryPerformanceReport() {
             <option value={6}>6 Months</option>
             <option value={12}>12 Months</option>
           </select>
+          <div className="ml-auto">
+            <ExportDropdown onExportPdf={handleExportPdf} />
+          </div>
         </div>
       </div>
 

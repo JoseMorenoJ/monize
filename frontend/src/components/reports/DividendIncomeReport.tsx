@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   BarChart,
   Bar,
@@ -20,6 +20,7 @@ import { useNumberFormat } from '@/hooks/useNumberFormat';
 import { useExchangeRates } from '@/hooks/useExchangeRates';
 import { useDateRange } from '@/hooks/useDateRange';
 import { DateRangeSelector } from '@/components/ui/DateRangeSelector';
+import { ExportDropdown } from '@/components/ui/ExportDropdown';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('DividendIncomeReport');
@@ -45,6 +46,7 @@ interface SecurityIncome {
 export function DividendIncomeReport() {
   const { formatCurrency: formatCurrencyFull, formatCurrencyAxis } = useNumberFormat();
   const { defaultCurrency, convertToDefault } = useExchangeRates();
+  const chartRef = useRef<HTMLDivElement>(null);
   const [transactions, setTransactions] = useState<InvestmentTransaction[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState<string>('');
@@ -232,6 +234,25 @@ export function DividendIncomeReport() {
     };
   }, [transactions, getTxAmount]);
 
+  const handleExportPdf = async () => {
+    const { exportToPdf } = await import('@/lib/pdf-export');
+    const accountLabel = selectedAccount
+      ? selectedAccount.name.replace(/ - (Brokerage|Cash)$/, '')
+      : 'All Accounts';
+    await exportToPdf({
+      title: 'Dividend Income',
+      subtitle: accountLabel,
+      summaryCards: [
+        { label: 'Dividends', value: fmtValue(totals.dividends), color: '#16a34a' },
+        { label: 'Interest', value: fmtValue(totals.interest), color: '#2563eb' },
+        { label: 'Capital Gains', value: fmtValue(totals.capitalGains), color: '#9333ea' },
+        { label: 'Total Income', value: fmtValue(totals.total), color: '#111827' },
+      ],
+      chartContainer: chartRef.current,
+      filename: 'dividend-income',
+    });
+  };
+
   const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?: Array<{ name: string; value: number; color: string }>; label?: string }) => {
     if (active && payload && payload.length) {
       return (
@@ -291,30 +312,28 @@ export function DividendIncomeReport() {
 
       {/* Controls */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-4">
-        <div className="flex flex-wrap gap-4 items-center justify-between">
-          <div className="flex flex-wrap gap-2 items-center">
-            <select
-              value={selectedAccountId}
-              onChange={(e) => setSelectedAccountId(e.target.value)}
-              className="rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 text-sm"
-            >
-              <option value="">All Accounts</option>
-              {accounts
-                .filter((a) => a.accountSubType !== 'INVESTMENT_BROKERAGE')
-                .sort((a, b) => a.name.localeCompare(b.name))
-                .map((account) => (
-                  <option key={account.id} value={account.id}>
-                    {account.name.replace(/ - (Brokerage|Cash)$/, '')}
-                  </option>
-                ))}
-            </select>
-            <DateRangeSelector
-              ranges={['6m', '1y', '2y', 'all']}
-              value={dateRange}
-              onChange={setDateRange}
-            />
-          </div>
-          <div className="flex gap-2">
+        <div className="flex flex-wrap gap-3 items-center">
+          <select
+            value={selectedAccountId}
+            onChange={(e) => setSelectedAccountId(e.target.value)}
+            className="max-w-48 rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 text-sm"
+          >
+            <option value="">All Accounts</option>
+            {accounts
+              .filter((a) => a.accountSubType !== 'INVESTMENT_BROKERAGE')
+              .sort((a, b) => a.name.localeCompare(b.name))
+              .map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.name.replace(/ - (Brokerage|Cash)$/, '')}
+                </option>
+              ))}
+          </select>
+          <DateRangeSelector
+            ranges={['6m', '1y', '2y', 'all']}
+            value={dateRange}
+            onChange={setDateRange}
+          />
+          <div className="ml-auto shrink-0 flex gap-2 items-center">
             <button
               onClick={() => setViewType('monthly')}
               className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
@@ -335,6 +354,7 @@ export function DividendIncomeReport() {
             >
               By Security
             </button>
+            <ExportDropdown onExportPdf={handleExportPdf} />
           </div>
         </div>
       </div>
@@ -347,7 +367,7 @@ export function DividendIncomeReport() {
         </div>
       ) : viewType === 'monthly' ? (
         /* Monthly Chart */
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 px-2 py-4 sm:p-6">
+        <div ref={chartRef} className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 px-2 py-4 sm:p-6">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
             Monthly Income
           </h3>

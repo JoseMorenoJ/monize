@@ -10,6 +10,8 @@ import { useNumberFormat } from '@/hooks/useNumberFormat';
 import { useExchangeRates } from '@/hooks/useExchangeRates';
 import { useDateRange } from '@/hooks/useDateRange';
 import { DateRangeSelector } from '@/components/ui/DateRangeSelector';
+import { ExportDropdown } from '@/components/ui/ExportDropdown';
+import { exportToCsv } from '@/lib/csv-export';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('InvestmentTransactionHistoryReport');
@@ -156,6 +158,46 @@ export function InvestmentTransactionHistoryReport() {
     [transactions],
   );
 
+  const getExportData = useCallback((formatted: boolean) => {
+    const headers = ['Date', 'Action', 'Security', 'Account', 'Quantity', 'Price', 'Total'];
+    const rows: (string | number)[][] = sortedTransactions.map((tx) => [
+      format(parseLocalDate(tx.transactionDate), 'yyyy-MM-dd'),
+      ACTION_LABELS[tx.action],
+      tx.security?.symbol || '-',
+      accountNameMap.get(tx.accountId) || '-',
+      tx.quantity != null ? Math.abs(tx.quantity) : '',
+      tx.price != null ? (formatted ? fmtValue(tx.price) : tx.price) : '',
+      formatted ? fmtValue(Math.abs(tx.totalAmount)) : Math.abs(tx.totalAmount),
+    ]);
+    return { headers, rows };
+  }, [sortedTransactions, accountNameMap, fmtValue]);
+
+  const handleExportCsv = useCallback(() => {
+    const { headers, rows } = getExportData(false);
+    exportToCsv('investment-transactions', headers, rows);
+  }, [getExportData]);
+
+  const handleExportPdf = useCallback(async () => {
+    const { exportToPdf } = await import('@/lib/pdf-export');
+    const { headers, rows } = getExportData(true);
+    const accountLabel = selectedAccount
+      ? selectedAccount.name.replace(/ - (Brokerage|Cash)$/, '')
+      : 'All Accounts';
+    const uniqueSecurities = new Set(transactions.filter((tx) => tx.security).map((tx) => tx.security!.symbol)).size;
+    await exportToPdf({
+      title: 'Investment Transaction History',
+      subtitle: `${accountLabel} | ${transactions.length} transactions | Total volume: ${fmtValue(totalAmount)}`,
+      summaryCards: [
+        { label: 'Total Transactions', value: String(transactions.length), color: '#111827' },
+        { label: 'Total Volume', value: fmtValue(totalAmount), color: '#111827' },
+        { label: 'Action Types', value: String(actionSummaries.length), color: '#111827' },
+        { label: 'Securities Traded', value: String(uniqueSecurities), color: '#111827' },
+      ],
+      tableData: { headers, rows },
+      filename: 'investment-transactions',
+    });
+  }, [getExportData, selectedAccount, transactions, fmtValue, totalAmount, actionSummaries]);
+
   if (isLoading) {
     return (
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-6">
@@ -199,39 +241,44 @@ export function InvestmentTransactionHistoryReport() {
 
       {/* Controls */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-4">
-        <div className="flex flex-wrap gap-4 items-center">
-          <select
-            value={selectedAccountId}
-            onChange={(e) => setSelectedAccountId(e.target.value)}
-            className="rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 text-sm"
-          >
-            <option value="">All Accounts</option>
-            {accounts
-              .filter((a) => a.accountSubType !== 'INVESTMENT_BROKERAGE')
-              .sort((a, b) => a.name.localeCompare(b.name))
-              .map((account) => (
-                <option key={account.id} value={account.id}>
-                  {account.name.replace(/ - (Brokerage|Cash)$/, '')}
+        <div className="flex flex-wrap gap-3 items-center">
+          <div className="flex gap-3 items-center">
+            <select
+              value={selectedAccountId}
+              onChange={(e) => setSelectedAccountId(e.target.value)}
+              className="rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 text-sm"
+            >
+              <option value="">All Accounts</option>
+              {accounts
+                .filter((a) => a.accountSubType !== 'INVESTMENT_BROKERAGE')
+                .sort((a, b) => a.name.localeCompare(b.name))
+                .map((account) => (
+                  <option key={account.id} value={account.id}>
+                    {account.name.replace(/ - (Brokerage|Cash)$/, '')}
+                  </option>
+                ))}
+            </select>
+            <select
+              value={selectedAction}
+              onChange={(e) => setSelectedAction(e.target.value)}
+              className="rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 text-sm"
+            >
+              <option value="">All Actions</option>
+              {(Object.keys(ACTION_LABELS) as InvestmentAction[]).map((action) => (
+                <option key={action} value={action}>
+                  {ACTION_LABELS[action]}
                 </option>
               ))}
-          </select>
-          <select
-            value={selectedAction}
-            onChange={(e) => setSelectedAction(e.target.value)}
-            className="rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 text-sm"
-          >
-            <option value="">All Actions</option>
-            {(Object.keys(ACTION_LABELS) as InvestmentAction[]).map((action) => (
-              <option key={action} value={action}>
-                {ACTION_LABELS[action]}
-              </option>
-            ))}
-          </select>
+            </select>
+          </div>
           <DateRangeSelector
             ranges={['6m', '1y', '2y', 'all']}
             value={dateRange}
             onChange={setDateRange}
           />
+          <div className="ml-auto shrink-0">
+            <ExportDropdown onExportCsv={handleExportCsv} onExportPdf={handleExportPdf} disabled={transactions.length === 0} />
+          </div>
         </div>
       </div>
 

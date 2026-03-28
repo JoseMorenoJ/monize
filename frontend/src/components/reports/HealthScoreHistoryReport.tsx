@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   LineChart,
   Line,
@@ -13,6 +13,7 @@ import {
 } from 'recharts';
 import { budgetsApi } from '@/lib/budgets';
 import type { Budget, HealthScoreHistoryPoint } from '@/types/budget';
+import { ExportDropdown } from '@/components/ui/ExportDropdown';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('HealthScoreHistoryReport');
@@ -33,6 +34,7 @@ function getScoreGrade(score: number): { label: string; color: string } {
 }
 
 export function HealthScoreHistoryReport() {
+  const chartRef = useRef<HTMLDivElement>(null);
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [selectedBudgetId, setSelectedBudgetId] = useState<string>('');
   const [months, setMonths] = useState(12);
@@ -77,6 +79,43 @@ export function HealthScoreHistoryReport() {
     loadData();
   }, [loadData]);
 
+  const handleExportPdf = async () => {
+    const { exportToPdf } = await import('@/lib/pdf-export');
+    const curScore = data.length > 0 ? data[data.length - 1].score : 0;
+    const avg = data.length > 0 ? Math.round(data.reduce((s, p) => s + p.score, 0) / data.length) : 0;
+    const best = data.length > 0 ? Math.max(...data.map((p) => p.score)) : 0;
+    const worst = data.length > 0 ? Math.min(...data.map((p) => p.score)) : 0;
+    const up = data.length >= 2 && data[data.length - 1].score > data[0].score;
+    const curColor = curScore >= 80 ? '#16a34a' : curScore >= 60 ? '#ca8a04' : '#dc2626';
+    await exportToPdf({
+      title: 'Health Score History',
+      summaryCards: [
+        { label: 'Current Score', value: String(curScore), color: curColor },
+        { label: 'Average', value: String(avg), color: '#111827' },
+        { label: 'Best', value: String(best), color: '#16a34a' },
+        { label: 'Worst', value: String(worst), color: '#dc2626' },
+        { label: 'Trajectory', value: up ? 'Up' : data.length >= 2 ? 'Down' : '--', color: up ? '#16a34a' : '#dc2626' },
+      ],
+      chartContainer: chartRef.current,
+      additionalTables: data.length > 0 ? [{
+        title: 'Score History',
+        headers: ['Month', 'Score', 'Grade', 'Change'],
+        rows: data.map((point, idx) => {
+          const grade = getScoreGrade(point.score);
+          const prev = idx > 0 ? data[idx - 1].score : null;
+          const change = prev !== null ? point.score - prev : null;
+          return [
+            point.month,
+            String(point.score),
+            grade.label,
+            change === null ? '--' : change > 0 ? `+${change}` : String(change),
+          ];
+        }),
+      }] : undefined,
+      filename: 'health-score-history',
+    });
+  };
+
   if (isLoading) {
     return (
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-6">
@@ -108,7 +147,7 @@ export function HealthScoreHistoryReport() {
   const currentGrade = getScoreGrade(currentScore);
 
   return (
-    <div className="space-y-6">
+    <div ref={chartRef} className="space-y-6">
       {/* Controls */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-4">
         <div className="flex flex-wrap gap-3 items-center">
@@ -130,6 +169,9 @@ export function HealthScoreHistoryReport() {
             <option value={12}>12 Months</option>
             <option value={24}>24 Months</option>
           </select>
+          <div className="ml-auto">
+            <ExportDropdown onExportPdf={handleExportPdf} />
+          </div>
         </div>
       </div>
 

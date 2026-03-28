@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   BarChart,
@@ -27,6 +27,7 @@ const logger = createLogger('BillPaymentHistoryReport');
 export function BillPaymentHistoryReport() {
   const router = useRouter();
   const { formatCurrencyCompact: formatCurrency, formatCurrencyAxis } = useNumberFormat();
+  const chartRef = useRef<HTMLDivElement>(null);
   const [billData, setBillData] = useState<BillPaymentHistoryResponse | null>(null);
   const { dateRange, setDateRange, resolvedRange } = useDateRange({ defaultRange: '1y', alignment: 'day' });
   const [isLoading, setIsLoading] = useState(true);
@@ -55,8 +56,8 @@ export function BillPaymentHistoryReport() {
     router.push('/bills');
   };
 
-  const handleExportCsv = () => {
-    if (!billData) return;
+  const getExportData = () => {
+    if (!billData) return null;
     const headers = ['Bill', 'Payee', 'Payments', 'Average', 'Total Paid', 'Last Payment'];
     const rows = billData.billPayments.map((bp) => [
       bp.scheduledTransactionName,
@@ -66,25 +67,30 @@ export function BillPaymentHistoryReport() {
       bp.totalPaid,
       bp.lastPaymentDate ? format(parseLocalDate(bp.lastPaymentDate), 'yyyy-MM-dd') : '',
     ]);
-    exportToCsv('bill-payment-history', headers, rows);
+    return { headers, rows };
+  };
+
+  const handleExportCsv = () => {
+    const data = getExportData();
+    if (!data) return;
+    exportToCsv('bill-payment-history', data.headers, data.rows);
   };
 
   const handleExportPdf = async () => {
-    if (!billData) return;
+    const data = getExportData();
+    if (!data || !billData) return;
     const { exportToPdf } = await import('@/lib/pdf-export');
-    const headers = ['Bill', 'Payee', 'Payments', 'Average', 'Total Paid', 'Last Payment'];
-    const rows = billData.billPayments.map((bp) => [
-      bp.scheduledTransactionName,
-      bp.payeeName || '',
-      bp.paymentCount,
-      bp.averagePayment,
-      bp.totalPaid,
-      bp.lastPaymentDate ? format(parseLocalDate(bp.lastPaymentDate), 'yyyy-MM-dd') : '',
-    ]);
     await exportToPdf({
       title: 'Bill Payment History',
       subtitle: `${billData.summary.uniqueBills} bills, ${billData.summary.totalPayments} payments`,
-      tableData: { headers, rows },
+      summaryCards: [
+        { label: 'Total Paid', value: formatCurrency(billData.summary.totalPaid), color: '#111827' },
+        { label: 'Monthly Average', value: formatCurrency(billData.summary.monthlyAverage), color: '#2563eb' },
+        { label: 'Bills Paid', value: String(billData.summary.uniqueBills), color: '#111827' },
+        { label: 'Total Payments', value: String(billData.summary.totalPayments), color: '#111827' },
+      ],
+      chartContainer: chartRef.current,
+      tableData: { headers: data.headers, rows: data.rows },
       filename: 'bill-payment-history',
     });
   };
@@ -163,7 +169,7 @@ export function BillPaymentHistoryReport() {
             value={dateRange}
             onChange={setDateRange}
           />
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center">
             <button
               onClick={() => setViewType('overview')}
               className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
@@ -184,6 +190,7 @@ export function BillPaymentHistoryReport() {
             >
               By Bill
             </button>
+            <ExportDropdown onExportCsv={handleExportCsv} onExportPdf={handleExportPdf} />
           </div>
         </div>
       </div>
@@ -196,7 +203,7 @@ export function BillPaymentHistoryReport() {
         </div>
       ) : viewType === 'overview' ? (
         /* Monthly Overview Chart */
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-6">
+        <div ref={chartRef} className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-6">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
             Monthly Bill Payments
           </h3>
@@ -215,11 +222,10 @@ export function BillPaymentHistoryReport() {
       ) : (
         /* By Bill Table */
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+          <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
               Payment History by Bill
             </h3>
-            <ExportDropdown onExportCsv={handleExportCsv} onExportPdf={handleExportPdf} />
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">

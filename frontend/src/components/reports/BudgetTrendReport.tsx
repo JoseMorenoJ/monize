@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   LineChart,
   Line,
@@ -14,12 +14,14 @@ import {
 import { budgetsApi } from '@/lib/budgets';
 import type { Budget, BudgetTrendPoint } from '@/types/budget';
 import { useNumberFormat } from '@/hooks/useNumberFormat';
+import { ExportDropdown } from '@/components/ui/ExportDropdown';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('BudgetTrendReport');
 
 export function BudgetTrendReport() {
   const { formatCurrencyCompact: formatCurrency } = useNumberFormat();
+  const chartRef = useRef<HTMLDivElement>(null);
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [selectedBudgetId, setSelectedBudgetId] = useState<string>('');
   const [months, setMonths] = useState(12);
@@ -63,6 +65,27 @@ export function BudgetTrendReport() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  const handleExportPdf = async () => {
+    const { exportToPdf } = await import('@/lib/pdf-export');
+    const headers = ['Month', 'Budgeted', 'Actual', '% Used'];
+    const rows = trendData.map((point) => [
+      point.month,
+      formatCurrency(point.budgeted),
+      formatCurrency(point.actual),
+      `${point.percentUsed}%`,
+    ]);
+    await exportToPdf({
+      title: 'Budget Trend',
+      chartContainer: chartRef.current,
+      chartLegend: [
+        { color: '#3b82f6', label: 'Budgeted' },
+        { color: '#10b981', label: 'Actual' },
+      ],
+      tableData: { headers, rows },
+      filename: 'budget-trend',
+    });
+  };
 
   if (isLoading) {
     return (
@@ -108,11 +131,14 @@ export function BudgetTrendReport() {
             <option value={12}>12 Months</option>
             <option value={24}>24 Months</option>
           </select>
+          <div className="ml-auto">
+            <ExportDropdown onExportPdf={handleExportPdf} />
+          </div>
         </div>
       </div>
 
       {/* Chart */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 px-2 py-4 sm:p-6">
+      <div ref={chartRef} className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 px-2 py-4 sm:p-6">
         {trendData.length === 0 ? (
           <p className="text-gray-500 dark:text-gray-400 text-center py-8">
             No trend data available for this budget yet.

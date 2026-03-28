@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { builtInReportsApi } from '@/lib/built-in-reports';
 import { SpendingAnomaly, SpendingAnomaliesResponse } from '@/types/built-in-reports';
 import { useNumberFormat } from '@/hooks/useNumberFormat';
+import { ExportDropdown } from '@/components/ui/ExportDropdown';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('SpendingAnomaliesReport');
@@ -41,6 +42,39 @@ export function SpendingAnomaliesReport() {
     if (categoryId && categoryId !== 'uncategorized') {
       router.push(`/transactions?categoryId=${categoryId}`);
     }
+  };
+
+  const getTypeName = (type: SpendingAnomaly['type']): string => {
+    switch (type) {
+      case 'large_transaction': return 'Large Transaction';
+      case 'category_spike': return 'Category Spike';
+      case 'unusual_payee': return 'Unusual Payee';
+      default: return type;
+    }
+  };
+
+  const handleExportPdf = async () => {
+    const { exportToPdf } = await import('@/lib/pdf-export');
+    const anomalies = anomaliesData?.anomalies || [];
+    const headers = ['Type', 'Severity', 'Title', 'Amount'];
+    const rows = anomalies.map((a) => [
+      getTypeName(a.type),
+      a.severity.charAt(0).toUpperCase() + a.severity.slice(1),
+      a.title,
+      a.amount != null ? formatCurrency(a.amount) : '',
+    ]);
+    const c = anomaliesData?.counts ?? { high: 0, medium: 0, low: 0 };
+    await exportToPdf({
+      title: 'Spending Anomalies',
+      subtitle: `Threshold: ${threshold} standard deviations`,
+      summaryCards: [
+        { label: 'High Priority', value: String(c.high), color: '#dc2626' },
+        { label: 'Medium Priority', value: String(c.medium), color: '#ea580c' },
+        { label: 'Low Priority', value: String(c.low), color: '#ca8a04' },
+      ],
+      tableData: { headers, rows },
+      filename: 'spending-anomalies',
+    });
   };
 
   const getSeverityStyles = (severity: SpendingAnomaly['severity']) => {
@@ -128,20 +162,23 @@ export function SpendingAnomaliesReport() {
 
       {/* Controls */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-4">
-        <div className="flex items-center gap-4">
-          <label className="text-sm text-gray-700 dark:text-gray-300">
+        <div className="flex items-center gap-3">
+          <label className="text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">
             Sensitivity:
           </label>
           <select
             value={threshold}
             onChange={(e) => setThreshold(Number(e.target.value))}
-            className="rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 text-sm"
+            className="w-24 rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 text-sm"
           >
-            <option value={1.5}>High (more anomalies)</option>
+            <option value={1.5}>High</option>
             <option value={2}>Medium</option>
-            <option value={2.5}>Low (fewer anomalies)</option>
+            <option value={2.5}>Low</option>
             <option value={3}>Very Low</option>
           </select>
+          <div className="ml-auto shrink-0">
+            <ExportDropdown onExportPdf={handleExportPdf} />
+          </div>
         </div>
       </div>
 

@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Tooltip,
   ResponsiveContainer,
   PieChart,
   Pie,
   Cell,
+  Legend,
 } from 'recharts';
 import { investmentsApi } from '@/lib/investments';
 import { PortfolioSummary, HoldingWithMarketValue } from '@/types/investment';
@@ -14,6 +15,7 @@ import { Account } from '@/types/account';
 import { useNumberFormat } from '@/hooks/useNumberFormat';
 import { useExchangeRates } from '@/hooks/useExchangeRates';
 import { CHART_COLOURS } from '@/lib/chart-colours';
+import { ExportDropdown } from '@/components/ui/ExportDropdown';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('InvestmentPerformanceReport');
@@ -21,6 +23,7 @@ const logger = createLogger('InvestmentPerformanceReport');
 export function InvestmentPerformanceReport() {
   const { formatCurrencyCompact: formatCurrency, formatCurrency: formatCurrencyFull } = useNumberFormat();
   const { defaultCurrency } = useExchangeRates();
+  const chartRef = useRef<HTMLDivElement>(null);
   const [portfolio, setPortfolio] = useState<PortfolioSummary | null>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState<string>('');
@@ -137,6 +140,42 @@ export function InvestmentPerformanceReport() {
     return null;
   };
 
+  const handleExportPdf = async () => {
+    const { exportToPdf } = await import('@/lib/pdf-export');
+
+    const cards = summaryValues ? [
+      { label: 'Total Value', value: fmtSummary(summaryValues.totalPortfolioValue), color: '#111827' },
+      { label: 'Cost Basis', value: fmtSummary(summaryValues.totalCostBasis), color: '#111827' },
+      { label: 'Total Gain/Loss', value: `${summaryValues.totalGainLoss >= 0 ? '+' : ''}${fmtSummary(summaryValues.totalGainLoss)}`, color: summaryValues.totalGainLoss >= 0 ? '#16a34a' : '#dc2626' },
+      { label: 'Return', value: formatPercent(summaryValues.totalGainLossPercent), color: summaryValues.totalGainLossPercent >= 0 ? '#16a34a' : '#dc2626' },
+    ] : undefined;
+
+    const headers = ['Security', 'Shares', 'Avg Cost', 'Price', 'Market Value', 'Gain/Loss', 'Return'];
+    const rows = portfolio ? portfolio.holdings.map((h) => [
+      `${h.symbol} - ${h.name}`,
+      h.quantity.toFixed(4),
+      fmtHolding(h.averageCost, h.currencyCode),
+      fmtHolding(h.currentPrice, h.currencyCode),
+      fmtHolding(h.marketValue, h.currencyCode),
+      fmtHolding(h.gainLoss, h.currencyCode),
+      h.gainLossPercent !== null ? formatPercent(h.gainLossPercent) : 'N/A',
+    ]) : [];
+
+    const legendItems = holdingsData.map((h) => ({
+      color: h.color,
+      label: `${h.symbol} - ${formatCurrency(h.marketValue || 0)}`,
+    }));
+
+    await exportToPdf({
+      title: 'Investment Performance',
+      summaryCards: cards,
+      chartContainer: chartRef.current,
+      chartLegend: legendItems.length > 0 ? legendItems : undefined,
+      tableData: rows.length > 0 ? { headers, rows } : undefined,
+      filename: 'investment-performance',
+    });
+  };
+
   const AllocationTooltip = ({ active, payload }: { active?: boolean; payload?: Array<{ payload: { name: string; value: number; percentage: number } }> }) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
@@ -244,10 +283,12 @@ export function InvestmentPerformanceReport() {
             >
               Allocation
             </button>
+            <ExportDropdown onExportPdf={handleExportPdf} />
           </div>
         </div>
       </div>
 
+      <div ref={chartRef}>
       {viewType === 'performance' ? (
         <>
           {/* Holdings Performance Chart */}
@@ -273,6 +314,7 @@ export function InvestmentPerformanceReport() {
                     ))}
                   </Pie>
                   <Tooltip content={<CustomTooltip />} />
+                  <Legend />
                 </PieChart>
               </ResponsiveContainer>
             </div>
@@ -412,6 +454,7 @@ export function InvestmentPerformanceReport() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

@@ -101,7 +101,7 @@ export function UncategorizedTransactionsReport() {
     }
   };
 
-  const handleExportCsv = () => {
+  const getExportData = () => {
     const headers = ['Date', 'Payee', 'Description', 'Account', 'Amount'];
     const rows = filteredAndSortedTransactions.map((tx) => [
       format(parseLocalDate(tx.transactionDate), 'yyyy-MM-dd'),
@@ -110,19 +110,17 @@ export function UncategorizedTransactionsReport() {
       tx.accountName || 'Unknown',
       tx.amount,
     ]);
+    return { headers, rows };
+  };
+
+  const handleExportCsv = () => {
+    const { headers, rows } = getExportData();
     exportToCsv('uncategorized-transactions', headers, rows);
   };
 
   const handleExportPdf = async () => {
     const { exportToPdf } = await import('@/lib/pdf-export');
-    const headers = ['Date', 'Payee', 'Description', 'Account', 'Amount'];
-    const rows = filteredAndSortedTransactions.map((tx) => [
-      format(parseLocalDate(tx.transactionDate), 'yyyy-MM-dd'),
-      tx.payeeName || 'Unknown',
-      tx.description || '',
-      tx.accountName || 'Unknown',
-      tx.amount,
-    ]);
+    const { headers, rows } = getExportData();
     await exportToPdf({
       title: 'Uncategorized Transactions',
       subtitle: `${filteredAndSortedTransactions.length} transactions`,

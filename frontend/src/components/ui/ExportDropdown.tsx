@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
+import toast from 'react-hot-toast';
 
 interface ExportDropdownProps {
-  onExportCsv: () => void;
+  onExportCsv?: () => void;
   onExportPdf: () => void;
   disabled?: boolean;
 }
@@ -28,7 +29,7 @@ export function ExportDropdown({ onExportCsv, onExportPdf, disabled }: ExportDro
 
   const handleExportCsv = () => {
     close();
-    onExportCsv();
+    onExportCsv?.();
   };
 
   const handleExportPdf = async () => {
@@ -36,10 +37,31 @@ export function ExportDropdown({ onExportCsv, onExportPdf, disabled }: ExportDro
     setIsExporting(true);
     try {
       await onExportPdf();
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error('PDF export failed:', error);
+      toast.error('Failed to export PDF. Please try again.');
     } finally {
       setIsExporting(false);
     }
   };
+
+  // PDF-only mode: render a single button instead of a dropdown
+  if (!onExportCsv) {
+    return (
+      <button
+        onClick={handleExportPdf}
+        disabled={disabled || isExporting}
+        className="px-3 py-1.5 text-sm font-medium rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex items-center gap-1.5 disabled:opacity-50"
+        title="Export PDF"
+      >
+        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+        </svg>
+        {isExporting ? 'Exporting...' : 'Export PDF'}
+      </button>
+    );
+  }
 
   return (
     <div ref={dropdownRef} className="relative inline-block">

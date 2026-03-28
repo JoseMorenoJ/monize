@@ -34,7 +34,14 @@
       "Bash(npm run type-check:*)",
       "Bash(npm run test:*)",
       "Bash(docker compose:*)",
-      "Bash(git clone:*)"
+      "Bash(git clone:*)",
+      "Bash(ls:*)",
+      "Bash(npm ls:*)",
+      "Bash(find:*)",
+      "Bash(sudo apt-get install:*)",
+      "Bash(git log:*)",
+      "Bash(npm audit:*)",
+      "Bash(git status:*)"
     ]
   }
 }

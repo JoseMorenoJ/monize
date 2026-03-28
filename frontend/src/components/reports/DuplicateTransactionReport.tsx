@@ -9,6 +9,8 @@ import { parseLocalDate } from '@/lib/utils';
 import { useNumberFormat } from '@/hooks/useNumberFormat';
 import { useDateRange } from '@/hooks/useDateRange';
 import { DateRangeSelector } from '@/components/ui/DateRangeSelector';
+import { ExportDropdown } from '@/components/ui/ExportDropdown';
+import { exportToCsv } from '@/lib/csv-export';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('DuplicateTransactionReport');
@@ -89,6 +91,47 @@ export function DuplicateTransactionReport() {
 
   const duplicateGroups = reportData?.groups || [];
 
+  const getExportData = () => {
+    const headers = ['Date', 'Payee', 'Description', 'Account', 'Amount', 'Confidence', 'Reason'];
+    const rows: (string | number)[][] = [];
+    for (const group of duplicateGroups) {
+      for (const tx of group.transactions) {
+        rows.push([
+          format(parseLocalDate(tx.transactionDate), 'yyyy-MM-dd'),
+          tx.payeeName || '',
+          tx.description || '',
+          tx.accountName || '',
+          tx.amount,
+          group.confidence,
+          group.reason,
+        ]);
+      }
+    }
+    return { headers, rows };
+  };
+
+  const handleExportCsv = () => {
+    const { headers, rows } = getExportData();
+    exportToCsv('duplicate-transactions', headers, rows);
+  };
+
+  const handleExportPdf = async () => {
+    const { exportToPdf } = await import('@/lib/pdf-export');
+    const { headers, rows } = getExportData();
+    await exportToPdf({
+      title: 'Duplicate Transaction Report',
+      subtitle: `${summary.totalGroups} groups found | Potential impact: ${formatCurrency(summary.potentialSavings)}`,
+      summaryCards: [
+        { label: 'Potential Duplicates', value: String(summary.totalGroups), color: '#ea580c' },
+        { label: 'High Confidence', value: String(summary.highCount), color: '#dc2626' },
+        { label: 'Medium Confidence', value: String(summary.mediumCount), color: '#ea580c' },
+        { label: 'Potential Impact', value: formatCurrency(summary.potentialSavings), color: '#111827' },
+      ],
+      tableData: { headers, rows },
+      filename: 'duplicate-transactions',
+    });
+  };
+
   return (
     <div className="space-y-6">
       {/* Summary Cards */}
@@ -128,17 +171,20 @@ export function DuplicateTransactionReport() {
             value={dateRange}
             onChange={setDateRange}
           />
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-600 dark:text-gray-400">Sensitivity:</span>
-            <select
-              value={sensitivity}
-              onChange={(e) => setSensitivity(e.target.value as 'high' | 'medium' | 'low')}
-              className="rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 text-sm"
-            >
-              <option value="high">High (±3 days)</option>
-              <option value="medium">Medium (±1 day)</option>
-              <option value="low">Low (same day only)</option>
-            </select>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-600 dark:text-gray-400">Sensitivity:</span>
+              <select
+                value={sensitivity}
+                onChange={(e) => setSensitivity(e.target.value as 'high' | 'medium' | 'low')}
+                className="rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 text-sm"
+              >
+                <option value="high">High (±3 days)</option>
+                <option value="medium">Medium (±1 day)</option>
+                <option value="low">Low (same day only)</option>
+              </select>
+            </div>
+            <ExportDropdown onExportCsv={handleExportCsv} onExportPdf={handleExportPdf} disabled={duplicateGroups.length === 0} />
           </div>
         </div>
       </div>

@@ -27,6 +27,7 @@ vi.mock('@/hooks/useDateRange', () => ({
 
 vi.mock('@/lib/utils', () => ({
   parseLocalDate: (d: string) => new Date(d + 'T00:00:00'),
+  cn: (...args: any[]) => args.filter(Boolean).join(' '),
 }));
 
 vi.mock('@/components/ui/DateRangeSelector', () => ({
@@ -36,7 +37,9 @@ vi.mock('@/components/ui/DateRangeSelector', () => ({
 vi.mock('recharts', () => ({
   ResponsiveContainer: ({ children }: any) => <div data-testid="responsive-container">{children}</div>,
   AreaChart: ({ children }: any) => <div data-testid="area-chart">{children}</div>,
+  BarChart: ({ children }: any) => <div data-testid="bar-chart">{children}</div>,
   Area: () => null,
+  Bar: () => null,
   XAxis: () => null,
   YAxis: () => null,
   CartesianGrid: () => null,

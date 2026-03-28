@@ -14,6 +14,7 @@ import { HoldingWithMarketValue } from '@/types/investment';
 import { Account } from '@/types/account';
 import { useNumberFormat } from '@/hooks/useNumberFormat';
 import { useExchangeRates } from '@/hooks/useExchangeRates';
+import { ExportDropdown } from '@/components/ui/ExportDropdown';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('SecurityTypeAllocationReport');
@@ -76,6 +77,7 @@ export function SecurityTypeAllocationReport() {
   const [isLoading, setIsLoading] = useState(true);
   const [showAccountFilter, setShowAccountFilter] = useState(false);
   const accountFilterRef = useRef<HTMLDivElement>(null);
+  const chartRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -157,6 +159,34 @@ export function SecurityTypeAllocationReport() {
     [allocationData],
   );
 
+  const handleExportPdf = async () => {
+    const { exportToPdf } = await import('@/lib/pdf-export');
+    const headers = ['Asset Type', 'Total Value', '% of Portfolio', 'Holdings'];
+    const rows = allocationData.map(item => [
+      item.label,
+      formatCurrencyFull(item.totalValue, defaultCurrency),
+      `${item.percentage.toFixed(1)}%`,
+      String(item.count),
+    ]);
+    const totalHoldings = allocationData.reduce((sum, a) => sum + a.count, 0);
+    await exportToPdf({
+      title: 'Security Type Allocation',
+      summaryCards: [
+        { label: 'Total Portfolio', value: formatCurrency(totalPortfolioValue, defaultCurrency), color: '#111827' },
+        { label: 'Asset Types', value: String(allocationData.length), color: '#111827' },
+        { label: 'Total Holdings', value: String(totalHoldings), color: '#111827' },
+        { label: 'Largest Type', value: allocationData[0]?.label || '-', color: '#111827' },
+      ],
+      chartContainer: chartRef.current,
+      chartLegend: allocationData.map((item) => ({
+        color: item.color,
+        label: `${item.label} - ${formatCurrencyFull(item.totalValue, defaultCurrency)} (${item.percentage.toFixed(1)}%)`,
+      })),
+      tableData: { headers, rows },
+      filename: 'security-type-allocation',
+    });
+  };
+
   if (isLoading) {
     return (
       <div className="space-y-6">
@@ -184,49 +214,52 @@ export function SecurityTypeAllocationReport() {
     <div className="space-y-6">
       {/* Account Filter */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-4">
-        <div className="flex flex-wrap gap-3">
-          <div className="relative" ref={accountFilterRef}>
-            <button
-              onClick={() => setShowAccountFilter(!showAccountFilter)}
-              className="px-4 py-2 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-            >
-              Accounts{selectedAccountIds.length > 0 ? ` (${selectedAccountIds.length})` : ''}
-            </button>
-            {showAccountFilter && (
-              <div className="absolute top-full left-0 mt-1 w-64 bg-white dark:bg-gray-800 rounded-lg shadow-lg dark:shadow-gray-700/50 border border-gray-200 dark:border-gray-700 z-10 max-h-60 overflow-y-auto">
-                <div className="p-2">
-                  {accounts.filter((a) => a.accountSubType !== 'INVESTMENT_CASH').length === 0 ? (
-                    <p className="text-sm text-gray-500 dark:text-gray-400 p-2">No investment accounts</p>
-                  ) : (
-                    accounts.filter((a) => a.accountSubType !== 'INVESTMENT_CASH').map((acct) => (
-                      <label
-                        key={acct.id}
-                        className="flex items-center gap-2 p-2 hover:bg-gray-50 dark:hover:bg-gray-700 rounded cursor-pointer"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selectedAccountIds.includes(acct.id)}
-                          onChange={() => toggleAccountId(acct.id)}
-                          className="rounded border-gray-300 dark:border-gray-600"
-                        />
-                        <span className="text-sm text-gray-700 dark:text-gray-300 truncate">
-                          {acct.name}
-                        </span>
-                      </label>
-                    ))
-                  )}
+        <div className="flex flex-wrap gap-3 items-center justify-between">
+          <div className="flex flex-wrap gap-3">
+            <div className="relative" ref={accountFilterRef}>
+              <button
+                onClick={() => setShowAccountFilter(!showAccountFilter)}
+                className="px-4 py-2 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+              >
+                Accounts{selectedAccountIds.length > 0 ? ` (${selectedAccountIds.length})` : ''}
+              </button>
+              {showAccountFilter && (
+                <div className="absolute top-full left-0 mt-1 w-64 bg-white dark:bg-gray-800 rounded-lg shadow-lg dark:shadow-gray-700/50 border border-gray-200 dark:border-gray-700 z-10 max-h-60 overflow-y-auto">
+                  <div className="p-2">
+                    {accounts.filter((a) => a.accountSubType !== 'INVESTMENT_CASH').length === 0 ? (
+                      <p className="text-sm text-gray-500 dark:text-gray-400 p-2">No investment accounts</p>
+                    ) : (
+                      accounts.filter((a) => a.accountSubType !== 'INVESTMENT_CASH').map((acct) => (
+                        <label
+                          key={acct.id}
+                          className="flex items-center gap-2 p-2 hover:bg-gray-50 dark:hover:bg-gray-700 rounded cursor-pointer"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedAccountIds.includes(acct.id)}
+                            onChange={() => toggleAccountId(acct.id)}
+                            className="rounded border-gray-300 dark:border-gray-600"
+                          />
+                          <span className="text-sm text-gray-700 dark:text-gray-300 truncate">
+                            {acct.name}
+                          </span>
+                        </label>
+                      ))
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
+            </div>
+            {selectedAccountIds.length > 0 && (
+              <button
+                onClick={() => setSelectedAccountIds([])}
+                className="px-4 py-2 text-sm font-medium rounded-lg text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+              >
+                Clear Filters
+              </button>
             )}
           </div>
-          {selectedAccountIds.length > 0 && (
-            <button
-              onClick={() => setSelectedAccountIds([])}
-              className="px-4 py-2 text-sm font-medium rounded-lg text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-            >
-              Clear Filters
-            </button>
-          )}
+          <ExportDropdown onExportPdf={handleExportPdf} />
         </div>
       </div>
 
@@ -259,7 +292,7 @@ export function SecurityTypeAllocationReport() {
       </div>
 
       {/* Pie Chart */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-3 sm:p-6">
+      <div ref={chartRef} className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-3 sm:p-6">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
           Asset Type Allocation
         </h3>

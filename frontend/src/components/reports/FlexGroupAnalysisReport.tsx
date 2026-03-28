@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   BarChart,
   Bar,
@@ -15,6 +15,7 @@ import {
 import { budgetsApi } from '@/lib/budgets';
 import type { Budget, FlexGroupStatus } from '@/types/budget';
 import { useNumberFormat } from '@/hooks/useNumberFormat';
+import { ExportDropdown } from '@/components/ui/ExportDropdown';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('FlexGroupAnalysisReport');
@@ -22,6 +23,7 @@ const logger = createLogger('FlexGroupAnalysisReport');
 
 export function FlexGroupAnalysisReport() {
   const { formatCurrencyCompact: formatCurrency } = useNumberFormat();
+  const chartRef = useRef<HTMLDivElement>(null);
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [selectedBudgetId, setSelectedBudgetId] = useState<string>('');
   const [flexGroups, setFlexGroups] = useState<FlexGroupStatus[]>([]);
@@ -64,6 +66,27 @@ export function FlexGroupAnalysisReport() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  const handleExportPdf = async () => {
+    const { exportToPdf } = await import('@/lib/pdf-export');
+    const headers = ['Group', 'Category', 'Budgeted', 'Spent', 'Remaining', '% Used'];
+    const rows = flexGroups.flatMap((group) =>
+      group.categories.map((cat) => [
+        group.groupName,
+        cat.categoryName,
+        formatCurrency(cat.budgeted),
+        formatCurrency(cat.spent),
+        formatCurrency(cat.budgeted - cat.spent),
+        `${cat.percentUsed}%`,
+      ]),
+    );
+    await exportToPdf({
+      title: 'Flex Group Analysis',
+      chartContainer: chartRef.current,
+      tableData: { headers, rows },
+      filename: 'flex-group-analysis',
+    });
+  };
 
   if (isLoading) {
     return (
@@ -113,18 +136,22 @@ export function FlexGroupAnalysisReport() {
     <div className="space-y-6">
       {/* Controls */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-4">
-        <select
-          value={selectedBudgetId}
-          onChange={(e) => setSelectedBudgetId(e.target.value)}
-          className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-        >
-          {budgets.map((b) => (
-            <option key={b.id} value={b.id}>{b.name}</option>
-          ))}
-        </select>
+        <div className="flex flex-wrap gap-3 items-center justify-between">
+          <select
+            value={selectedBudgetId}
+            onChange={(e) => setSelectedBudgetId(e.target.value)}
+            className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+          >
+            {budgets.map((b) => (
+              <option key={b.id} value={b.id}>{b.name}</option>
+            ))}
+          </select>
+          <ExportDropdown onExportPdf={handleExportPdf} />
+        </div>
       </div>
 
       {/* Per-group charts */}
+      <div ref={chartRef}>
       {flexGroups.map((group) => {
         const chartData = group.categories.map((cat) => ({
           name: cat.categoryName,
@@ -238,6 +265,7 @@ export function FlexGroupAnalysisReport() {
           </div>
         );
       })}
+      </div>
     </div>
   );
 }

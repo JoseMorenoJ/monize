@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   BarChart,
   Bar,
@@ -17,6 +17,7 @@ import { Account } from '@/types/account';
 import { parseLocalDate } from '@/lib/utils';
 import { useNumberFormat } from '@/hooks/useNumberFormat';
 import { useExchangeRates } from '@/hooks/useExchangeRates';
+import { ExportDropdown } from '@/components/ui/ExportDropdown';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('DividendYieldGrowthReport');
@@ -61,6 +62,7 @@ function detectFrequency(dates: Date[]): string {
 export function DividendYieldGrowthReport() {
   const { formatCurrency: formatCurrencyFull, formatCurrencyAxis } = useNumberFormat();
   const { defaultCurrency, convertToDefault } = useExchangeRates();
+  const chartRef = useRef<HTMLDivElement>(null);
   const [transactions, setTransactions] = useState<InvestmentTransaction[]>([]);
   const [holdings, setHoldings] = useState<HoldingWithMarketValue[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -234,6 +236,61 @@ export function DividendYieldGrowthReport() {
       .sort((a, b) => b.totalDividends - a.totalDividends);
   }, [securityYields]);
 
+  const handleExportPdf = async () => {
+    const { exportToPdf } = await import('@/lib/pdf-export');
+
+    let tableData: { headers: string[]; rows: (string | number)[][] } | undefined;
+    let chartContainer: HTMLElement | null = null;
+
+    if (viewType === 'yield') {
+      tableData = {
+        headers: ['Security', '12M Dividends', 'Market Value', 'Yield', 'Frequency'],
+        rows: securityYields.map((sy) => [
+          `${sy.symbol} - ${sy.name}`,
+          fmtValue(sy.trailing12mDividends),
+          fmtValue(sy.marketValue),
+          `${sy.yield.toFixed(2)}%`,
+          sy.frequency,
+        ]),
+      };
+    } else if (viewType === 'growth') {
+      chartContainer = chartRef.current;
+      tableData = {
+        headers: ['Year', 'Dividend Income', 'YoY Growth'],
+        rows: annualData.map((row) => [
+          row.year,
+          fmtValue(row.amount),
+          row.growth !== null ? `${row.growth >= 0 ? '+' : ''}${row.growth.toFixed(1)}%` : '-',
+        ]),
+      };
+    } else {
+      chartContainer = chartRef.current;
+      tableData = {
+        headers: ['Frequency', 'Securities', 'Total Dividends'],
+        rows: frequencyData.map((row) => [
+          row.frequency,
+          String(row.count),
+          fmtValue(row.totalDividends),
+        ]),
+      };
+    }
+
+    const viewLabel = viewType === 'yield' ? 'Per-Security Yield' : viewType === 'growth' ? 'Year-over-Year' : 'Frequency';
+    await exportToPdf({
+      title: 'Dividend Yield & Growth',
+      subtitle: viewLabel,
+      summaryCards: [
+        { label: 'Portfolio Yield', value: `${portfolioYield.toFixed(2)}%`, color: '#16a34a' },
+        { label: 'Trailing 12M', value: fmtValue(trailing12mTotal), color: '#2563eb' },
+        { label: 'Portfolio Value', value: fmtValue(totalPortfolioValue), color: '#9333ea' },
+        { label: 'Dividend Payers', value: String(securityYields.length), color: '#111827' },
+      ],
+      chartContainer,
+      tableData,
+      filename: 'dividend-yield-growth',
+    });
+  };
+
   if (isLoading) {
     return (
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-6">
@@ -293,7 +350,7 @@ export function DividendYieldGrowthReport() {
                 </option>
               ))}
           </select>
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center">
             <button
               onClick={() => setViewType('yield')}
               className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
@@ -319,6 +376,9 @@ export function DividendYieldGrowthReport() {
               Frequency
             </button>
           </div>
+          <div className="ml-auto">
+            <ExportDropdown onExportPdf={handleExportPdf} />
+          </div>
         </div>
       </div>
 
@@ -330,7 +390,7 @@ export function DividendYieldGrowthReport() {
         </div>
       ) : viewType === 'yield' ? (
         /* Per-Security Yield Table */
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 overflow-hidden">
+        <div ref={chartRef} className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
               Per-Security Dividend Yield (Trailing 12 Months)

@@ -21,6 +21,8 @@ import { scheduledTransactionsApi } from '@/lib/scheduled-transactions';
 import { ScheduledTransaction } from '@/types/scheduled-transaction';
 import { parseLocalDate } from '@/lib/utils';
 import { useNumberFormat } from '@/hooks/useNumberFormat';
+import { ExportDropdown } from '@/components/ui/ExportDropdown';
+import { exportToCsv } from '@/lib/csv-export';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('UpcomingBillsReport');
@@ -188,6 +190,41 @@ export function UpcomingBillsReport() {
     router.push('/bills');
   };
 
+  const getExportData = () => {
+    const headers = ['Bill Name', 'Due Date', 'Amount', 'Frequency', 'Account', 'Status'];
+    const rows: (string | number)[][] = upcomingBills.map((bill) => [
+      bill.scheduledTransaction.name,
+      format(bill.dueDate, 'yyyy-MM-dd'),
+      bill.amount,
+      bill.scheduledTransaction.frequency,
+      bill.scheduledTransaction.account?.name || '',
+      bill.isOverdue ? 'Overdue' : bill.scheduledTransaction.autoPost ? 'Auto' : 'Manual',
+    ]);
+    return { headers, rows };
+  };
+
+  const handleExportCsv = () => {
+    const { headers, rows } = getExportData();
+    exportToCsv('upcoming-bills', headers, rows);
+  };
+
+  const handleExportPdf = async () => {
+    const { exportToPdf } = await import('@/lib/pdf-export');
+    const { headers, rows } = getExportData();
+    const pdfCards = [
+      { label: 'Active Bills', value: String(scheduledTransactions.length), color: '#111827' },
+      ...(summary.overdueCount > 0 ? [{ label: 'Overdue', value: String(summary.overdueCount), color: '#dc2626' }] : []),
+      { label: 'This Month', value: `${summary.thisMonthCount} (${formatCurrency(summary.thisMonthTotal)})`, color: '#2563eb' },
+    ];
+    await exportToPdf({
+      title: 'Upcoming Bills Report',
+      subtitle: `${format(currentMonth, 'MMMM yyyy')} | ${scheduledTransactions.length} active bills`,
+      summaryCards: pdfCards,
+      tableData: { headers, rows },
+      filename: 'upcoming-bills',
+    });
+  };
+
   if (isLoading) {
     return (
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-6">
@@ -261,27 +298,30 @@ export function UpcomingBillsReport() {
               Today
             </button>
           </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setViewType('calendar')}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                viewType === 'calendar'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
-              }`}
-            >
-              Calendar
-            </button>
-            <button
-              onClick={() => setViewType('list')}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                viewType === 'list'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
-              }`}
-            >
-              List
-            </button>
+          <div className="flex items-center gap-3">
+            <div className="flex gap-2">
+              <button
+                onClick={() => setViewType('calendar')}
+                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                  viewType === 'calendar'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+                }`}
+              >
+                Calendar
+              </button>
+              <button
+                onClick={() => setViewType('list')}
+                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                  viewType === 'list'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+                }`}
+              >
+                List
+              </button>
+            </div>
+            <ExportDropdown onExportCsv={handleExportCsv} onExportPdf={handleExportPdf} disabled={upcomingBills.length === 0} />
           </div>
         </div>
       </div>

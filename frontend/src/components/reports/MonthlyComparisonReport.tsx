@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   BarChart,
   Bar,
@@ -21,6 +21,7 @@ import {
 } from '@/types/monthly-comparison';
 import { useNumberFormat } from '@/hooks/useNumberFormat';
 import { CHART_COLOURS } from '@/lib/chart-colours';
+import { ExportDropdown } from '@/components/ui/ExportDropdown';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('MonthlyComparisonReport');
@@ -57,6 +58,7 @@ function DeltaBadge({ value, percent, invert = false }: { value: number; percent
 
 export function MonthlyComparisonReport() {
   const { formatCurrency, formatCurrencyCompact, formatCurrencyAxis } = useNumberFormat();
+  const chartRef = useRef<HTMLDivElement>(null);
   const [month, setMonth] = useState(getDefaultMonth);
   const [data, setData] = useState<MonthlyComparisonResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -76,6 +78,109 @@ export function MonthlyComparisonReport() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  const handleExportPdf = async () => {
+    if (!data) return;
+    const { exportToPdf } = await import('@/lib/pdf-export');
+    const { incomeExpenses, notes: n, expenses: exp, topCategories: topCats, netWorth: netW, investments: inv, currency: cur } = data;
+    const savingsColor = incomeExpenses.currentSavings >= 0 ? '#2563eb' : '#ea580c';
+
+    // Summary notes
+    const descriptionParts: string[] = [];
+    if (n.savingsNote) descriptionParts.push(n.savingsNote);
+    if (n.incomeNote) descriptionParts.push(n.incomeNote);
+
+    // Chart legend for expense categories
+    const chartLegend = exp.comparison.slice(0, 10).map((item, i) => ({
+      color: item.color || CHART_COLOURS[i % CHART_COLOURS.length],
+      label: item.categoryName,
+    }));
+
+    // Monthly Expenses Comparison (main table - renders right after legend)
+    const comparisonTable = exp.comparison.length > 0 ? {
+      headers: ['Category', data.currentMonthLabel, data.previousMonthLabel, 'Change', 'Change %'],
+      rows: exp.comparison.map((item) => [
+        item.categoryName,
+        formatCurrency(item.currentTotal, cur),
+        formatCurrency(item.previousTotal, cur),
+        `${item.change >= 0 ? '+' : ''}${formatCurrency(item.change, cur)}`,
+        `${item.changePercent >= 0 ? '+' : ''}${item.changePercent.toFixed(1)}%`,
+      ]),
+    } : undefined;
+
+    // Additional tables
+    const additionalTables: Array<{ title?: string; headers: string[]; rows: (string | number)[][] }> = [];
+
+    // Top 5 categories
+    if (topCats.currentMonth.length > 0) {
+      additionalTables.push({
+        title: `Top 5 Categories - ${data.currentMonthLabel}`,
+        headers: ['#', 'Category', 'Amount'],
+        rows: topCats.currentMonth.map((cat, i) => [
+          i + 1,
+          cat.categoryName,
+          formatCurrency(Math.abs(cat.total), cur),
+        ]),
+      });
+    }
+    if (topCats.previousMonth.length > 0) {
+      additionalTables.push({
+        title: `Top 5 Categories - ${data.previousMonthLabel}`,
+        headers: ['#', 'Category', 'Amount'],
+        rows: topCats.previousMonth.map((cat, i) => [
+          i + 1,
+          cat.categoryName,
+          formatCurrency(Math.abs(cat.total), cur),
+        ]),
+      });
+    }
+
+    // Net Worth
+    if (netW.monthlyHistory.length > 0) {
+      const changeSign = netW.netWorthChange >= 0 ? '+' : '';
+      additionalTables.push({
+        title: 'Net Worth',
+        headers: ['Period', 'Net Worth'],
+        rows: [
+          [data.currentMonthLabel, formatCurrency(netW.currentNetWorth, cur)],
+          [data.previousMonthLabel, formatCurrency(netW.currentNetWorth - netW.netWorthChange, cur)],
+          ['Change', `${changeSign}${formatCurrency(netW.netWorthChange, cur)} (${changeSign}${netW.netWorthChangePercent.toFixed(1)}%)`],
+        ],
+      });
+    }
+
+    // Top Movers
+    if (inv.topMovers.length > 0) {
+      additionalTables.push({
+        title: 'Top Movers',
+        headers: ['Symbol', 'Name', 'Price', 'Change', 'Change %'],
+        rows: inv.topMovers.map((mover) => [
+          mover.symbol,
+          mover.name,
+          formatCurrency(mover.currentPrice, cur),
+          `${mover.change >= 0 ? '+' : ''}${formatCurrency(mover.change, cur)}`,
+          `${mover.changePercent >= 0 ? '+' : ''}${mover.changePercent.toFixed(2)}%`,
+        ]),
+      });
+    }
+
+    await exportToPdf({
+      title: 'Monthly Comparison',
+      subtitle: `${data.currentMonthLabel} vs ${data.previousMonthLabel}`,
+      description: descriptionParts.length > 0 ? descriptionParts.join('\n') : undefined,
+      summaryCards: [
+        { label: 'Income', value: formatCurrencyCompact(incomeExpenses.currentIncome, cur), color: '#16a34a' },
+        { label: 'Expenses', value: formatCurrencyCompact(incomeExpenses.currentExpenses, cur), color: '#dc2626' },
+        { label: 'Savings', value: formatCurrencyCompact(incomeExpenses.currentSavings, cur), color: savingsColor },
+      ],
+      chartContainer: chartRef.current,
+      chartColumns: 2,
+      chartLegend,
+      tableData: comparisonTable,
+      additionalTables: additionalTables.length > 0 ? additionalTables : undefined,
+      filename: 'monthly-comparison',
+    });
+  };
 
   const goBack = () => {
     const d = parseMonth(month);
@@ -131,35 +236,38 @@ export function MonthlyComparisonReport() {
   const currency = data.currency;
 
   return (
-    <div className="space-y-6">
+    <div ref={chartRef} className="space-y-6">
       {/* Month Picker */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-4">
-        <div className="flex items-center justify-center gap-4">
-          <button
-            onClick={goBack}
-            className="p-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-          >
-            <svg className="h-5 w-5 text-gray-600 dark:text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
-          <div className="text-center">
-            <div className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-              {data.currentMonthLabel}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4 flex-1 justify-center">
+            <button
+              onClick={goBack}
+              className="p-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            >
+              <svg className="h-5 w-5 text-gray-600 dark:text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <div className="text-center">
+              <div className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                {data.currentMonthLabel}
+              </div>
+              <div className="text-sm text-gray-500 dark:text-gray-400">
+                vs {data.previousMonthLabel}
+              </div>
             </div>
-            <div className="text-sm text-gray-500 dark:text-gray-400">
-              vs {data.previousMonthLabel}
-            </div>
+            <button
+              onClick={goForward}
+              disabled={forwardDisabled}
+              className="p-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              <svg className="h-5 w-5 text-gray-600 dark:text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
           </div>
-          <button
-            onClick={goForward}
-            disabled={forwardDisabled}
-            className="p-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-          >
-            <svg className="h-5 w-5 text-gray-600 dark:text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-          </button>
+          <ExportDropdown onExportPdf={handleExportPdf} />
         </div>
       </div>
 

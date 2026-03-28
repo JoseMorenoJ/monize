@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { endOfMonth, format } from "date-fns";
 import {
@@ -17,6 +17,7 @@ import { builtInReportsApi } from "@/lib/built-in-reports";
 import { YearData } from "@/types/built-in-reports";
 import { useNumberFormat } from "@/hooks/useNumberFormat";
 import { CHART_COLOURS } from "@/lib/chart-colours";
+import { ExportDropdown } from "@/components/ui/ExportDropdown";
 import { createLogger } from "@/lib/logger";
 
 const logger = createLogger("YearOverYearReport");
@@ -40,6 +41,7 @@ export function YearOverYearReport() {
   const router = useRouter();
   const { formatCurrencyCompact: formatCurrency, formatCurrencyAxis } =
     useNumberFormat();
+  const chartRef = useRef<HTMLDivElement>(null);
   const [yearData, setYearData] = useState<YearData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [yearsToCompare, setYearsToCompare] = useState(2);
@@ -112,6 +114,53 @@ export function YearOverYearReport() {
     router.push(`/transactions?startDate=${startDate}&endDate=${lastDay}`);
   };
 
+  const handleExportPdf = async () => {
+    const { exportToPdf } = await import("@/lib/pdf-export");
+
+    const cards = years.map((year, index) => ({
+      label: String(year),
+      value: formatCurrency(yearTotals[year]?.[metric] || 0),
+      color: CHART_COLOURS[index % CHART_COLOURS.length],
+    }));
+
+    // Build YoY change table
+    const tableHeaders = ["Metric", ...years.slice(1).map((year, index) => `${years[index]} vs ${year}`)];
+    const tableRows = (["income", "expenses", "savings"] as const).map((m) => {
+      const label = m.charAt(0).toUpperCase() + m.slice(1);
+      const cells = years.slice(1).map((_year, index) => {
+        const prevValue = yearTotals[years[index]]?.[m] || 0;
+        const currValue = yearTotals[_year]?.[m] || 0;
+        const change = currValue - prevValue;
+        const changePercent = prevValue !== 0 ? (change / Math.abs(prevValue)) * 100 : 0;
+        return `${change >= 0 ? "+" : ""}${formatCurrency(change)} (${changePercent >= 0 ? "+" : ""}${changePercent.toFixed(1)}%)`;
+      });
+      return [label, ...cells];
+    });
+
+    // Build yearly summary table
+    const summaryHeaders = ["Year", "Income", "Expenses", "Net"];
+    const summaryRows = years.map((year) => [
+      String(year),
+      formatCurrency(yearTotals[year]?.income || 0),
+      formatCurrency(yearTotals[year]?.expenses || 0),
+      formatCurrency(yearTotals[year]?.savings || 0),
+    ]);
+
+    await exportToPdf({
+      title: "Year Over Year Comparison",
+      subtitle: `${metric.charAt(0).toUpperCase() + metric.slice(1)} | ${years[0]} - ${years[years.length - 1]}`,
+      summaryCards: cards,
+      chartContainer: chartRef.current,
+      tableData: years.length >= 2 ? { headers: tableHeaders, rows: tableRows } : undefined,
+      additionalTables: [{
+        title: "Yearly Summary",
+        headers: summaryHeaders,
+        rows: summaryRows,
+      }],
+      filename: "year-over-year",
+    });
+  };
+
   const CustomTooltip = ({
     active,
     payload,
@@ -177,7 +226,7 @@ export function YearOverYearReport() {
               </option>
             </select>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center">
             {(["expenses", "income", "savings"] as const).map((m) => (
               <button
                 key={m}
@@ -191,6 +240,9 @@ export function YearOverYearReport() {
                 {m}
               </button>
             ))}
+          </div>
+          <div className="ml-auto">
+            <ExportDropdown onExportPdf={handleExportPdf} />
           </div>
         </div>
       </div>
@@ -241,7 +293,7 @@ export function YearOverYearReport() {
       </div>
 
       {/* Monthly Comparison Chart */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 px-2 py-4 sm:p-6">
+      <div ref={chartRef} className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 px-2 py-4 sm:p-6">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
           Monthly {metric.charAt(0).toUpperCase() + metric.slice(1)} Comparison
         </h3>

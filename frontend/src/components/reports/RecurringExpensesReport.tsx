@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   PieChart,
@@ -24,6 +24,7 @@ const logger = createLogger('RecurringExpensesReport');
 export function RecurringExpensesReport() {
   const router = useRouter();
   const { formatCurrencyCompact: formatCurrency } = useNumberFormat();
+  const chartRef = useRef<HTMLDivElement>(null);
   const [recurringData, setRecurringData] = useState<RecurringExpensesResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [minOccurrences, setMinOccurrences] = useState(3);
@@ -51,8 +52,8 @@ export function RecurringExpensesReport() {
     }));
   }, [recurringData]);
 
-  const handleExportCsv = () => {
-    if (!recurringData) return;
+  const getExportData = () => {
+    if (!recurringData) return null;
     const headers = ['Payee', 'Category', 'Frequency', 'Count', 'Avg Amount', '6-Mo Total', 'Last Paid'];
     const rows = recurringData.data.map((e) => [
       e.payeeName,
@@ -63,26 +64,33 @@ export function RecurringExpensesReport() {
       e.totalAmount,
       format(new Date(e.lastTransactionDate), 'yyyy-MM-dd'),
     ]);
-    exportToCsv('recurring-expenses', headers, rows);
+    return { headers, rows };
+  };
+
+  const handleExportCsv = () => {
+    const data = getExportData();
+    if (!data) return;
+    exportToCsv('recurring-expenses', data.headers, data.rows);
   };
 
   const handleExportPdf = async () => {
-    if (!recurringData) return;
+    const expData = getExportData();
+    if (!expData || !recurringData) return;
     const { exportToPdf } = await import('@/lib/pdf-export');
-    const headers = ['Payee', 'Category', 'Frequency', 'Count', 'Avg Amount', '6-Mo Total', 'Last Paid'];
-    const rows = recurringData.data.map((e) => [
-      e.payeeName,
-      e.categoryName,
-      e.frequency,
-      e.occurrences,
-      e.averageAmount,
-      e.totalAmount,
-      format(new Date(e.lastTransactionDate), 'yyyy-MM-dd'),
-    ]);
     await exportToPdf({
       title: 'Recurring Expenses',
       subtitle: `${recurringData.summary.uniquePayees} recurring payees identified`,
-      tableData: { headers, rows },
+      summaryCards: [
+        { label: 'Recurring Expenses', value: String(recurringData.summary.uniquePayees), color: '#111827' },
+        { label: '6-Month Total', value: formatCurrency(recurringData.summary.totalRecurring), color: '#dc2626' },
+        { label: 'Monthly Estimate', value: formatCurrency(recurringData.summary.monthlyEstimate), color: '#ea580c' },
+      ],
+      chartContainer: chartRef.current,
+      chartLegend: chartData.map((item) => ({
+        color: item.color,
+        label: `${item.payeeName}: ${formatCurrency(item.totalAmount)}`,
+      })),
+      tableData: { headers: expData.headers, rows: expData.rows },
       filename: 'recurring-expenses',
     });
   };
@@ -162,14 +170,14 @@ export function RecurringExpensesReport() {
 
       {/* Controls */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-4">
-        <div className="flex items-center gap-4">
-          <label className="text-sm text-gray-700 dark:text-gray-300">
+        <div className="flex items-center gap-3">
+          <label className="text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">
             Minimum occurrences:
           </label>
           <select
             value={minOccurrences}
             onChange={(e) => setMinOccurrences(Number(e.target.value))}
-            className="rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 text-sm"
+            className="w-16 rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 text-sm"
           >
             <option value={2}>2+</option>
             <option value={3}>3+</option>
@@ -177,9 +185,12 @@ export function RecurringExpensesReport() {
             <option value={5}>5+</option>
             <option value={6}>6+</option>
           </select>
-          <span className="text-sm text-gray-500 dark:text-gray-400">
+          <span className="text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
             (in last 6 months)
           </span>
+          <div className="ml-auto shrink-0">
+            <ExportDropdown onExportCsv={handleExportCsv} onExportPdf={handleExportPdf} />
+          </div>
         </div>
       </div>
 
@@ -196,7 +207,7 @@ export function RecurringExpensesReport() {
             <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
               Top 10 Recurring Expenses
             </h3>
-            <div className="h-80">
+            <div ref={chartRef} className="h-80">
               <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                 <PieChart>
                   <Pie
@@ -222,11 +233,10 @@ export function RecurringExpensesReport() {
 
           {/* Table */}
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+            <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
                 All Recurring Expenses
               </h3>
-              <ExportDropdown onExportCsv={handleExportCsv} onExportPdf={handleExportPdf} />
             </div>
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">

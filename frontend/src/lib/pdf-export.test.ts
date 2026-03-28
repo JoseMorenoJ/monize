@@ -37,12 +37,18 @@ vi.mock('jspdf', () => {
 
 // Mock chart capture
 vi.mock('./pdf-export-charts', () => ({
-  captureSvgAsImage: vi.fn().mockResolvedValue(null),
+  captureAllChartsAsImages: vi.fn().mockResolvedValue([]),
 }));
 
 // Mock table rendering
 vi.mock('./pdf-export-tables', () => ({
   addTableToPdf: vi.fn().mockReturnValue(100),
+}));
+
+// Mock summary cards rendering
+const mockAddSummaryCards = vi.fn().mockReturnValue(50);
+vi.mock('./pdf-export-cards', () => ({
+  addSummaryCardsToPdf: (...args: unknown[]) => mockAddSummaryCards(...args),
 }));
 
 describe('exportToPdf', () => {
@@ -134,5 +140,101 @@ describe('exportToPdf', () => {
       expect.any(Number),
       expect.objectContaining({ align: 'right' }),
     );
+  });
+
+  it('adds multiple chart images when captureAllChartsAsImages returns multiple', async () => {
+    const { captureAllChartsAsImages } = await import('./pdf-export-charts');
+    const mockCapture = vi.mocked(captureAllChartsAsImages);
+    mockCapture.mockResolvedValueOnce([
+      { dataUrl: 'data:image/png;base64,chart1', width: 800, height: 400 },
+      { dataUrl: 'data:image/png;base64,chart2', width: 800, height: 400 },
+      { dataUrl: 'data:image/png;base64,chart3', width: 800, height: 400 },
+    ]);
+
+    const { exportToPdf } = await import('./pdf-export');
+    const container = document.createElement('div');
+
+    await exportToPdf({
+      title: 'Multi Chart Report',
+      chartContainer: container,
+      filename: 'multi-chart',
+    });
+
+    expect(mockAddImage).toHaveBeenCalledTimes(3);
+    expect(mockAddImage).toHaveBeenCalledWith(
+      'data:image/png;base64,chart1', 'PNG',
+      expect.any(Number), expect.any(Number), expect.any(Number), expect.any(Number),
+    );
+    expect(mockAddImage).toHaveBeenCalledWith(
+      'data:image/png;base64,chart2', 'PNG',
+      expect.any(Number), expect.any(Number), expect.any(Number), expect.any(Number),
+    );
+    expect(mockAddImage).toHaveBeenCalledWith(
+      'data:image/png;base64,chart3', 'PNG',
+      expect.any(Number), expect.any(Number), expect.any(Number), expect.any(Number),
+    );
+  });
+
+  it('adds page breaks when charts exceed page height', async () => {
+    const { captureAllChartsAsImages } = await import('./pdf-export-charts');
+    const mockCapture = vi.mocked(captureAllChartsAsImages);
+    // pageHeight is 210mm (landscape A4). With subtitle, currentY starts at 32.
+    // maxHeight for multi-chart is 80mm. Each chart takes 80 + 8 = 88mm.
+    // After chart 1: currentY = 32 + 80 + 8 = 120
+    // Chart 2 needs 80mm, 120 + 80 = 200 > 210 - 20 = 190, so page break
+    mockCapture.mockResolvedValueOnce([
+      { dataUrl: 'data:image/png;base64,a', width: 400, height: 400 },
+      { dataUrl: 'data:image/png;base64,b', width: 400, height: 400 },
+    ]);
+
+    const { exportToPdf } = await import('./pdf-export');
+    const container = document.createElement('div');
+
+    await exportToPdf({
+      title: 'Tall Charts',
+      subtitle: 'Testing page breaks',
+      chartContainer: container,
+      filename: 'tall-charts',
+    });
+
+    expect(mockAddPage).toHaveBeenCalled();
+    expect(mockAddImage).toHaveBeenCalledTimes(2);
+  });
+
+  it('renders summary cards when provided', async () => {
+    const { exportToPdf } = await import('./pdf-export');
+
+    const summaryCards = [
+      { label: 'Net Worth', value: '$100,000', color: '#16a34a' },
+      { label: 'Change', value: '+$5,000', color: '#16a34a' },
+    ];
+
+    await exportToPdf({
+      title: 'Report with Cards',
+      summaryCards,
+      filename: 'report-cards',
+    });
+
+    expect(mockAddSummaryCards).toHaveBeenCalledWith(
+      expect.anything(),
+      summaryCards,
+      expect.objectContaining({
+        startY: expect.any(Number),
+        pageWidth: expect.any(Number),
+        margin: expect.any(Number),
+      }),
+    );
+  });
+
+  it('does not render summary cards when not provided', async () => {
+    mockAddSummaryCards.mockClear();
+    const { exportToPdf } = await import('./pdf-export');
+
+    await exportToPdf({
+      title: 'Report without Cards',
+      filename: 'report-no-cards',
+    });
+
+    expect(mockAddSummaryCards).not.toHaveBeenCalled();
   });
 });

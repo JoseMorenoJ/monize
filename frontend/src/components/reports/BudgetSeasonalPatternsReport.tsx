@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   BarChart,
   Bar,
@@ -14,12 +14,14 @@ import {
 import { budgetsApi } from '@/lib/budgets';
 import type { Budget, SeasonalPattern } from '@/types/budget';
 import { useNumberFormat } from '@/hooks/useNumberFormat';
+import { ExportDropdown } from '@/components/ui/ExportDropdown';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('BudgetSeasonalPatternsReport');
 
 export function BudgetSeasonalPatternsReport() {
   const { formatCurrencyCompact: formatCurrency } = useNumberFormat();
+  const chartRef = useRef<HTMLDivElement>(null);
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [selectedBudgetId, setSelectedBudgetId] = useState<string>('');
   const [patterns, setPatterns] = useState<SeasonalPattern[]>([]);
@@ -81,6 +83,25 @@ export function BudgetSeasonalPatternsReport() {
     }));
   }, [activePattern]);
 
+  const handleExportPdf = async () => {
+    const { exportToPdf } = await import('@/lib/pdf-export');
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const headers = ['Category', 'Typical/Mo', 'High Months'];
+    const rows = patterns.map((p) => [
+      p.categoryName,
+      formatCurrency(p.typicalMonthlySpend),
+      p.highMonths.length > 0
+        ? p.highMonths.map((m) => monthNames[m - 1]).join(', ')
+        : 'None detected',
+    ]);
+    await exportToPdf({
+      title: 'Budget Seasonal Patterns',
+      chartContainer: chartRef.current,
+      tableData: { headers, rows },
+      filename: 'budget-seasonal-patterns',
+    });
+  };
+
   if (isLoading) {
     return (
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-6">
@@ -106,34 +127,37 @@ export function BudgetSeasonalPatternsReport() {
     <div className="space-y-6">
       {/* Controls */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-4">
-        <div className="flex flex-wrap gap-3 items-center">
-          <select
-            value={selectedBudgetId}
-            onChange={(e) => {
-              setSelectedBudgetId(e.target.value);
-              setSelectedCategory('');
-            }}
-            className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-          >
-            {budgets.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-              </option>
-            ))}
-          </select>
-          {patterns.length > 0 && (
+        <div className="flex flex-wrap gap-3 items-center justify-between">
+          <div className="flex flex-wrap gap-3 items-center">
             <select
-              value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value)}
+              value={selectedBudgetId}
+              onChange={(e) => {
+                setSelectedBudgetId(e.target.value);
+                setSelectedCategory('');
+              }}
               className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
             >
-              {patterns.map((p) => (
-                <option key={p.categoryId} value={p.categoryId}>
-                  {p.categoryName}
+              {budgets.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
                 </option>
               ))}
             </select>
-          )}
+            {patterns.length > 0 && (
+              <select
+                value={selectedCategory}
+                onChange={(e) => setSelectedCategory(e.target.value)}
+                className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+              >
+                {patterns.map((p) => (
+                  <option key={p.categoryId} value={p.categoryId}>
+                    {p.categoryName}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+          <ExportDropdown onExportPdf={handleExportPdf} />
         </div>
       </div>
 
@@ -146,7 +170,7 @@ export function BudgetSeasonalPatternsReport() {
       ) : activePattern ? (
         <>
           {/* Chart */}
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-6">
+          <div ref={chartRef} className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
                 {activePattern.categoryName} - Monthly Spending

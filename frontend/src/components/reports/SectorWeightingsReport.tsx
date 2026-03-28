@@ -15,6 +15,7 @@ import { SectorWeightingResult, Security } from '@/types/investment';
 import { Account } from '@/types/account';
 import { useNumberFormat } from '@/hooks/useNumberFormat';
 import { useExchangeRates } from '@/hooks/useExchangeRates';
+import { ExportDropdown } from '@/components/ui/ExportDropdown';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('SectorWeightingsReport');
@@ -60,6 +61,7 @@ export function SectorWeightingsReport() {
   const [showSecurityFilter, setShowSecurityFilter] = useState(false);
   const accountFilterRef = useRef<HTMLDivElement>(null);
   const securityFilterRef = useRef<HTMLDivElement>(null);
+  const chartRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -119,6 +121,28 @@ export function SectorWeightingsReport() {
     );
   };
 
+  const handleExportPdf = async () => {
+    const { exportToPdf } = await import('@/lib/pdf-export');
+    const headers = ['Sector', 'Direct Value', 'ETF Value', 'Total Value', '% of Portfolio'];
+    const rows = data ? data.items.map(item => [
+      item.sector,
+      formatCurrencyFull(item.directValue, defaultCurrency),
+      formatCurrencyFull(item.etfValue, defaultCurrency),
+      formatCurrencyFull(item.totalValue, defaultCurrency),
+      `${item.percentage.toFixed(1)}%`,
+    ]) : [];
+    const accountLabel = selectedAccountIds.length > 0
+      ? accounts.filter((a) => selectedAccountIds.includes(a.id)).map((a) => a.name).join(', ')
+      : 'All Accounts';
+    await exportToPdf({
+      title: 'Sector Weightings',
+      subtitle: accountLabel,
+      chartContainer: chartRef.current,
+      tableData: { headers, rows },
+      filename: 'sector-weightings',
+    });
+  };
+
   if (isLoading) {
     return (
       <div className="space-y-6">
@@ -155,98 +179,101 @@ export function SectorWeightingsReport() {
     <div className="space-y-6">
       {/* Filters */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-4">
-        <div className="flex flex-wrap gap-3">
-          {/* Account Filter */}
-          <div className="relative" ref={accountFilterRef}>
-            <button
-              onClick={() => {
-                setShowAccountFilter(!showAccountFilter);
-                setShowSecurityFilter(false);
-              }}
-              className="px-4 py-2 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-            >
-              Accounts{selectedAccountIds.length > 0 ? ` (${selectedAccountIds.length})` : ''}
-            </button>
-            {showAccountFilter && (
-              <div className="absolute top-full left-0 mt-1 w-64 bg-white dark:bg-gray-800 rounded-lg shadow-lg dark:shadow-gray-700/50 border border-gray-200 dark:border-gray-700 z-10 max-h-60 overflow-y-auto">
-                <div className="p-2">
-                  {accounts.filter((a) => a.accountSubType !== 'INVESTMENT_CASH').length === 0 ? (
-                    <p className="text-sm text-gray-500 dark:text-gray-400 p-2">No investment accounts</p>
-                  ) : (
-                    accounts.filter((a) => a.accountSubType !== 'INVESTMENT_CASH').map((acct) => (
-                      <label
-                        key={acct.id}
-                        className="flex items-center gap-2 p-2 hover:bg-gray-50 dark:hover:bg-gray-700 rounded cursor-pointer"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selectedAccountIds.includes(acct.id)}
-                          onChange={() => toggleAccountId(acct.id)}
-                          className="rounded border-gray-300 dark:border-gray-600"
-                        />
-                        <span className="text-sm text-gray-700 dark:text-gray-300 truncate">
-                          {acct.name}
-                        </span>
-                      </label>
-                    ))
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Security Filter */}
-          <div className="relative" ref={securityFilterRef}>
-            <button
-              onClick={() => {
-                setShowSecurityFilter(!showSecurityFilter);
-                setShowAccountFilter(false);
-              }}
-              className="px-4 py-2 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-            >
-              Securities{selectedSecurityIds.length > 0 ? ` (${selectedSecurityIds.length})` : ''}
-            </button>
-            {showSecurityFilter && (
-              <div className="absolute top-full left-0 mt-1 w-72 bg-white dark:bg-gray-800 rounded-lg shadow-lg dark:shadow-gray-700/50 border border-gray-200 dark:border-gray-700 z-10 max-h-60 overflow-y-auto">
-                <div className="p-2">
-                  {securities.filter((s) => s.isActive).length === 0 ? (
-                    <p className="text-sm text-gray-500 dark:text-gray-400 p-2">No active securities</p>
-                  ) : (
-                    securities
-                      .filter((s) => s.isActive)
-                      .map((sec) => (
+        <div className="flex flex-wrap gap-3 items-center justify-between">
+          <div className="flex flex-wrap gap-3">
+            {/* Account Filter */}
+            <div className="relative" ref={accountFilterRef}>
+              <button
+                onClick={() => {
+                  setShowAccountFilter(!showAccountFilter);
+                  setShowSecurityFilter(false);
+                }}
+                className="px-4 py-2 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+              >
+                Accounts{selectedAccountIds.length > 0 ? ` (${selectedAccountIds.length})` : ''}
+              </button>
+              {showAccountFilter && (
+                <div className="absolute top-full left-0 mt-1 w-64 bg-white dark:bg-gray-800 rounded-lg shadow-lg dark:shadow-gray-700/50 border border-gray-200 dark:border-gray-700 z-10 max-h-60 overflow-y-auto">
+                  <div className="p-2">
+                    {accounts.filter((a) => a.accountSubType !== 'INVESTMENT_CASH').length === 0 ? (
+                      <p className="text-sm text-gray-500 dark:text-gray-400 p-2">No investment accounts</p>
+                    ) : (
+                      accounts.filter((a) => a.accountSubType !== 'INVESTMENT_CASH').map((acct) => (
                         <label
-                          key={sec.id}
+                          key={acct.id}
                           className="flex items-center gap-2 p-2 hover:bg-gray-50 dark:hover:bg-gray-700 rounded cursor-pointer"
                         >
                           <input
                             type="checkbox"
-                            checked={selectedSecurityIds.includes(sec.id)}
-                            onChange={() => toggleSecurityId(sec.id)}
+                            checked={selectedAccountIds.includes(acct.id)}
+                            onChange={() => toggleAccountId(acct.id)}
                             className="rounded border-gray-300 dark:border-gray-600"
                           />
                           <span className="text-sm text-gray-700 dark:text-gray-300 truncate">
-                            {sec.symbol} - {sec.name}
+                            {acct.name}
                           </span>
                         </label>
                       ))
-                  )}
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
+            </div>
+
+            {/* Security Filter */}
+            <div className="relative" ref={securityFilterRef}>
+              <button
+                onClick={() => {
+                  setShowSecurityFilter(!showSecurityFilter);
+                  setShowAccountFilter(false);
+                }}
+                className="px-4 py-2 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+              >
+                Securities{selectedSecurityIds.length > 0 ? ` (${selectedSecurityIds.length})` : ''}
+              </button>
+              {showSecurityFilter && (
+                <div className="absolute top-full left-0 mt-1 w-72 bg-white dark:bg-gray-800 rounded-lg shadow-lg dark:shadow-gray-700/50 border border-gray-200 dark:border-gray-700 z-10 max-h-60 overflow-y-auto">
+                  <div className="p-2">
+                    {securities.filter((s) => s.isActive).length === 0 ? (
+                      <p className="text-sm text-gray-500 dark:text-gray-400 p-2">No active securities</p>
+                    ) : (
+                      securities
+                        .filter((s) => s.isActive)
+                        .map((sec) => (
+                          <label
+                            key={sec.id}
+                            className="flex items-center gap-2 p-2 hover:bg-gray-50 dark:hover:bg-gray-700 rounded cursor-pointer"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedSecurityIds.includes(sec.id)}
+                              onChange={() => toggleSecurityId(sec.id)}
+                              className="rounded border-gray-300 dark:border-gray-600"
+                            />
+                            <span className="text-sm text-gray-700 dark:text-gray-300 truncate">
+                              {sec.symbol} - {sec.name}
+                            </span>
+                          </label>
+                        ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {(selectedAccountIds.length > 0 || selectedSecurityIds.length > 0) && (
+              <button
+                onClick={() => {
+                  setSelectedAccountIds([]);
+                  setSelectedSecurityIds([]);
+                }}
+                className="px-4 py-2 text-sm font-medium rounded-lg text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+              >
+                Clear Filters
+              </button>
             )}
           </div>
-
-          {(selectedAccountIds.length > 0 || selectedSecurityIds.length > 0) && (
-            <button
-              onClick={() => {
-                setSelectedAccountIds([]);
-                setSelectedSecurityIds([]);
-              }}
-              className="px-4 py-2 text-sm font-medium rounded-lg text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-            >
-              Clear Filters
-            </button>
-          )}
+          <ExportDropdown onExportPdf={handleExportPdf} />
         </div>
       </div>
 
@@ -279,7 +306,7 @@ export function SectorWeightingsReport() {
       </div>
 
       {/* Stacked Bar Chart */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-3 sm:p-6">
+      <div ref={chartRef} className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-3 sm:p-6">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
           Sector Allocation
         </h3>

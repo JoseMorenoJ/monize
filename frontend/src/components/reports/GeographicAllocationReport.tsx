@@ -18,6 +18,7 @@ import { HoldingWithMarketValue, Security } from '@/types/investment';
 import { Account } from '@/types/account';
 import { useNumberFormat } from '@/hooks/useNumberFormat';
 import { useExchangeRates } from '@/hooks/useExchangeRates';
+import { ExportDropdown } from '@/components/ui/ExportDropdown';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('GeographicAllocationReport');
@@ -113,6 +114,7 @@ export function GeographicAllocationReport() {
   const [isLoading, setIsLoading] = useState(true);
   const [showAccountFilter, setShowAccountFilter] = useState(false);
   const accountFilterRef = useRef<HTMLDivElement>(null);
+  const chartRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -220,6 +222,52 @@ export function GeographicAllocationReport() {
     return { exchangeData: exchanges, regionData: regions, totalValue: total };
   }, [holdings, convertToDefault, securityExchangeMap]);
 
+  const handleExportPdf = async () => {
+    const { exportToPdf } = await import('@/lib/pdf-export');
+    const headers = viewType === 'region'
+      ? ['Region', 'Holdings', 'Market Value', '% of Portfolio']
+      : ['Exchange', 'Country', 'Holdings', 'Market Value', '% of Portfolio'];
+    const rows = viewType === 'region'
+      ? regionData.map(item => [
+          item.region,
+          String(item.count),
+          formatCurrencyFull(item.marketValue, defaultCurrency),
+          `${item.percentage.toFixed(1)}%`,
+        ])
+      : exchangeData.map(item => [
+          item.exchange,
+          item.country,
+          String(item.count),
+          formatCurrencyFull(item.marketValue, defaultCurrency),
+          `${item.percentage.toFixed(1)}%`,
+        ]);
+
+    const legendItems = viewType === 'region'
+      ? regionData.map((item) => ({
+          color: item.color,
+          label: `${item.region} - ${formatCurrencyFull(item.marketValue, defaultCurrency)} (${item.percentage.toFixed(1)}%)`,
+        }))
+      : exchangeData.map((item, idx) => ({
+          color: COUNTRY_COLOURS[idx % COUNTRY_COLOURS.length],
+          label: `${item.exchange} - ${formatCurrencyFull(item.marketValue, defaultCurrency)} (${item.percentage.toFixed(1)}%)`,
+        }));
+
+    await exportToPdf({
+      title: 'Geographic Allocation',
+      subtitle: viewType === 'region' ? 'By Region' : 'By Exchange',
+      summaryCards: [
+        { label: 'Total Portfolio', value: formatCurrency(totalValue, defaultCurrency), color: '#111827' },
+        { label: 'Regions', value: String(regionData.length), color: '#111827' },
+        { label: 'Exchanges', value: String(exchangeData.length), color: '#111827' },
+        { label: 'Top Region', value: regionData[0]?.region || '-', color: '#111827' },
+      ],
+      chartContainer: chartRef.current,
+      chartLegend: legendItems.length > 0 ? legendItems : undefined,
+      tableData: { headers, rows },
+      filename: 'geographic-allocation',
+    });
+  };
+
   if (isLoading) {
     return (
       <div className="space-y-6">
@@ -292,7 +340,7 @@ export function GeographicAllocationReport() {
               </button>
             )}
           </div>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
             <button
               onClick={() => setViewType('region')}
               className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
@@ -313,6 +361,7 @@ export function GeographicAllocationReport() {
             >
               By Exchange
             </button>
+            <ExportDropdown onExportPdf={handleExportPdf} />
           </div>
         </div>
       </div>
@@ -347,7 +396,7 @@ export function GeographicAllocationReport() {
 
       {/* Chart */}
       {viewType === 'region' ? (
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-3 sm:p-6">
+        <div ref={chartRef} className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-3 sm:p-6">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
             Regional Allocation
           </h3>
@@ -375,7 +424,7 @@ export function GeographicAllocationReport() {
           </div>
         </div>
       ) : (
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-3 sm:p-6">
+        <div ref={chartRef} className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-3 sm:p-6">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
             Exchange Allocation
           </h3>

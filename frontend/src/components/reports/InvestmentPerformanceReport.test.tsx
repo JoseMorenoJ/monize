@@ -27,6 +27,7 @@ vi.mock('recharts', () => ({
   Pie: () => null,
   Cell: () => null,
   Tooltip: () => null,
+  Legend: () => null,
 }));
 
 const mockGetPortfolioSummary = vi.fn();

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   PieChart,
@@ -21,6 +21,7 @@ import { useDateRange } from '@/hooks/useDateRange';
 import { CHART_COLOURS } from '@/lib/chart-colours';
 import { DateRangeSelector } from '@/components/ui/DateRangeSelector';
 import { ChartViewToggle } from '@/components/ui/ChartViewToggle';
+import { ExportDropdown } from '@/components/ui/ExportDropdown';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('SpendingByCategoryReport');
@@ -34,6 +35,7 @@ interface ChartDataItem {
 
 export function SpendingByCategoryReport() {
   const router = useRouter();
+  const chartRef = useRef<HTMLDivElement>(null);
   const { formatCurrencyCompact: formatCurrency } = useNumberFormat();
   const [chartData, setChartData] = useState<ChartDataItem[]>([]);
   const [totalExpenses, setTotalExpenses] = useState(0);
@@ -79,6 +81,28 @@ export function SpendingByCategoryReport() {
   useEffect(() => {
     if (isValid) loadData();
   }, [isValid, loadData]);
+
+  const handleExportPdf = async () => {
+    const { exportToPdf } = await import('@/lib/pdf-export');
+
+    const legendItems = chartData.map((item) => {
+      const percentage = totalExpenses > 0 ? ((item.value / totalExpenses) * 100).toFixed(1) : '0';
+      return {
+        color: item.colour,
+        label: `${item.name} - ${formatCurrency(item.value)} (${percentage}%)`,
+      };
+    });
+
+    await exportToPdf({
+      title: 'Spending by Category',
+      summaryCards: [
+        { label: 'Total Expenses', value: formatCurrency(totalExpenses), color: '#dc2626' },
+      ],
+      chartContainer: chartRef.current,
+      chartLegend: legendItems.length > 0 ? legendItems : undefined,
+      filename: 'spending-by-category',
+    });
+  };
 
   const handleCategoryClick = (categoryId: string) => {
     if (categoryId) {
@@ -129,12 +153,15 @@ export function SpendingByCategoryReport() {
             customEndDate={endDate}
             onCustomEndDateChange={setEndDate}
           />
-          <ChartViewToggle value={viewType} onChange={setViewType} />
+          <div className="flex items-center gap-4">
+            <ChartViewToggle value={viewType} onChange={(v) => setViewType(v as 'pie' | 'bar')} />
+            <ExportDropdown onExportPdf={handleExportPdf} disabled={chartData.length === 0} />
+          </div>
         </div>
       </div>
 
       {/* Chart */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 px-2 py-4 sm:p-6">
+      <div ref={chartRef} className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 px-2 py-4 sm:p-6">
         {chartData.length === 0 ? (
           <p className="text-gray-500 dark:text-gray-400 text-center py-8">
             No expense data for this period.

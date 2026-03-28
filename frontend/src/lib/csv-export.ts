@@ -4,8 +4,12 @@
 
 function escapeCsvValue(value: string | number | boolean | null | undefined): string {
   if (value === null || value === undefined) return '';
-  const str = String(value);
-  if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+  let str = String(value);
+  // Prevent CSV formula injection: prefix dangerous leading characters with a tab
+  if (str.length > 0 && /^[=+\-@\t\r]/.test(str)) {
+    str = `\t${str}`;
+  }
+  if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r') || str.includes('\t')) {
     return `"${str.replace(/"/g, '""')}"`;
   }
   return str;

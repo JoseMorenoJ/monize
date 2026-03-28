@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { budgetsApi } from '@/lib/budgets';
 import type { Budget, SeasonalPattern } from '@/types/budget';
 import { useNumberFormat } from '@/hooks/useNumberFormat';
+import { ExportDropdown } from '@/components/ui/ExportDropdown';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('SeasonalSpendingMapReport');
@@ -32,6 +33,7 @@ function getTextColor(value: number, max: number): string {
 
 export function SeasonalSpendingMapReport() {
   const { formatCurrencyCompact: formatCurrency } = useNumberFormat();
+  const chartRef = useRef<HTMLDivElement>(null);
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [selectedBudgetId, setSelectedBudgetId] = useState<string>('');
   const [patterns, setPatterns] = useState<SeasonalPattern[]>([]);
@@ -96,6 +98,44 @@ export function SeasonalSpendingMapReport() {
     return { gridData: grid, globalMax: max };
   }, [patterns]);
 
+  const handleExportPdf = async () => {
+    const { exportToPdf } = await import('@/lib/pdf-export');
+    const headers = ['Category', ...MONTH_LABELS, 'Typical/Mo'];
+    const rows = gridData.map((row) => [
+      row.categoryName,
+      ...row.values.map((v) => {
+        if (v === 0) return { text: '--', bgColor: [249, 250, 251] as [number, number, number], textColor: [156, 163, 175] as [number, number, number] };
+        const intensity = globalMax > 0 ? v / globalMax : 0;
+        let bgColor: [number, number, number];
+        let textColor: [number, number, number];
+        if (intensity >= 0.8) {
+          bgColor = [239, 68, 68];
+          textColor = [255, 255, 255];
+        } else if (intensity >= 0.6) {
+          bgColor = [251, 146, 60];
+          textColor = [255, 255, 255];
+        } else if (intensity >= 0.4) {
+          bgColor = [253, 224, 71];
+          textColor = [55, 65, 81];
+        } else if (intensity >= 0.2) {
+          bgColor = [187, 247, 208];
+          textColor = [55, 65, 81];
+        } else {
+          bgColor = [220, 252, 231];
+          textColor = [55, 65, 81];
+        }
+        return { text: formatCurrency(v), bgColor, textColor };
+      }),
+      formatCurrency(row.typical),
+    ]);
+    await exportToPdf({
+      title: 'Seasonal Spending Map',
+      chartContainer: chartRef.current,
+      tableData: { headers, rows },
+      filename: 'seasonal-spending-map',
+    });
+  };
+
   if (isLoading) {
     return (
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-6">
@@ -121,19 +161,24 @@ export function SeasonalSpendingMapReport() {
     <div className="space-y-6">
       {/* Controls */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-4">
-        <select
-          value={selectedBudgetId}
-          onChange={(e) => setSelectedBudgetId(e.target.value)}
-          className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-        >
-          {budgets.map((b) => (
-            <option key={b.id} value={b.id}>{b.name}</option>
-          ))}
-        </select>
+        <div className="flex flex-wrap gap-3 items-center">
+          <select
+            value={selectedBudgetId}
+            onChange={(e) => setSelectedBudgetId(e.target.value)}
+            className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+          >
+            {budgets.map((b) => (
+              <option key={b.id} value={b.id}>{b.name}</option>
+            ))}
+          </select>
+          <div className="ml-auto">
+            <ExportDropdown onExportPdf={handleExportPdf} />
+          </div>
+        </div>
       </div>
 
       {/* Heatmap */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-4 sm:p-6">
+      <div ref={chartRef} className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-4 sm:p-6">
         {gridData.length === 0 ? (
           <p className="text-gray-500 dark:text-gray-400 text-center py-8">
             Not enough historical data to display seasonal patterns.
