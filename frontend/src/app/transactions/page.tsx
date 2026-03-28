@@ -221,11 +221,13 @@ function TransactionsContent() {
     await loadTransactions(page);
   }, [filters.currentPage, loadStaticData, loadTransactions]);
 
+  // After undo/redo, just reset static data so next load refreshes everything.
+  // Bump a counter to trigger the filter useEffect which handles the actual reload.
+  const [undoRedoTick, setUndoRedoTick] = useState(0);
   const handleUndoRedo = useCallback(() => {
     staticDataLoaded.current = false;
-    loadStaticData();
-    loadTransactions(filters.currentPage || 1);
-  }, [loadStaticData, loadTransactions, filters.currentPage]);
+    setUndoRedoTick((t) => t + 1);
+  }, []);
   useOnUndoRedo(handleUndoRedo);
 
   // Load static data once on mount
@@ -236,6 +238,9 @@ function TransactionsContent() {
   // Update URL and load transactions when page or filters change
   useEffect(() => {
     if (!filters.filtersInitialized) return;
+
+    // Reload static data if invalidated (e.g. after undo/redo)
+    loadStaticData();
 
     const page = filters.isFilterChange.current ? 1 : filters.currentPage;
     const wasFilterChange = filters.isFilterChange.current;
@@ -268,7 +273,7 @@ function TransactionsContent() {
     } else {
       loadTransactions(page);
     }
-  }, [filters.currentPage, filters.filterAccountIds, filters.filterCategoryIds, filters.filterPayeeIds, filters.filterTagIds, filters.filterStartDate, filters.filterEndDate, filters.filterSearch, filters.filterAmountFrom, filters.filterAmountTo, filters.updateUrl, loadTransactions, filters.filtersInitialized]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [filters.currentPage, filters.filterAccountIds, filters.filterCategoryIds, filters.filterPayeeIds, filters.filterTagIds, filters.filterStartDate, filters.filterEndDate, filters.filterSearch, filters.filterAmountFrom, filters.filterAmountTo, filters.updateUrl, loadTransactions, filters.filtersInitialized, undoRedoTick]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Patch popstate handler to skip when modals open
   useEffect(() => {
