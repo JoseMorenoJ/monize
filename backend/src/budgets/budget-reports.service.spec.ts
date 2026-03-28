@@ -1973,6 +1973,294 @@ describe("BudgetReportsService", () => {
     });
   });
 
+  describe("getHealthScore - null/edge branches", () => {
+    it("should handle budget with no categories array (null)", async () => {
+      budgetsService.findOne.mockResolvedValueOnce({
+        ...mockBudget,
+        categories: null,
+      });
+      budgetsService.getSummary.mockResolvedValueOnce({
+        budget: { ...mockBudget, categories: null },
+        totalBudgeted: 0,
+        totalSpent: 0,
+        totalIncome: 0,
+        remaining: 0,
+        percentUsed: 0,
+        categoryBreakdown: [],
+      });
+      periodsRepository.find.mockResolvedValueOnce([]);
+
+      const result = await service.getHealthScore("user-1", "budget-1");
+
+      expect(result.score).toBe(100);
+      expect(result.categoryScores).toHaveLength(0);
+    });
+
+    it("should handle category without categoryId (null) in breakdown", async () => {
+      budgetsService.getSummary.mockResolvedValueOnce({
+        budget: mockBudget,
+        totalBudgeted: 500,
+        totalSpent: 200,
+        totalIncome: 5000,
+        remaining: 300,
+        percentUsed: 40,
+        categoryBreakdown: [
+          {
+            budgetCategoryId: "bc-1",
+            categoryId: null,
+            categoryName: "Groceries",
+            budgeted: 500,
+            spent: 200,
+            remaining: 300,
+            percentUsed: 40,
+            isIncome: false,
+          },
+        ],
+      });
+      periodsRepository.find.mockResolvedValueOnce([]);
+
+      const result = await service.getHealthScore("user-1", "budget-1");
+
+      expect(result.categoryScores[0].categoryId).toBe("");
+    });
+
+    it("should handle zero totalBudgeted in trend bonus computation", async () => {
+      periodsRepository.find.mockResolvedValueOnce([
+        {
+          id: "p-2",
+          budgetId: "budget-1",
+          periodStart: "2026-02-01",
+          totalBudgeted: 0,
+          actualExpenses: 100,
+          status: PeriodStatus.CLOSED,
+        },
+        {
+          id: "p-1",
+          budgetId: "budget-1",
+          periodStart: "2026-01-01",
+          totalBudgeted: 0,
+          actualExpenses: 200,
+          status: PeriodStatus.CLOSED,
+        },
+      ]);
+
+      const result = await service.getHealthScore("user-1", "budget-1");
+
+      // Should not crash -- totalBudgeted || 1 prevents division by zero
+      expect(result.breakdown.trendBonus).toBeDefined();
+    });
+
+    it("should handle category between 80% and 100% used (no bonus, no penalty)", async () => {
+      budgetsService.getSummary.mockResolvedValueOnce({
+        budget: mockBudget,
+        totalBudgeted: 500,
+        totalSpent: 450,
+        totalIncome: 5000,
+        remaining: 50,
+        percentUsed: 90,
+        categoryBreakdown: [
+          {
+            budgetCategoryId: "bc-1",
+            categoryId: "cat-1",
+            categoryName: "Groceries",
+            budgeted: 500,
+            spent: 450,
+            remaining: 50,
+            percentUsed: 90,
+            isIncome: false,
+          },
+        ],
+      });
+      periodsRepository.find.mockResolvedValueOnce([]);
+
+      const result = await service.getHealthScore("user-1", "budget-1");
+
+      // 90% is between 80% and 100%: no bonus, no penalty
+      expect(result.breakdown.overBudgetDeductions).toBe(0);
+      expect(result.breakdown.underBudgetBonus).toBe(0);
+      expect(result.categoryScores[0].impact).toBe(0);
+    });
+  });
+
+  describe("getHealthScoreHistory - null/edge branches", () => {
+    it("should handle budget with null categories in history", async () => {
+      budgetsService.findOne.mockResolvedValueOnce({
+        ...mockBudget,
+        categories: null,
+      });
+
+      const periods: Partial<BudgetPeriod>[] = [
+        {
+          id: "p-1",
+          budgetId: "budget-1",
+          periodStart: "2026-01-01",
+          periodEnd: "2026-01-31",
+          totalBudgeted: 500,
+          actualExpenses: 200,
+          actualIncome: 5000,
+          status: PeriodStatus.CLOSED,
+          periodCategories: [
+            {
+              id: "pc-1",
+              budgetPeriodId: "p-1",
+              budgetCategoryId: "bc-1",
+              categoryId: "cat-1",
+              budgetedAmount: 500,
+              actualAmount: 200,
+              rolloverIn: 0,
+              effectiveBudget: 500,
+              rolloverOut: 0,
+              budgetCategory: mockBudgetCategory,
+              category: mockCategory,
+              budgetPeriod: {} as BudgetPeriod,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            } as BudgetPeriodCategory,
+          ],
+        },
+      ];
+
+      periodsRepository.find.mockResolvedValueOnce(periods);
+
+      const result = await service.getHealthScoreHistory(
+        "user-1",
+        "budget-1",
+        6,
+      );
+
+      // Should not crash -- bcMap built from null categories (empty)
+      expect(result).toHaveLength(1);
+    });
+
+    it("should handle period with null periodCategories", async () => {
+      const periods: Partial<BudgetPeriod>[] = [
+        {
+          id: "p-1",
+          budgetId: "budget-1",
+          periodStart: "2026-01-01",
+          periodEnd: "2026-01-31",
+          totalBudgeted: 500,
+          actualExpenses: 200,
+          actualIncome: 5000,
+          status: PeriodStatus.CLOSED,
+          periodCategories: null as any,
+        },
+      ];
+
+      periodsRepository.find.mockResolvedValueOnce(periods);
+
+      const result = await service.getHealthScoreHistory(
+        "user-1",
+        "budget-1",
+        6,
+      );
+
+      expect(result).toHaveLength(1);
+      expect(result[0].score).toBe(100);
+    });
+
+    it("should handle OPEN period with null categoryId (skips computation)", async () => {
+      const periods: Partial<BudgetPeriod>[] = [
+        {
+          id: "p-1",
+          budgetId: "budget-1",
+          periodStart: "2026-03-01",
+          periodEnd: "2026-03-31",
+          totalBudgeted: 500,
+          actualExpenses: 0,
+          actualIncome: 0,
+          status: PeriodStatus.OPEN,
+          periodCategories: [
+            {
+              id: "pc-1",
+              budgetPeriodId: "p-1",
+              budgetCategoryId: "bc-1",
+              categoryId: null,
+              budgetedAmount: 500,
+              actualAmount: 200,
+              rolloverIn: 0,
+              effectiveBudget: 500,
+              rolloverOut: 0,
+              budgetCategory: mockBudgetCategory,
+              category: null,
+              budgetPeriod: {} as BudgetPeriod,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            } as BudgetPeriodCategory,
+          ],
+        },
+      ];
+
+      periodsRepository.find.mockResolvedValueOnce(periods);
+
+      const result = await service.getHealthScoreHistory(
+        "user-1",
+        "budget-1",
+        6,
+      );
+
+      // OPEN + null categoryId means it uses stored actualAmount (200)
+      // 200/500 = 40% -> under budget bonus
+      expect(result).toHaveLength(1);
+      expect(result[0].score).toBeGreaterThanOrEqual(90);
+    });
+
+    it("should handle computeCategoryActual with null query results", async () => {
+      const periods: Partial<BudgetPeriod>[] = [
+        {
+          id: "p-1",
+          budgetId: "budget-1",
+          periodStart: "2026-03-01",
+          periodEnd: "2026-03-31",
+          totalBudgeted: 500,
+          actualExpenses: 0,
+          actualIncome: 0,
+          status: PeriodStatus.OPEN,
+          periodCategories: [
+            {
+              id: "pc-1",
+              budgetPeriodId: "p-1",
+              budgetCategoryId: "bc-1",
+              categoryId: "cat-1",
+              budgetedAmount: 500,
+              actualAmount: 0,
+              rolloverIn: 0,
+              effectiveBudget: 500,
+              rolloverOut: 0,
+              budgetCategory: mockBudgetCategory,
+              category: mockCategory,
+              budgetPeriod: {} as BudgetPeriod,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            } as BudgetPeriodCategory,
+          ],
+        },
+      ];
+
+      periodsRepository.find.mockResolvedValueOnce(periods);
+
+      // Return null results from queries (missing total field)
+      const txQb = createMockQueryBuilder({
+        getRawOne: jest.fn().mockResolvedValue(null),
+      });
+      const splitQb = createMockQueryBuilder({
+        getRawOne: jest.fn().mockResolvedValue(null),
+      });
+      transactionsRepository.createQueryBuilder.mockReturnValueOnce(txQb);
+      splitsRepository.createQueryBuilder.mockReturnValueOnce(splitQb);
+
+      const result = await service.getHealthScoreHistory(
+        "user-1",
+        "budget-1",
+        6,
+      );
+
+      // Should not crash -- null?.total || "0" => 0
+      expect(result).toHaveLength(1);
+      expect(result[0].score).toBe(100);
+    });
+  });
+
   describe("getSavingsRate - no expense categories", () => {
     const currentMonthKey = (() => {
       const d = new Date();
