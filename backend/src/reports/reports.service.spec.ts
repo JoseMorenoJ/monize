@@ -25,6 +25,7 @@ describe("ReportsService", () => {
   let transactionsRepository: Record<string, jest.Mock>;
   let categoriesRepository: Record<string, jest.Mock>;
   let payeesRepository: Record<string, jest.Mock>;
+  let mockActionHistoryService: Record<string, jest.Mock>;
 
   const defaultConfig: ReportConfig = {
     metric: MetricType.TOTAL_AMOUNT,
@@ -144,6 +145,10 @@ describe("ReportsService", () => {
       find: jest.fn().mockResolvedValue([]),
     };
 
+    mockActionHistoryService = {
+      record: jest.fn().mockResolvedValue(null),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ReportsService,
@@ -169,7 +174,7 @@ describe("ReportsService", () => {
         },
         {
           provide: ActionHistoryService,
-          useValue: { record: jest.fn().mockResolvedValue(null) },
+          useValue: mockActionHistoryService,
         },
       ],
     }).compile();
@@ -311,6 +316,21 @@ describe("ReportsService", () => {
       const result = await service.create("user-1", dto);
       expect(result).toBeDefined();
       expect(reportsRepository.save).toHaveBeenCalled();
+    });
+
+    it("records action history on create", async () => {
+      const dto = { name: "New Report" };
+
+      await service.create("user-1", dto);
+
+      expect(mockActionHistoryService.record).toHaveBeenCalledWith(
+        "user-1",
+        expect.objectContaining({
+          entityType: "custom_report",
+          action: "create",
+          description: expect.stringContaining("New Report"),
+        }),
+      );
     });
 
     it("defaults includeTransfers to false when config.includeTransfers is undefined", async () => {
@@ -521,6 +541,24 @@ describe("ReportsService", () => {
       expect(reportsRepository.save).toHaveBeenCalled();
     });
 
+    it("records action history with beforeData and afterData on update", async () => {
+      reportsRepository.findOne.mockResolvedValue({ ...mockReport });
+
+      await service.update("user-1", "report-1", { name: "Updated Report" });
+
+      expect(mockActionHistoryService.record).toHaveBeenCalledWith(
+        "user-1",
+        expect.objectContaining({
+          entityType: "custom_report",
+          entityId: "report-1",
+          action: "update",
+          beforeData: expect.objectContaining({ name: "Monthly Expenses" }),
+          afterData: expect.objectContaining({ name: "Updated Report" }),
+          description: expect.stringContaining("Updated Report"),
+        }),
+      );
+    });
+
     it("throws NotFoundException when report does not exist", async () => {
       reportsRepository.findOne.mockResolvedValue(null);
 
@@ -546,6 +584,23 @@ describe("ReportsService", () => {
 
       expect(reportsRepository.remove).toHaveBeenCalledWith(
         expect.objectContaining({ id: "report-1" }),
+      );
+    });
+
+    it("records action history with beforeData on delete", async () => {
+      reportsRepository.findOne.mockResolvedValue({ ...mockReport });
+
+      await service.remove("user-1", "report-1");
+
+      expect(mockActionHistoryService.record).toHaveBeenCalledWith(
+        "user-1",
+        expect.objectContaining({
+          entityType: "custom_report",
+          entityId: "report-1",
+          action: "delete",
+          beforeData: expect.objectContaining({ name: "Monthly Expenses" }),
+          description: expect.stringContaining("Monthly Expenses"),
+        }),
       );
     });
 

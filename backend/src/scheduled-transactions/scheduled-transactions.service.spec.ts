@@ -25,6 +25,7 @@ describe("ScheduledTransactionsService", () => {
   let transactionsService: Record<string, jest.Mock>;
   let mockQueryRunner: Record<string, any>;
   let mockDataSource: Record<string, jest.Mock>;
+  let mockActionHistoryService: Record<string, jest.Mock>;
 
   const userId = "user-1";
   const stId = "st-1";
@@ -142,6 +143,10 @@ describe("ScheduledTransactionsService", () => {
         .mockResolvedValue([{ id: "tx-1" }, { id: "tx-2" }]),
     };
 
+    mockActionHistoryService = {
+      record: jest.fn().mockResolvedValue(null),
+    };
+
     mockQueryRunner = {
       connect: jest.fn(),
       startTransaction: jest.fn(),
@@ -189,7 +194,7 @@ describe("ScheduledTransactionsService", () => {
         ScheduledTransactionLoanService,
         {
           provide: ActionHistoryService,
-          useValue: { record: jest.fn().mockResolvedValue(null) },
+          useValue: mockActionHistoryService,
         },
       ],
     }).compile();
@@ -364,6 +369,23 @@ describe("ScheduledTransactionsService", () => {
 
       expect(splitsRepo.create).toHaveBeenCalledTimes(2);
       expect(splitsRepo.save).toHaveBeenCalled();
+    });
+
+    it("records action history on create", async () => {
+      const saved = makeScheduled();
+      scheduledRepo.save.mockResolvedValue(saved);
+      stubFindOne(saved);
+
+      await service.create(userId, baseDto);
+
+      expect(mockActionHistoryService.record).toHaveBeenCalledWith(
+        userId,
+        expect.objectContaining({
+          entityType: "scheduled_transaction",
+          action: "create",
+          description: expect.stringContaining("Monthly Rent"),
+        }),
+      );
     });
   });
 
@@ -612,6 +634,23 @@ describe("ScheduledTransactionsService", () => {
       expect(updateArg.isSplit).toBe(false);
       expect(updateArg.categoryId).toBeNull();
     });
+
+    it("records action history on update", async () => {
+      const scheduled = makeScheduled();
+      stubFindOne(scheduled);
+
+      await service.update(userId, stId, { name: "Updated Rent" });
+
+      expect(mockActionHistoryService.record).toHaveBeenCalledWith(
+        userId,
+        expect.objectContaining({
+          entityType: "scheduled_transaction",
+          entityId: stId,
+          action: "update",
+          description: expect.stringContaining("Updated"),
+        }),
+      );
+    });
   });
 
   // ==================== remove ====================
@@ -629,6 +668,24 @@ describe("ScheduledTransactionsService", () => {
       scheduledRepo.findOne.mockResolvedValue(null);
       await expect(service.remove(userId, stId)).rejects.toThrow(
         NotFoundException,
+      );
+    });
+
+    it("records action history on remove", async () => {
+      const scheduled = makeScheduled();
+      stubFindOne(scheduled);
+
+      await service.remove(userId, stId);
+
+      expect(mockActionHistoryService.record).toHaveBeenCalledWith(
+        userId,
+        expect.objectContaining({
+          entityType: "scheduled_transaction",
+          entityId: stId,
+          action: "delete",
+          beforeData: expect.objectContaining({ name: "Monthly Rent" }),
+          description: expect.stringContaining("Monthly Rent"),
+        }),
       );
     });
   });

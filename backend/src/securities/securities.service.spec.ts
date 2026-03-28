@@ -18,6 +18,7 @@ describe("SecuritiesService", () => {
   let holdingsRepository: Record<string, jest.Mock>;
   let investmentTransactionsRepository: Record<string, jest.Mock>;
   let mockSecurityPriceService: Record<string, jest.Mock>;
+  let mockActionHistoryService: Record<string, jest.Mock>;
 
   const mockSecurity = {
     id: "sec-1",
@@ -72,6 +73,10 @@ describe("SecuritiesService", () => {
       backfillSecurity: jest.fn().mockResolvedValue(undefined),
     };
 
+    mockActionHistoryService = {
+      record: jest.fn().mockResolvedValue(null),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         SecuritiesService,
@@ -93,7 +98,7 @@ describe("SecuritiesService", () => {
         },
         {
           provide: ActionHistoryService,
-          useValue: { record: jest.fn().mockResolvedValue(null) },
+          useValue: mockActionHistoryService,
         },
       ],
     }).compile();
@@ -129,6 +134,26 @@ describe("SecuritiesService", () => {
           currencyCode: "USD",
         }),
       ).rejects.toThrow(ConflictException);
+    });
+
+    it("records action history on create", async () => {
+      securitiesRepository.findOne.mockResolvedValue(null);
+
+      await service.create("user-1", {
+        symbol: "MSFT",
+        name: "Microsoft Corp.",
+        securityType: "STOCK",
+        currencyCode: "USD",
+      });
+
+      expect(mockActionHistoryService.record).toHaveBeenCalledWith(
+        "user-1",
+        expect.objectContaining({
+          entityType: "security",
+          action: "create",
+          description: expect.stringContaining("MSFT"),
+        }),
+      );
     });
   });
 
@@ -246,6 +271,23 @@ describe("SecuritiesService", () => {
       expect(savedSecurity.exchange).toBe("NYSE");
       expect(savedSecurity.currencyCode).toBe("CAD");
       expect(savedSecurity.isActive).toBe(false);
+    });
+
+    it("records action history on update", async () => {
+      securitiesRepository.findOne.mockResolvedValue({ ...mockSecurity });
+
+      await service.update("user-1", "sec-1", { name: "Apple Inc. Updated" });
+
+      expect(mockActionHistoryService.record).toHaveBeenCalledWith(
+        "user-1",
+        expect.objectContaining({
+          entityType: "security",
+          entityId: "sec-1",
+          action: "update",
+          beforeData: expect.objectContaining({ name: "Apple Inc." }),
+          description: expect.stringContaining("AAPL"),
+        }),
+      );
     });
   });
 
@@ -384,6 +426,35 @@ describe("SecuritiesService", () => {
 
       await expect(service.remove("user-1", "nonexistent")).rejects.toThrow(
         NotFoundException,
+      );
+    });
+
+    it("records action history on remove", async () => {
+      securitiesRepository.findOne.mockResolvedValue({ ...mockSecurity });
+      securitiesRepository.remove = jest.fn().mockResolvedValue(undefined);
+      holdingsRepository.createQueryBuilder.mockReturnValue({
+        leftJoin: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getCount: jest.fn().mockResolvedValue(0),
+      });
+      investmentTransactionsRepository.createQueryBuilder.mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getCount: jest.fn().mockResolvedValue(0),
+      });
+
+      await service.remove("user-1", "sec-1");
+
+      expect(mockActionHistoryService.record).toHaveBeenCalledWith(
+        "user-1",
+        expect.objectContaining({
+          entityType: "security",
+          entityId: "sec-1",
+          action: "delete",
+          beforeData: expect.objectContaining({ symbol: "AAPL" }),
+          description: expect.stringContaining("AAPL"),
+        }),
       );
     });
   });

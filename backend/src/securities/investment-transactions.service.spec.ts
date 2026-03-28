@@ -40,6 +40,7 @@ describe("InvestmentTransactionsService", () => {
   let netWorthService: Record<string, jest.Mock>;
   let dataSource: Record<string, jest.Mock>;
   let mockQueryRunner: Record<string, any>;
+  let mockActionHistoryService: Record<string, jest.Mock>;
 
   const userId = "user-1";
   const accountId = "account-1";
@@ -273,6 +274,10 @@ describe("InvestmentTransactionsService", () => {
       },
     };
 
+    mockActionHistoryService = {
+      record: jest.fn().mockResolvedValue(null),
+    };
+
     dataSource = {
       createQueryRunner: jest.fn().mockReturnValue(mockQueryRunner),
     };
@@ -318,7 +323,7 @@ describe("InvestmentTransactionsService", () => {
         },
         {
           provide: ActionHistoryService,
-          useValue: { record: jest.fn().mockResolvedValue(null) },
+          useValue: mockActionHistoryService,
         },
       ],
     }).compile();
@@ -1122,6 +1127,19 @@ describe("InvestmentTransactionsService", () => {
         }),
       );
     });
+
+    it("records action history on create", async () => {
+      await service.create(userId, createBuyDto);
+
+      expect(mockActionHistoryService.record).toHaveBeenCalledWith(
+        userId,
+        expect.objectContaining({
+          entityType: "investment_transaction",
+          action: "create",
+          description: expect.stringContaining("BUY"),
+        }),
+      );
+    });
   });
 
   describe("findAll", () => {
@@ -1713,6 +1731,25 @@ describe("InvestmentTransactionsService", () => {
         }),
       );
     });
+
+    it("records action history on update", async () => {
+      investmentTransactionsRepository.findOne.mockResolvedValue({
+        ...mockBuyTransaction,
+      });
+      transactionRepository.findOne.mockResolvedValue(null);
+
+      await service.update(userId, transactionId, { price: 200 });
+
+      expect(mockActionHistoryService.record).toHaveBeenCalledWith(
+        userId,
+        expect.objectContaining({
+          entityType: "investment_transaction",
+          entityId: transactionId,
+          action: "update",
+          description: expect.stringContaining("Updated BUY transaction"),
+        }),
+      );
+    });
   });
 
   describe("remove", () => {
@@ -1975,6 +2012,25 @@ describe("InvestmentTransactionsService", () => {
 
       await expect(service.remove(userId, "nonexistent")).rejects.toThrow(
         NotFoundException,
+      );
+    });
+
+    it("records action history on remove", async () => {
+      const mockQB = createMockQueryBuilder({ ...mockBuyTransaction });
+      investmentTransactionsRepository.createQueryBuilder.mockReturnValue(
+        mockQB,
+      );
+
+      await service.remove(userId, transactionId);
+
+      expect(mockActionHistoryService.record).toHaveBeenCalledWith(
+        userId,
+        expect.objectContaining({
+          entityType: "investment_transaction",
+          entityId: transactionId,
+          action: "delete",
+          description: expect.stringContaining("Deleted BUY transaction"),
+        }),
       );
     });
   });

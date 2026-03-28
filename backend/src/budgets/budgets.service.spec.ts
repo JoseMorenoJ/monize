@@ -29,6 +29,7 @@ describe("BudgetsService", () => {
   let categoriesRepository: Record<string, jest.Mock>;
   let scheduledTransactionsRepository: Record<string, jest.Mock>;
   let overridesRepository: Record<string, jest.Mock>;
+  let mockActionHistoryService: Record<string, jest.Mock>;
 
   const mockBudget: Budget = {
     id: "budget-1",
@@ -183,6 +184,10 @@ describe("BudgetsService", () => {
       createQueryBuilder: jest.fn(() => createMockQueryBuilder()),
     };
 
+    mockActionHistoryService = {
+      record: jest.fn().mockResolvedValue(null),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         BudgetsService,
@@ -217,7 +222,7 @@ describe("BudgetsService", () => {
         },
         {
           provide: ActionHistoryService,
-          useValue: { record: jest.fn().mockResolvedValue(null) },
+          useValue: mockActionHistoryService,
         },
       ],
     }).compile();
@@ -271,6 +276,26 @@ describe("BudgetsService", () => {
 
       expect(result.strategy).toBe(BudgetStrategy.ZERO_BASED);
       expect(result.incomeLinked).toBe(true);
+    });
+
+    it("records action history on create", async () => {
+      const dto = { name: "March 2026", budgetType: BudgetType.MONTHLY } as any;
+      budgetsRepository.save.mockResolvedValue({
+        ...dto,
+        id: "new-budget",
+        userId: "user-1",
+      });
+
+      await service.create("user-1", dto);
+
+      expect(mockActionHistoryService.record).toHaveBeenCalledWith(
+        "user-1",
+        expect.objectContaining({
+          entityType: "budget",
+          action: "create",
+          description: expect.stringContaining("March 2026"),
+        }),
+      );
     });
   });
 
@@ -390,6 +415,23 @@ describe("BudgetsService", () => {
         service.update("user-1", "budget-1", { name: "New" }),
       ).rejects.toThrow(NotFoundException);
     });
+
+    it("records action history on update", async () => {
+      budgetsRepository.findOne.mockResolvedValue({ ...mockBudget });
+
+      await service.update("user-1", "budget-1", { name: "Updated Budget" });
+
+      expect(mockActionHistoryService.record).toHaveBeenCalledWith(
+        "user-1",
+        expect.objectContaining({
+          entityType: "budget",
+          entityId: "budget-1",
+          action: "update",
+          beforeData: expect.objectContaining({ name: "February 2026" }),
+          description: expect.stringContaining("Updated Budget"),
+        }),
+      );
+    });
   });
 
   describe("remove", () => {
@@ -408,6 +450,23 @@ describe("BudgetsService", () => {
 
       await expect(service.remove("user-1", "nonexistent")).rejects.toThrow(
         NotFoundException,
+      );
+    });
+
+    it("records action history on remove", async () => {
+      budgetsRepository.findOne.mockResolvedValue({ ...mockBudget });
+
+      await service.remove("user-1", "budget-1");
+
+      expect(mockActionHistoryService.record).toHaveBeenCalledWith(
+        "user-1",
+        expect.objectContaining({
+          entityType: "budget",
+          entityId: "budget-1",
+          action: "delete",
+          beforeData: expect.objectContaining({ name: "February 2026" }),
+          description: expect.stringContaining("February 2026"),
+        }),
       );
     });
   });

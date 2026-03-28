@@ -248,6 +248,86 @@ describe("ActionHistoryService", () => {
       expect(insertCall[0]).not.toContain("DROP TABLE");
     });
 
+    it("should undo a simple entity create (custom_report)", async () => {
+      const createAction = {
+        ...mockAction,
+        action: "create",
+        entityType: "custom_report",
+        entityId: "report-1",
+        afterData: { id: "report-1", name: "Monthly Expenses" },
+      };
+      mockRepository.findOne.mockResolvedValue(createAction);
+      mockQueryRunner.manager.delete.mockResolvedValue({ affected: 1 });
+      mockQueryRunner.manager.update.mockResolvedValue({ affected: 1 });
+
+      const result = await service.undo(userId);
+
+      expect(result.description).toContain("Undone");
+      expect(mockQueryRunner.commitTransaction).toHaveBeenCalled();
+      expect(mockQueryRunner.manager.delete).toHaveBeenCalled();
+    });
+
+    it("should undo a simple entity delete (custom_report)", async () => {
+      const deleteAction = {
+        ...mockAction,
+        action: "delete",
+        entityType: "custom_report",
+        entityId: "report-1",
+        beforeData: {
+          id: "report-1",
+          name: "Monthly Expenses",
+          userId,
+          viewType: "BAR_CHART",
+          timeframeType: "LAST_3_MONTHS",
+          groupBy: "CATEGORY",
+        },
+        afterData: null,
+      };
+      mockRepository.findOne.mockResolvedValue(deleteAction);
+      mockQueryRunner.query.mockResolvedValue([]);
+      mockQueryRunner.manager.update.mockResolvedValue({ affected: 1 });
+
+      const result = await service.undo(userId);
+
+      expect(result.description).toContain("Undone");
+      expect(mockQueryRunner.commitTransaction).toHaveBeenCalled();
+      expect(mockQueryRunner.query).toHaveBeenCalledWith(
+        expect.stringContaining("INSERT INTO \"custom_reports\""),
+        expect.any(Array),
+      );
+    });
+
+    it("should undo a simple entity update (custom_report)", async () => {
+      const updateAction = {
+        ...mockAction,
+        action: "update",
+        entityType: "custom_report",
+        entityId: "report-1",
+        beforeData: {
+          id: "report-1",
+          name: "Old Name",
+          userId,
+        },
+        afterData: {
+          id: "report-1",
+          name: "New Name",
+          userId,
+        },
+      };
+      mockRepository.findOne.mockResolvedValue(updateAction);
+      mockQueryRunner.manager.update.mockResolvedValue({ affected: 1 });
+
+      const result = await service.undo(userId);
+
+      expect(result.description).toContain("Undone");
+      expect(mockQueryRunner.commitTransaction).toHaveBeenCalled();
+      expect(mockQueryRunner.manager.update).toHaveBeenCalledWith(
+        expect.any(Function),
+        "report-1",
+        expect.objectContaining({ name: "Old Name" }),
+      );
+    });
+
     it("should throw ConflictException for unsupported table in re-insert", async () => {
       const deleteAction = {
         ...mockAction,
