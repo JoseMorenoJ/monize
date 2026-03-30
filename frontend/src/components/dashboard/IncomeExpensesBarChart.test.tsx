@@ -61,7 +61,7 @@ describe('IncomeExpensesBarChart', () => {
   it('renders chart title and date range when not loading', () => {
     render(<IncomeExpensesBarChart transactions={[]} isLoading={false} />);
     expect(screen.getByText('Income vs Expenses')).toBeInTheDocument();
-    expect(screen.getByText('Past 30 days')).toBeInTheDocument();
+    expect(screen.getByText('Last 5 weeks')).toBeInTheDocument();
     expect(screen.getByTestId('bar-chart')).toBeInTheDocument();
   });
 

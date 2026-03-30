@@ -12,7 +12,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts';
-import { format, startOfWeek, endOfWeek, eachWeekOfInterval, subDays } from 'date-fns';
+import { format, startOfWeek, endOfWeek, eachWeekOfInterval, subWeeks } from 'date-fns';
 import { Transaction } from '@/types/transaction';
 import { parseLocalDate } from '@/lib/utils';
 import { useDateFormat } from '@/hooks/useDateFormat';
@@ -70,11 +70,12 @@ export function IncomeExpensesBarChart({
   // Group transactions by week and calculate income/expenses
   const chartData = useMemo(() => {
     const today = new Date();
-    const thirtyDaysAgo = subDays(today, 30);
+    const currentWeekStart = startOfWeek(today, { weekStartsOn });
+    const fiveWeeksAgoStart = subWeeks(currentWeekStart, 4);
 
-    // Get weeks in the range
+    // Get 5 weeks: 4 complete past weeks + current partial week
     const weeks = eachWeekOfInterval(
-      { start: thirtyDaysAgo, end: today },
+      { start: fiveWeeksAgoStart, end: today },
       { weekStartsOn }
     );
 
@@ -159,7 +160,7 @@ export function IncomeExpensesBarChart({
         <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
           Income vs Expenses
         </h3>
-        <span className="text-sm text-gray-500 dark:text-gray-400">Past 30 days</span>
+        <span className="text-sm text-gray-500 dark:text-gray-400">Last 5 weeks</span>
       </div>
       <div className="h-64 flex-grow">
         <ResponsiveContainer width="100%" height="100%" minWidth={0}>
