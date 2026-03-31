@@ -21,6 +21,7 @@ import { categoriesApi } from '@/lib/categories';
 import { accountsApi } from '@/lib/accounts';
 import { tagsApi } from '@/lib/tags';
 import { ScheduledTransaction, FrequencyType, FREQUENCY_LABELS } from '@/types/scheduled-transaction';
+import { Transaction } from '@/types/transaction';
 import { Payee } from '@/types/payee';
 import { Category } from '@/types/category';
 import { Account } from '@/types/account';
@@ -50,7 +51,7 @@ const scheduledTransactionSchema = z.object({
   currencyCode: z.string().default('CAD'),
   description: optionalString,
   referenceNumber: optionalString,
-  frequency: z.enum(['ONCE', 'DAILY', 'WEEKLY', 'BIWEEKLY', 'SEMIMONTHLY', 'MONTHLY', 'QUARTERLY', 'YEARLY']),
+  frequency: z.enum(['ONCE', 'DAILY', 'WEEKLY', 'BIWEEKLY', 'EVERY4WEEKS', 'SEMIMONTHLY', 'MONTHLY', 'QUARTERLY', 'YEARLY']),
   nextDueDate: z.string().min(1, 'Due date is required'),
   endDate: optionalString,
   occurrencesRemaining: optionalNumber,
@@ -63,6 +64,7 @@ type ScheduledTransactionFormData = z.infer<typeof scheduledTransactionSchema>;
 
 interface ScheduledTransactionFormProps {
   scheduledTransaction?: ScheduledTransaction;
+  templateTransaction?: Transaction;
   onSuccess?: () => void;
   onCancel?: () => void;
   onDirtyChange?: (isDirty: boolean) => void;
@@ -82,6 +84,7 @@ function getTransferAccountId(st?: ScheduledTransaction): string {
 
 export function ScheduledTransactionForm({
   scheduledTransaction,
+  templateTransaction,
   onSuccess,
   onCancel,
   onDirtyChange,
@@ -95,27 +98,30 @@ export function ScheduledTransactionForm({
   const [allPayees, setAllPayees] = useState<Payee[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>(
-    scheduledTransaction?.tagIds || []
+    scheduledTransaction?.tagIds || templateTransaction?.tags?.map(t => t.id) || []
   );
   const [showTagForm, setShowTagForm] = useState(false);
 
   // Determine initial mode
   const getInitialMode = (): ScheduledTransactionMode => {
     if (isScheduledTransfer(scheduledTransaction)) return 'transfer';
+    if (templateTransaction?.isTransfer) return 'transfer';
     if (scheduledTransaction?.isSplit && !isScheduledTransfer(scheduledTransaction)) return 'split';
+    if (templateTransaction?.isSplit) return 'split';
     return 'transaction';
   };
 
   const [mode, setMode] = useState<ScheduledTransactionMode>(getInitialMode());
   const [transferToAccountId, setTransferToAccountId] = useState<string>(
     getTransferAccountId(scheduledTransaction)
+    || (templateTransaction?.isTransfer ? templateTransaction.linkedTransaction?.accountId ?? '' : '')
   );
 
   const [selectedPayeeId, setSelectedPayeeId] = useState<string>(
-    scheduledTransaction?.payeeId || ''
+    scheduledTransaction?.payeeId || templateTransaction?.payeeId || ''
   );
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>(
-    scheduledTransaction?.categoryId || ''
+    scheduledTransaction?.categoryId || templateTransaction?.categoryId || ''
   );
   const [useEndDate, setUseEndDate] = useState<boolean>(!!scheduledTransaction?.endDate);
   const [useOccurrences, setUseOccurrences] = useState<boolean>(
@@ -125,7 +131,9 @@ export function ScheduledTransactionForm({
   const [splits, setSplits] = useState<SplitRow[]>(
     scheduledTransaction?.splits && scheduledTransaction.splits.length > 0 && !isScheduledTransfer(scheduledTransaction)
       ? toSplitRows(scheduledTransaction.splits)
-      : []
+      : templateTransaction?.splits && templateTransaction.splits.length > 0 && !templateTransaction.isTransfer
+        ? toSplitRows(templateTransaction.splits)
+        : []
   );
 
   const {
@@ -157,14 +165,33 @@ export function ScheduledTransactionForm({
           autoPost: scheduledTransaction.autoPost,
           reminderDaysBefore: scheduledTransaction.reminderDaysBefore,
         }
-      : {
-          currencyCode: defaultCurrency,
-          frequency: 'MONTHLY' as FrequencyType,
-          nextDueDate: getLocalDateString(),
-          isActive: true,
-          autoPost: false,
-          reminderDaysBefore: 3,
-        },
+      : templateTransaction
+        ? {
+            accountId: templateTransaction.accountId,
+            name: templateTransaction.payeeName || '',
+            payeeId: templateTransaction.payeeId || '',
+            payeeName: templateTransaction.payeeName || '',
+            categoryId: templateTransaction.categoryId || '',
+            amount: templateTransaction.isTransfer
+              ? Math.abs(Math.round(Number(templateTransaction.amount) * 100) / 100)
+              : Math.round(Number(templateTransaction.amount) * 100) / 100,
+            currencyCode: templateTransaction.currencyCode,
+            description: templateTransaction.description || '',
+            referenceNumber: '',
+            frequency: 'MONTHLY' as FrequencyType,
+            nextDueDate: getLocalDateString(),
+            isActive: true,
+            autoPost: false,
+            reminderDaysBefore: 3,
+          }
+        : {
+            currencyCode: defaultCurrency,
+            frequency: 'MONTHLY' as FrequencyType,
+            nextDueDate: getLocalDateString(),
+            isActive: true,
+            autoPost: false,
+            reminderDaysBefore: 3,
+          },
   });
 
   useFormDirtyNotify(isDirty, onDirtyChange);

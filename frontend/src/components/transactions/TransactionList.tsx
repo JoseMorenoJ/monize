@@ -18,6 +18,7 @@ interface TransactionListProps {
   transactions: Transaction[];
   onEdit?: (transaction: Transaction) => void;
   onDuplicate?: (transaction: Transaction) => void;
+  onScheduleRecurring?: (transaction: Transaction) => void;
   onDelete?: (id: string) => void;
   onRefresh?: () => void;
   onTransactionUpdate?: (transaction: Transaction) => void;
@@ -53,6 +54,7 @@ export function TransactionList({
   transactions,
   onEdit,
   onDuplicate,
+  onScheduleRecurring,
   onDelete,
   onRefresh,
   onTransactionUpdate,
@@ -473,6 +475,7 @@ export function TransactionList({
                     onCycleStatus={handleCycleStatus}
                     onEdit={onEdit}
                     onDuplicate={onDuplicate}
+                    onScheduleRecurring={onScheduleRecurring}
                     onDeleteClick={handleDeleteClick}
                     selectionMode={selectionMode}
                     isSelected={selectionMode ? selectedIds?.has(transaction.id) : undefined}
@@ -496,6 +499,7 @@ export function TransactionList({
         onClose={handleActionSheetClose}
         onEdit={onEdit}
         onDuplicate={onDuplicate}
+        onScheduleRecurring={onScheduleRecurring}
         onDeleteClick={handleDeleteClick}
         onDateFilterClick={onDateFilterClick}
         onAccountFilterClick={onAccountFilterClick}

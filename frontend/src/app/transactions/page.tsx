@@ -12,6 +12,7 @@ import { type DensityLevel } from '@/hooks/useTableDensity';
 import dynamic from 'next/dynamic';
 
 const TransactionForm = dynamic(() => import('@/components/transactions/TransactionForm').then(m => m.TransactionForm), { ssr: false });
+const ScheduledTransactionForm = dynamic(() => import('@/components/scheduled-transactions/ScheduledTransactionForm').then(m => m.ScheduledTransactionForm), { ssr: false });
 const PayeeForm = dynamic(() => import('@/components/payees/PayeeForm').then(m => m.PayeeForm), { ssr: false });
 const BulkUpdateModal = dynamic(() => import('@/components/transactions/BulkUpdateModal').then(m => m.BulkUpdateModal), { ssr: false });
 const BalanceHistoryChart = dynamic(() => import('@/components/transactions/BalanceHistoryChart').then(m => m.BalanceHistoryChart), { ssr: false });
@@ -74,6 +75,8 @@ function TransactionsContent() {
   const [isLoading, setIsLoading] = useState(true);
   const { showForm, editingItem: editingTransaction, openCreate, openEdit, close, modalProps, setFormDirty, unsavedChangesDialog, formSubmitRef } = useFormModal<Transaction>();
   const [duplicatingFrom, setDuplicatingFrom] = useState<Transaction | undefined>();
+  const [schedulingFrom, setSchedulingFrom] = useState<Transaction | undefined>();
+  const [showScheduleForm, setShowScheduleForm] = useState(false);
   const [showPayeeForm, setShowPayeeForm] = useState(false);
   const [editingPayee, setEditingPayee] = useState<Payee | undefined>();
   const [listDensity, setListDensity] = useLocalStorage<DensityLevel>('monize-transactions-density', 'normal');
@@ -84,7 +87,7 @@ function TransactionsContent() {
 
   // Ref to track whether any modal is open (used by popstate handler to avoid conflicts)
   const modalOpenRef = useRef(false);
-  modalOpenRef.current = showForm || showPayeeForm || showBulkUpdate || showBulkDeleteConfirm;
+  modalOpenRef.current = showForm || showScheduleForm || showPayeeForm || showBulkUpdate || showBulkDeleteConfirm;
 
   const filters = useTransactionFilters({ accounts, categories, payees, tags, weekStartsOn });
 
@@ -320,6 +323,33 @@ function TransactionsContent() {
       setDuplicatingFrom(transaction);
     }
     openCreate();
+  };
+
+  const handleScheduleRecurring = async (transaction: Transaction) => {
+    if (transaction.linkedInvestmentTransactionId) return;
+    if (transaction.isTransfer || transaction.isSplit) {
+      try {
+        const fullTransaction = await transactionsApi.getById(transaction.id);
+        setSchedulingFrom(fullTransaction);
+      } catch (error) {
+        logger.error('Failed to load transaction details for scheduling:', error);
+        setSchedulingFrom(transaction);
+      }
+    } else {
+      setSchedulingFrom(transaction);
+    }
+    setShowScheduleForm(true);
+  };
+
+  const handleScheduleFormSuccess = () => {
+    setSchedulingFrom(undefined);
+    setShowScheduleForm(false);
+    toast.success('Scheduled transaction created');
+  };
+
+  const handleScheduleFormClose = () => {
+    setSchedulingFrom(undefined);
+    setShowScheduleForm(false);
   };
 
   const handleClose = () => {
@@ -594,6 +624,21 @@ function TransactionsContent() {
           onDiscard={() => { setDuplicatingFrom(undefined); unsavedChangesDialog.onDiscard(); }}
         />
 
+        {/* Schedule as Recurring Modal */}
+        {showScheduleForm && (
+          <Modal isOpen={showScheduleForm} onClose={handleScheduleFormClose} maxWidth="6xl" className="p-6 !max-w-[69rem]" pushHistory>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-4">
+              Schedule as Recurring
+            </h2>
+            <ScheduledTransactionForm
+              key={`schedule-${schedulingFrom?.id || 'new'}`}
+              templateTransaction={schedulingFrom}
+              onSuccess={handleScheduleFormSuccess}
+              onCancel={handleScheduleFormClose}
+            />
+          </Modal>
+        )}
+
         {/* Payee Edit Modal */}
         {editingPayee && (
           <Modal isOpen={showPayeeForm} onClose={handlePayeeFormCancel} maxWidth="lg" className="p-6" pushHistory>
@@ -698,6 +743,7 @@ function TransactionsContent() {
               transactions={transactions}
               onEdit={handleEdit}
               onDuplicate={handleDuplicate}
+              onScheduleRecurring={handleScheduleRecurring}
               onRefresh={loadAllData}
               onTransactionUpdate={handleTransactionUpdate}
               onPayeeClick={handlePayeeClick}
