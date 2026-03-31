@@ -104,12 +104,29 @@ export function IncomeExpensesBarChart({
       );
 
       if (weekBucket) {
-        const rawAmount = Number(tx.amount) || 0;
-        const amount = convertToDefault(rawAmount, tx.currencyCode);
-        if (amount >= 0) {
-          weekBucket.income += amount;
+        const classifyAmount = (rawAmount: number, category: { isIncome: boolean } | null | undefined) => {
+          const amount = convertToDefault(rawAmount, tx.currencyCode);
+          if (category?.isIncome === true) {
+            weekBucket.income += amount;
+          } else if (category?.isIncome === false) {
+            weekBucket.expenses += -1 * amount;
+          } else {
+            // Uncategorized: fall back to sign-based
+            if (amount >= 0) {
+              weekBucket.income += amount;
+            } else {
+              weekBucket.expenses += Math.abs(amount);
+            }
+          }
+        };
+
+        if (tx.splits && tx.splits.length > 0) {
+          tx.splits.forEach((split) => {
+            if (split.transferAccountId) return;
+            classifyAmount(Number(split.amount) || 0, split.category);
+          });
         } else {
-          weekBucket.expenses += Math.abs(amount);
+          classifyAmount(Number(tx.amount) || 0, tx.category);
         }
       }
     });
