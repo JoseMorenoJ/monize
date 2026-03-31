@@ -220,7 +220,7 @@ export const TransactionRow = memo(function TransactionRow({
           </div>
         )}
       </td>
-      <td className={`${cellPadding} ${density !== 'normal' ? 'whitespace-nowrap' : ''} hidden sm:table-cell`}>
+      <td className={`${cellPadding} ${density !== 'normal' ? 'whitespace-nowrap' : ''} hidden min-[900px]:table-cell`}>
         {transaction.linkedInvestmentTransactionId ? (
           <span
             className={`inline-flex text-xs leading-5 font-semibold rounded-full bg-emerald-100 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200 ${density === 'dense' ? 'px-1.5 py-0.5' : 'px-2 py-1'}`}
