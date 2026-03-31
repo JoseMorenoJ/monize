@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   BarChart,
@@ -140,11 +140,27 @@ export function IncomeExpensesBarChart({
     }));
   }, [transactions, formatDate, convertToDefault, weekStartsOn]);
 
-  const handleBarClick = (data: { payload?: { startDate?: string; endDate?: string } }) => {
+  const barClickedRef = useRef(false);
+
+  const handleBarClick = (categoryType: 'income' | 'expense') => (data: { payload?: { startDate?: string; endDate?: string } }) => {
+    barClickedRef.current = true;
     const startDate = data.payload?.startDate;
     const endDate = data.payload?.endDate;
     if (startDate && endDate) {
-      router.push(`/transactions?startDate=${startDate}&endDate=${endDate}`);
+      router.push(`/transactions?startDate=${startDate}&endDate=${endDate}&categoryType=${categoryType}`);
+    }
+  };
+
+  const handleChartClick = (state: { activeLabel?: string } | null) => {
+    if (barClickedRef.current) {
+      barClickedRef.current = false;
+      return;
+    }
+    const label = state?.activeLabel;
+    if (!label) return;
+    const item = chartData.find((d) => d.name === label);
+    if (item?.startDate && item?.endDate) {
+      router.push(`/transactions?startDate=${item.startDate}&endDate=${item.endDate}`);
     }
   };
 
@@ -185,6 +201,8 @@ export function IncomeExpensesBarChart({
             data={chartData}
             barGap={4}
             margin={{ top: 5, right: 5, left: -10, bottom: 0 }}
+            onClick={handleChartClick}
+            style={{ cursor: 'pointer' }}
           >
             <CartesianGrid
               strokeDasharray="3 3"
@@ -216,7 +234,7 @@ export function IncomeExpensesBarChart({
               radius={[4, 4, 0, 0]}
               maxBarSize={40}
               cursor="pointer"
-              onClick={handleBarClick}
+              onClick={handleBarClick('income')}
             />
             <Bar
               dataKey="Expenses"
@@ -224,7 +242,7 @@ export function IncomeExpensesBarChart({
               radius={[4, 4, 0, 0]}
               maxBarSize={40}
               cursor="pointer"
-              onClick={handleBarClick}
+              onClick={handleBarClick('expense')}
             />
           </BarChart>
         </ResponsiveContainer>

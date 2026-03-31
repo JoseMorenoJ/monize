@@ -296,15 +296,15 @@ describe('IncomeExpensesBarChart', () => {
     expect(screen.getByText('$200')).toBeInTheDocument();
   });
 
-  it('navigates to transactions page with date range on bar click', () => {
+  it('navigates to transactions page with income filter on Income bar click', () => {
     render(<IncomeExpensesBarChart transactions={[]} isLoading={false} />);
     fireEvent.click(screen.getByTestId('bar-Income'));
-    expect(mockPush).toHaveBeenCalledWith('/transactions?startDate=2026-02-17&endDate=2026-02-23');
+    expect(mockPush).toHaveBeenCalledWith('/transactions?startDate=2026-02-17&endDate=2026-02-23&categoryType=income');
   });
 
-  it('navigates on Expenses bar click as well', () => {
+  it('navigates to transactions page with expense filter on Expenses bar click', () => {
     render(<IncomeExpensesBarChart transactions={[]} isLoading={false} />);
     fireEvent.click(screen.getByTestId('bar-Expenses'));
-    expect(mockPush).toHaveBeenCalledWith('/transactions?startDate=2026-02-17&endDate=2026-02-23');
+    expect(mockPush).toHaveBeenCalledWith('/transactions?startDate=2026-02-17&endDate=2026-02-23&categoryType=expense');
   });
 });
