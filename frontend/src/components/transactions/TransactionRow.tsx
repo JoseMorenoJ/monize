@@ -194,7 +194,7 @@ export const TransactionRow = memo(function TransactionRow({
       <td className={`${cellPadding} whitespace-nowrap text-sm text-gray-900 dark:text-gray-100 ${isVoid ? 'line-through' : ''}`}>
         {formatDate(transaction.transactionDate)}
       </td>
-      <td className={`${cellPadding} whitespace-nowrap text-sm text-gray-900 dark:text-gray-100 ${isVoid ? 'line-through' : ''} hidden md:table-cell`}>
+      <td className={`${cellPadding} whitespace-nowrap text-sm text-gray-900 dark:text-gray-100 ${isVoid ? 'line-through' : ''} hidden lg:table-cell`}>
         {transaction.account?.name || '-'}
       </td>
       <td className={`${cellPadding} max-w-[100px] sm:max-w-none overflow-hidden`}>
@@ -220,7 +220,7 @@ export const TransactionRow = memo(function TransactionRow({
           </div>
         )}
       </td>
-      <td className={`${cellPadding} ${density !== 'normal' ? 'whitespace-nowrap' : ''} hidden lg:table-cell`}>
+      <td className={`${cellPadding} ${density !== 'normal' ? 'whitespace-nowrap' : ''} hidden xl:table-cell`}>
         {transaction.linkedInvestmentTransactionId ? (
           <span
             className={`inline-flex text-xs leading-5 font-semibold rounded-full bg-emerald-100 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200 ${density === 'dense' ? 'px-1.5 py-0.5' : 'px-2 py-1'}`}
@@ -416,7 +416,7 @@ export const TransactionRow = memo(function TransactionRow({
         )}
       </td>
       {showRunningBalance && (
-        <td className={`${cellPadding} whitespace-nowrap text-sm font-medium text-right hidden lg:table-cell`}>
+        <td className={`${cellPadding} whitespace-nowrap text-sm font-medium text-right`}>
           {runningBalance !== undefined
             ? formatBalance(runningBalance, transaction.currencyCode)
             : '-'}
