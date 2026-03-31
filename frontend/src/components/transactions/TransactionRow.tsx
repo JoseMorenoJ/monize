@@ -350,7 +350,7 @@ export const TransactionRow = memo(function TransactionRow({
           <span className="text-sm text-gray-400 dark:text-gray-500">-</span>
         )}
       </td>
-      <td className={`${cellPadding} text-sm text-gray-500 dark:text-gray-400 hidden xl:table-cell`}>
+      <td className={`${cellPadding} text-sm text-gray-500 dark:text-gray-400 hidden 2xl:table-cell`}>
         <div
           className={`truncate max-w-[320px] ${isVoid ? 'line-through' : ''}`}
           title={transaction.description || undefined}
@@ -358,7 +358,7 @@ export const TransactionRow = memo(function TransactionRow({
           {transaction.description || '-'}
         </div>
       </td>
-      <td className={`${cellPadding} text-sm hidden xl:table-cell`}>
+      <td className={`${cellPadding} text-sm hidden 2xl:table-cell`}>
         {transaction.tags && transaction.tags.length > 0 ? (
           <div className="flex flex-wrap gap-1">
             {transaction.tags.map((tag) => onTagClick ? (
