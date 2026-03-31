@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Account } from '@/types/account';
 import { usePreferencesStore } from '@/store/preferencesStore';
@@ -33,9 +33,12 @@ export function FavouriteAccounts({ accounts, isLoading, onAccountsChanged }: Fa
   const { formatCurrency: formatCurrencyBase } = useNumberFormat();
   const defaultCurrency = preferences?.defaultCurrency || 'CAD';
   const [reordering, setReordering] = useState(false);
-  const [localOrder, setLocalOrder] = useState<Account[] | null>(null);
+  const [localOrder, setLocalOrder] = useState<{ accounts: Account[]; order: Account[] } | null>(null);
 
-  const favouriteAccounts = localOrder ??
+  // Invalidate local order when parent accounts reference changes
+  const effectiveLocalOrder = localOrder?.accounts === accounts ? localOrder.order : null;
+
+  const favouriteAccounts = effectiveLocalOrder ??
     [...accounts]
       .filter((a) => a.isFavourite && !a.isClosed)
       .sort((a, b) => a.favouriteSortOrder - b.favouriteSortOrder);
@@ -54,7 +57,7 @@ export function FavouriteAccounts({ accounts, isLoading, onAccountsChanged }: Fa
   const moveAccount = useCallback(
     async (index: number, direction: -1 | 1) => {
       const newIndex = index + direction;
-      const current = localOrder ??
+      const current = effectiveLocalOrder ??
         [...accounts]
           .filter((a) => a.isFavourite && !a.isClosed)
           .sort((a, b) => a.favouriteSortOrder - b.favouriteSortOrder);
@@ -65,7 +68,7 @@ export function FavouriteAccounts({ accounts, isLoading, onAccountsChanged }: Fa
       const [moved] = reordered.splice(index, 1);
       reordered.splice(newIndex, 0, moved);
 
-      setLocalOrder(reordered);
+      setLocalOrder({ accounts, order: reordered });
 
       try {
         await accountsApi.reorderFavourites(reordered.map((a) => a.id));
@@ -74,17 +77,8 @@ export function FavouriteAccounts({ accounts, isLoading, onAccountsChanged }: Fa
         setLocalOrder(null);
       }
     },
-    [accounts, localOrder, onAccountsChanged],
+    [accounts, effectiveLocalOrder, onAccountsChanged],
   );
-
-  // Reset local order when accounts change from parent
-  const prevAccountsRef = useRef(accounts);
-  useEffect(() => {
-    if (prevAccountsRef.current !== accounts) {
-      prevAccountsRef.current = accounts;
-      setLocalOrder(null);
-    }
-  }, [accounts]);
 
   if (isLoading) {
     return (
