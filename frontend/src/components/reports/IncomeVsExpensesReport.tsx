@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, MouseEvent as ReactMouseEvent } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   BarChart,
@@ -124,8 +124,7 @@ export function IncomeVsExpensesReport() {
 
   const barClickedRef = useRef(false);
 
-  const handleBarClick = (categoryType: 'income' | 'expense') => (data: { payload?: { monthStart?: string; monthEnd?: string } }, _index: number, e: ReactMouseEvent) => {
-    e.stopPropagation();
+  const handleBarClick = (categoryType: 'income' | 'expense') => (data: { payload?: { monthStart?: string; monthEnd?: string } }) => {
     barClickedRef.current = true;
     const monthStart = data.payload?.monthStart;
     const monthEnd = data.payload?.monthEnd;
