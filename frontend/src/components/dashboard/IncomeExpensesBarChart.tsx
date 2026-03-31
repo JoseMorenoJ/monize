@@ -151,7 +151,7 @@ export function IncomeExpensesBarChart({
     }
   };
 
-  const handleChartClick = (state: { activeLabel?: string } | null) => {
+  const handleChartClick = (state: { activeLabel?: string | number } | null) => {
     if (barClickedRef.current) {
       barClickedRef.current = false;
       return;
