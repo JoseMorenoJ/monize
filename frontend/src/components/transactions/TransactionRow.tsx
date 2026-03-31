@@ -179,7 +179,7 @@ export const TransactionRow = memo(function TransactionRow({
       onTouchMove={onTouchMove}
       onTouchEnd={onLongPressEnd}
       onTouchCancel={onLongPressEnd}
-      className={`group hover:bg-gray-100 dark:hover:bg-gray-800 select-none touch-manipulation ${density !== 'normal' && index % 2 === 1 ? 'bg-gray-50 dark:bg-gray-800' : ''} ${isVoid ? 'opacity-50' : ''} ${isFuture && !isVoid ? 'opacity-60' : ''} ${onEdit ? 'cursor-pointer' : ''} ${isSelected ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}
+      className={`group hover:bg-gray-100 dark:hover:bg-gray-800 select-none touch-manipulation ${density !== 'normal' && index % 2 === 1 ? 'bg-gray-50 dark:bg-gray-800' : 'bg-white dark:bg-gray-900'} ${isVoid ? 'opacity-50' : ''} ${isFuture && !isVoid ? 'opacity-60' : ''} ${onEdit ? 'cursor-pointer' : ''} ${isSelected ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}
     >
       {selectionMode && (
         <td className={`${cellPadding} whitespace-nowrap w-10`} onClick={e => e.stopPropagation()}>

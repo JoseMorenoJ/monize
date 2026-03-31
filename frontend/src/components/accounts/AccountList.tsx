@@ -525,10 +525,11 @@ export function AccountList({ accounts, brokerageMarketValues, onEdit, onRefresh
             </tr>
           </thead>
           <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
-            {filteredAndSortedAccounts.map((account) => (
+            {filteredAndSortedAccounts.map((account, index) => (
               <AccountRow
                 key={account.id}
                 account={account}
+                index={index}
                 density={density}
                 cellPadding={cellPadding}
                 isDeletable={deletableAccounts.has(account.id)}

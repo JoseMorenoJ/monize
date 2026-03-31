@@ -64,7 +64,7 @@ const ScheduledTransactionRow = memo(function ScheduledTransactionRow({
 
   return (
     <tr
-      className={`group hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer select-none ${!transaction.isActive ? 'opacity-50' : ''} ${dueDateStatus?.label === 'Overdue' ? 'bg-red-50 dark:bg-red-900/10' : ''}`}
+      className={`group hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer select-none ${!transaction.isActive ? 'opacity-50' : ''} ${dueDateStatus?.label === 'Overdue' ? 'bg-red-50 dark:bg-red-900/10' : 'bg-white dark:bg-gray-900'}`}
       onClick={() => onRowClick(transaction)}
       onMouseDown={() => onLongPressStart(transaction)}
       onMouseUp={onLongPressEnd}
@@ -208,7 +208,7 @@ const ScheduledTransactionRow = memo(function ScheduledTransactionRow({
       </td>
 
       {/* Actions */}
-      <td className={`px-4 py-3 whitespace-nowrap text-right hidden min-[480px]:table-cell sticky right-0 ${dueDateStatus?.label === 'Overdue' ? 'bg-red-50 dark:bg-red-900/10' : 'bg-white dark:bg-gray-900'} group-hover:bg-gray-50 dark:group-hover:bg-gray-800`} onClick={(e) => e.stopPropagation()}>
+      <td className={`px-4 py-3 whitespace-nowrap text-right hidden min-[480px]:table-cell sticky right-0 ${dueDateStatus?.label === 'Overdue' ? 'bg-red-50 dark:bg-red-900/10' : 'bg-white dark:bg-gray-900'} group-hover:bg-gray-100 dark:group-hover:bg-gray-800`} onClick={(e) => e.stopPropagation()}>
         <div className="flex justify-end items-center space-x-1">
           {transaction.isActive && (
             <>
