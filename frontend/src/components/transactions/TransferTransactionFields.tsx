@@ -3,6 +3,7 @@
 import { ReactNode } from 'react';
 import { UseFormRegister, FieldErrors, UseFormSetValue } from 'react-hook-form';
 import { Input } from '@/components/ui/Input';
+import { DateInput } from '@/components/ui/DateInput';
 import { CurrencyInput } from '@/components/ui/CurrencyInput';
 import { Select } from '@/components/ui/Select';
 import { Combobox } from '@/components/ui/Combobox';
@@ -66,10 +67,10 @@ export function TransferTransactionFields({
     <div className="space-y-4">
       {/* Row 1: Date and optionally Create Date */}
       <div className={`grid grid-cols-1 gap-4 ${createdAtSlot ? 'md:grid-cols-2' : 'md:grid-cols-2'}`}>
-        <Input
+        <DateInput
           label="Date"
-          type="date"
           error={errors.transactionDate?.message as string | undefined}
+          onDateChange={(date) => setValue('transactionDate', date, { shouldDirty: true, shouldValidate: true })}
           {...register('transactionDate')}
         />
         {createdAtSlot}

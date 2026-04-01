@@ -1,8 +1,9 @@
 'use client';
 
 import { ReactNode } from 'react';
-import { UseFormRegister, FieldErrors } from 'react-hook-form';
+import { UseFormRegister, UseFormSetValue, FieldErrors } from 'react-hook-form';
 import { Input } from '@/components/ui/Input';
+import { DateInput } from '@/components/ui/DateInput';
 import { CurrencyInput } from '@/components/ui/CurrencyInput';
 import { Select } from '@/components/ui/Select';
 import { Combobox } from '@/components/ui/Combobox';
@@ -14,6 +15,7 @@ import { buildAccountDropdownOptions } from '@/lib/account-utils';
 
 interface SplitTransactionFieldsProps {
   register: UseFormRegister<any>;
+  setValue: UseFormSetValue<any>;
   errors: FieldErrors;
   watchedAccountId: string;
   watchedAmount: number;
@@ -30,6 +32,7 @@ interface SplitTransactionFieldsProps {
 
 export function SplitTransactionFields({
   register,
+  setValue,
   errors,
   watchedAccountId,
   watchedAmount,
@@ -62,10 +65,10 @@ export function SplitTransactionFields({
           ]}
           {...register('accountId')}
         />
-        <Input
+        <DateInput
           label="Date"
-          type="date"
           error={errors.transactionDate?.message as string | undefined}
+          onDateChange={(date) => setValue('transactionDate', date, { shouldDirty: true, shouldValidate: true })}
           {...register('transactionDate')}
         />
         {createdAtSlot}
