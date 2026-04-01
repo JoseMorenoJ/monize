@@ -23,11 +23,12 @@ function getOrdinal(day: number): string {
 
 interface FavouriteAccountsProps {
   accounts: Account[];
+  brokerageMarketValues?: Map<string, number>;
   isLoading: boolean;
   onAccountsChanged?: () => void;
 }
 
-export function FavouriteAccounts({ accounts, isLoading, onAccountsChanged }: FavouriteAccountsProps) {
+export function FavouriteAccounts({ accounts, brokerageMarketValues, isLoading, onAccountsChanged }: FavouriteAccountsProps) {
   const router = useRouter();
   const { preferences } = usePreferencesStore();
   const { formatCurrency: formatCurrencyBase } = useNumberFormat();
@@ -156,7 +157,11 @@ export function FavouriteAccounts({ accounts, isLoading, onAccountsChanged }: Fa
               </div>
             )}
             <button
-              onClick={() => !reordering && router.push(`/transactions?accountId=${account.id}`)}
+              onClick={() => !reordering && router.push(
+                account.accountSubType === 'INVESTMENT_BROKERAGE'
+                  ? `/investments?accountId=${account.id}`
+                  : `/transactions?accountId=${account.id}`
+              )}
               className={`flex-1 flex items-center justify-between p-2 sm:p-3 rounded-lg border border-gray-200 dark:border-gray-700 transition-colors text-left ${
                 reordering
                   ? 'cursor-default'
@@ -210,16 +215,28 @@ export function FavouriteAccounts({ accounts, isLoading, onAccountsChanged }: Fa
                 </div>
               </div>
               {(() => {
-                const totalBalance = (Number(account.currentBalance) || 0) + (Number(account.futureTransactionsSum) || 0);
+                const brokerageMarketValue = account.accountSubType === 'INVESTMENT_BROKERAGE'
+                  ? brokerageMarketValues?.get(account.id)
+                  : undefined;
+                const displayValue = brokerageMarketValue !== undefined
+                  ? brokerageMarketValue
+                  : (Number(account.currentBalance) || 0) + (Number(account.futureTransactionsSum) || 0);
                 return (
-                  <div
-                    className={`font-semibold whitespace-nowrap ml-2 ${
-                      totalBalance >= 0
-                        ? 'text-green-600 dark:text-green-400'
-                        : 'text-red-600 dark:text-red-400'
-                    }`}
-                  >
-                    {formatCurrency(totalBalance, account.currencyCode)}
+                  <div className="text-right ml-2">
+                    <div
+                      className={`font-semibold whitespace-nowrap ${
+                        displayValue >= 0
+                          ? 'text-green-600 dark:text-green-400'
+                          : 'text-red-600 dark:text-red-400'
+                      }`}
+                    >
+                      {formatCurrency(displayValue, account.currencyCode)}
+                    </div>
+                    {brokerageMarketValue !== undefined && (
+                      <div className="text-xs text-gray-500 dark:text-gray-400">
+                        Market value
+                      </div>
+                    )}
                   </div>
                 );
               })()}
