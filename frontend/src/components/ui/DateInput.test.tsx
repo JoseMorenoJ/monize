@@ -207,28 +207,42 @@ describe('DateInput', () => {
       expect(getByText('Date is required')).toBeInTheDocument();
     });
 
-    it('shows keyboard shortcuts tooltip on desktop', () => {
-      const { getByText } = renderDateInput();
-      expect(getByText('Keyboard shortcuts')).toBeInTheDocument();
-      expect(getByText('Today')).toBeInTheDocument();
-      expect(getByText('First day of year')).toBeInTheDocument();
-      expect(getByText('Last day of year')).toBeInTheDocument();
-      expect(getByText('First day of month')).toBeInTheDocument();
-      expect(getByText('Last day of month')).toBeInTheDocument();
-      expect(getByText('Next day')).toBeInTheDocument();
-      expect(getByText('Previous day')).toBeInTheDocument();
-      expect(getByText('Previous month')).toBeInTheDocument();
-      expect(getByText('Next month')).toBeInTheDocument();
+    it('shows keyboard shortcuts tooltip on hover', () => {
+      const { container } = renderDateInput();
+      const icon = container.querySelector('svg.cursor-help')!;
+      expect(icon).toBeInTheDocument();
+
+      // Tooltip content not visible before hover
+      expect(document.querySelector('[role="tooltip"]')).not.toBeInTheDocument();
+
+      // Hover to show tooltip
+      fireEvent.mouseEnter(icon.parentElement!);
+      const tooltip = document.querySelector('[role="tooltip"]')!;
+      expect(tooltip).toBeInTheDocument();
+      expect(tooltip.textContent).toContain('Keyboard shortcuts');
+      expect(tooltip.textContent).toContain('Today');
+      expect(tooltip.textContent).toContain('First day of year');
+      expect(tooltip.textContent).toContain('Last day of year');
+      expect(tooltip.textContent).toContain('First day of month');
+      expect(tooltip.textContent).toContain('Last day of month');
+      expect(tooltip.textContent).toContain('Next day');
+      expect(tooltip.textContent).toContain('Previous day');
+      expect(tooltip.textContent).toContain('Previous month');
+      expect(tooltip.textContent).toContain('Next month');
+
+      // Mouse leave hides tooltip
+      fireEvent.mouseLeave(icon.parentElement!);
+      expect(document.querySelector('[role="tooltip"]')).not.toBeInTheDocument();
     });
 
-    it('does not show tooltip when label is not provided', () => {
-      const { queryByText } = render(
+    it('does not show tooltip icon when label is not provided', () => {
+      const { container } = render(
         <DateInput
           onDateChange={onDateChange}
           onChange={() => {}}
         />
       );
-      expect(queryByText('Keyboard shortcuts')).not.toBeInTheDocument();
+      expect(container.querySelector('svg.cursor-help')).not.toBeInTheDocument();
     });
   });
 });
