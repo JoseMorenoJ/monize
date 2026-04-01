@@ -244,7 +244,7 @@ describe("FavouriteAccounts", () => {
     expect(screen.queryByText("Market value")).not.toBeInTheDocument();
   });
 
-  it("navigates to transactions page on account click", () => {
+  it("navigates to transactions page on regular account click", () => {
     const accounts = [
       {
         id: "acc-1",
@@ -259,6 +259,25 @@ describe("FavouriteAccounts", () => {
     render(<FavouriteAccounts accounts={accounts} isLoading={false} />);
     fireEvent.click(screen.getByText("Checking"));
     expect(mockPush).toHaveBeenCalledWith("/transactions?accountId=acc-1");
+  });
+
+  it("navigates to investments page on brokerage account click", () => {
+    const accounts = [
+      {
+        id: "brok-1",
+        name: "My Brokerage",
+        currentBalance: 0,
+        currencyCode: "CAD",
+        isFavourite: true, favouriteSortOrder: 0,
+        isClosed: false,
+        accountType: "INVESTMENT",
+        accountSubType: "INVESTMENT_BROKERAGE",
+      },
+    ] as any[];
+
+    render(<FavouriteAccounts accounts={accounts} isLoading={false} />);
+    fireEvent.click(screen.getByText("My Brokerage"));
+    expect(mockPush).toHaveBeenCalledWith("/investments?accountId=brok-1");
   });
 
   describe("favourite account ordering", () => {

@@ -120,8 +120,8 @@ describe('BalanceHistoryChart', () => {
         data={[
           { date: '2026-03-01', balance: 2000 },
           { date: '2026-03-10', balance: 1500 },
-          { date: '2026-03-15', balance: 1800 },
-          { date: '2026-04-01', balance: 1900 },
+          { date: '2026-04-01', balance: 1800 },
+          { date: '2026-04-15', balance: 1900 },
         ]}
         isLoading={false}
       />

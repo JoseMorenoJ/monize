@@ -157,7 +157,11 @@ export function FavouriteAccounts({ accounts, brokerageMarketValues, isLoading, 
               </div>
             )}
             <button
-              onClick={() => !reordering && router.push(`/transactions?accountId=${account.id}`)}
+              onClick={() => !reordering && router.push(
+                account.accountSubType === 'INVESTMENT_BROKERAGE'
+                  ? `/investments?accountId=${account.id}`
+                  : `/transactions?accountId=${account.id}`
+              )}
               className={`flex-1 flex items-center justify-between p-2 sm:p-3 rounded-lg border border-gray-200 dark:border-gray-700 transition-colors text-left ${
                 reordering
                   ? 'cursor-default'
