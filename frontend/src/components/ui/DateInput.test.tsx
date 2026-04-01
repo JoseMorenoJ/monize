@@ -206,5 +206,29 @@ describe('DateInput', () => {
       );
       expect(getByText('Date is required')).toBeInTheDocument();
     });
+
+    it('shows keyboard shortcuts tooltip on desktop', () => {
+      const { getByText } = renderDateInput();
+      expect(getByText('Keyboard shortcuts')).toBeInTheDocument();
+      expect(getByText('Today')).toBeInTheDocument();
+      expect(getByText('First day of year')).toBeInTheDocument();
+      expect(getByText('Last day of year')).toBeInTheDocument();
+      expect(getByText('First day of month')).toBeInTheDocument();
+      expect(getByText('Last day of month')).toBeInTheDocument();
+      expect(getByText('Next day')).toBeInTheDocument();
+      expect(getByText('Previous day')).toBeInTheDocument();
+      expect(getByText('Previous month')).toBeInTheDocument();
+      expect(getByText('Next month')).toBeInTheDocument();
+    });
+
+    it('does not show tooltip when label is not provided', () => {
+      const { queryByText } = render(
+        <DateInput
+          onDateChange={onDateChange}
+          onChange={() => {}}
+        />
+      );
+      expect(queryByText('Keyboard shortcuts')).not.toBeInTheDocument();
+    });
   });
 });
