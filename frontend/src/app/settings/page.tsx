@@ -130,7 +130,7 @@ function SettingsContent() {
         )}
 
         {/* Mobile horizontal tabs */}
-        <div className="lg:hidden sticky top-0 z-10 -mx-4 px-4 py-2 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 mb-4">
+        <div className="lg:hidden sticky top-0 z-10 -mx-4 px-4 py-2 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 mb-6">
           <SettingsNav
             sections={visibleSections}
             activeSection={activeSection}
@@ -139,7 +139,7 @@ function SettingsContent() {
           />
         </div>
 
-        <div className="lg:flex lg:gap-8">
+        <div className="lg:flex lg:gap-10">
           {/* Desktop sidebar */}
           <aside className="hidden lg:block lg:w-52 shrink-0">
             <div className="sticky top-6">
