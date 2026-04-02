@@ -32,10 +32,10 @@ export class AutoBackupSettings {
   @Column({ name: "last_backup_at", type: "timestamp", nullable: true })
   lastBackupAt: Date | null;
 
-  @Column({ name: "last_backup_status", length: 20, nullable: true })
+  @Column({ name: "last_backup_status", type: "varchar", length: 20, nullable: true })
   lastBackupStatus: string | null;
 
-  @Column({ name: "last_backup_error", length: 1024, nullable: true })
+  @Column({ name: "last_backup_error", type: "varchar", length: 1024, nullable: true })
   lastBackupError: string | null;
 
   @Column({ name: "next_backup_at", type: "timestamp", nullable: true })
