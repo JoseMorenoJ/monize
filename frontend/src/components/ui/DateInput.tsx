@@ -278,6 +278,19 @@ export const DateInput = forwardRef<HTMLInputElement, DateInputProps>(
       isFocusedRef.current = true;
     }, []);
 
+    // Desktop: open the native date picker via the calendar icon
+    const handleCalendarClick = useCallback(() => {
+      const picker = nativeDateRef.current;
+      if (!picker) return;
+      picker.value = isoValue;
+      if (typeof picker.showPicker === 'function') {
+        picker.showPicker();
+      } else {
+        picker.focus();
+        picker.click();
+      }
+    }, [isoValue]);
+
     // Touch mode: open the native date picker when the display is tapped
     const handleTouchTap = useCallback(() => {
       const picker = nativeDateRef.current;
@@ -362,24 +375,48 @@ export const DateInput = forwardRef<HTMLInputElement, DateInputProps>(
     }
 
     // --- Desktop + custom format mode ---
-    // Text input that shows and accepts dates in the user's preferred format.
+    // Text input that shows and accepts dates in the user's preferred format,
+    // with a calendar icon to open the native date picker.
     if (mode === 'desktop-formatted') {
       return (
         <div className="w-full">
           {labelBlock}
-          <Input
-            ref={mergedRef}
-            id={inputId}
-            type="text"
-            value={displayValue}
-            onChange={handleTextChange}
-            onBlur={handleTextBlur}
-            onFocus={handleTextFocus}
-            onKeyDown={handleKeyDown}
-            placeholder={dateFormat}
-            error={props.error}
-            {...props}
-          />
+          <div className="relative">
+            <Input
+              ref={mergedRef}
+              id={inputId}
+              type="text"
+              value={displayValue}
+              onChange={handleTextChange}
+              onBlur={handleTextBlur}
+              onFocus={handleTextFocus}
+              onKeyDown={handleKeyDown}
+              placeholder={dateFormat}
+              error={props.error}
+              className="pr-9"
+              {...props}
+            />
+            <button
+              type="button"
+              tabIndex={-1}
+              onClick={handleCalendarClick}
+              aria-label="Open date picker"
+              className="absolute inset-y-0 right-0 flex items-center pr-2.5 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" />
+              </svg>
+            </button>
+            {/* Hidden native date input for the calendar picker */}
+            <input
+              ref={nativeDateRef}
+              type="date"
+              tabIndex={-1}
+              aria-hidden="true"
+              className="sr-only"
+              onChange={handleNativeDateChange}
+            />
+          </div>
         </div>
       );
     }

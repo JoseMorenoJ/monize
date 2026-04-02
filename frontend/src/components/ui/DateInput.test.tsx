@@ -270,6 +270,33 @@ describe('DateInput', () => {
       expect(getByLabelText('Date')).toHaveAttribute('type', 'text');
     });
 
+    it('shows calendar icon button on desktop', () => {
+      const { getByLabelText } = renderDateInput('2025-06-15');
+      const calendarBtn = getByLabelText('Open date picker');
+      expect(calendarBtn).toBeInTheDocument();
+      expect(calendarBtn.tagName).toBe('BUTTON');
+    });
+
+    it('opens native date picker when calendar icon is clicked', () => {
+      const { getByLabelText, container } = renderDateInput('2025-06-15');
+      const calendarBtn = getByLabelText('Open date picker');
+      const nativeInput = container.querySelector('input[type="date"]') as HTMLInputElement;
+
+      nativeInput.showPicker = vi.fn();
+      fireEvent.click(calendarBtn);
+      expect(nativeInput.showPicker).toHaveBeenCalled();
+      expect(nativeInput.value).toBe('2025-06-15');
+    });
+
+    it('updates display when date is picked from calendar', () => {
+      const { getByLabelText, container } = renderDateInput('2025-06-15');
+      const nativeInput = container.querySelector('input[type="date"]') as HTMLInputElement;
+
+      fireEvent.change(nativeInput, { target: { value: '2025-12-25' } });
+      expect(onDateChange).toHaveBeenCalledWith('2025-12-25');
+      expect(getByLabelText('Date')).toHaveValue('25/12/2025');
+    });
+
     it('shows formatted date in tappable display on touch devices', () => {
       // Simulate a touch device by temporarily overriding matchMedia
       const originalMatchMedia = window.matchMedia;
