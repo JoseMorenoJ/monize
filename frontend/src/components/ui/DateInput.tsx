@@ -349,13 +349,14 @@ export const DateInput = forwardRef<HTMLInputElement, DateInputProps>(
             >
               {displayValue || dateFormat}
             </button>
-            {/* Hidden native date input for the picker */}
+            {/* Hidden native date input for the picker.
+                Positioned to overlap the button so the popup anchors correctly. */}
             <input
               ref={nativeDateRef}
               type="date"
               tabIndex={-1}
               aria-hidden="true"
-              className="sr-only"
+              className="absolute inset-0 opacity-0 pointer-events-none"
               onChange={handleNativeDateChange}
             />
             {/* Hidden input for react-hook-form ref/value management */}
@@ -407,13 +408,15 @@ export const DateInput = forwardRef<HTMLInputElement, DateInputProps>(
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" />
               </svg>
             </button>
-            {/* Hidden native date input for the calendar picker */}
+            {/* Hidden native date input for the calendar picker.
+                Positioned over the calendar button so the browser popup
+                anchors in the correct place instead of off-screen. */}
             <input
               ref={nativeDateRef}
               type="date"
               tabIndex={-1}
               aria-hidden="true"
-              className="sr-only"
+              className="absolute right-0 inset-y-0 w-9 opacity-0 pointer-events-none"
               onChange={handleNativeDateChange}
             />
           </div>
