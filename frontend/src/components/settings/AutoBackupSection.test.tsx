@@ -395,6 +395,37 @@ describe('AutoBackupSection', () => {
     });
   });
 
+  it('keeps browse panel open when folder has no subdirectories', async () => {
+    (backupApi.browseFolders as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        current: '/',
+        directories: ['backups'],
+      })
+      .mockResolvedValueOnce({
+        current: '/backups',
+        directories: [],
+      });
+
+    await renderAutoBackupSection();
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('Browse...'));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('backups')).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('backups'));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('No subdirectories')).toBeInTheDocument();
+      expect(screen.getByText('Select This Folder')).toBeInTheDocument();
+    });
+  });
+
   it('navigates into a subdirectory when clicked', async () => {
     (backupApi.browseFolders as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce({

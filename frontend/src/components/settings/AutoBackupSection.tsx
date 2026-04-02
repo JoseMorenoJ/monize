@@ -41,6 +41,7 @@ export function AutoBackupSection() {
   const [retentionMonthly, setRetentionMonthly] = useState(6);
   const [isDirty, setIsDirty] = useState(false);
   const [isBrowsing, setIsBrowsing] = useState(false);
+  const [isBrowseOpen, setIsBrowseOpen] = useState(false);
   const [browsePath, setBrowsePath] = useState('/');
   const [browseEntries, setBrowseEntries] = useState<string[]>([]);
 
@@ -133,6 +134,7 @@ export function AutoBackupSection() {
 
   const handleBrowse = async (path: string) => {
     setIsBrowsing(true);
+    setIsBrowseOpen(true);
     try {
       const result = await backupApi.browseFolders(path);
       setBrowsePath(result.current);
@@ -151,6 +153,7 @@ export function AutoBackupSection() {
 
   const handleSelectBrowsedFolder = () => {
     setFolderPath(browsePath);
+    setIsBrowseOpen(false);
     setBrowseEntries([]);
     setFolderValid(null);
     setFolderError(null);
@@ -158,6 +161,7 @@ export function AutoBackupSection() {
   };
 
   const handleCloseBrowse = () => {
+    setIsBrowseOpen(false);
     setBrowseEntries([]);
   };
 
@@ -253,7 +257,7 @@ export function AutoBackupSection() {
           </Button>
         </div>
         {/* Browse dialog */}
-        {browseEntries.length > 0 && (
+        {isBrowseOpen && (
           <div className="mt-2 border border-gray-200 dark:border-gray-600 rounded-lg p-3 bg-gray-50 dark:bg-gray-700/50">
             <div className="flex items-center justify-between mb-2">
               <p className="text-sm font-medium text-gray-700 dark:text-gray-300 truncate">
