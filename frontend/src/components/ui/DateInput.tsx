@@ -150,12 +150,11 @@ function isTouchDevice(): boolean {
   return typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
 }
 
-type InputMode = 'desktop-formatted' | 'touch-formatted' | 'touch-browser' | 'desktop-browser';
+type InputMode = 'desktop' | 'touch-formatted' | 'touch-browser';
 
 function getInputMode(dateFormat: string): InputMode {
-  const touch = isTouchDevice();
-  if (dateFormat === 'browser') return touch ? 'touch-browser' : 'desktop-browser';
-  return touch ? 'touch-formatted' : 'desktop-formatted';
+  if (!isTouchDevice()) return 'desktop';
+  return dateFormat === 'browser' ? 'touch-browser' : 'touch-formatted';
 }
 
 export const DateInput = forwardRef<HTMLInputElement, DateInputProps>(
@@ -164,7 +163,7 @@ export const DateInput = forwardRef<HTMLInputElement, DateInputProps>(
     const { dateFormat } = useDateFormat();
     const mode = getInputMode(dateFormat);
 
-    // Internal YYYY-MM-DD value for formatted modes (desktop-formatted + touch-formatted)
+    // Internal YYYY-MM-DD value for desktop and touch-formatted modes
     const [isoValue, setIsoValue] = useState<string>((externalValue as string) || '');
     const [displayValue, setDisplayValue] = useState(() => {
       const val = (externalValue as string) || '';
@@ -187,7 +186,7 @@ export const DateInput = forwardRef<HTMLInputElement, DateInputProps>(
     // react-hook-form sets defaultValues through the ref after mount, so we
     // use a microtask to let it complete before reading.
     useEffect(() => {
-      if (mode === 'touch-browser' || mode === 'desktop-browser') return;
+      if (mode === 'touch-browser') return;
       // If we already have a value from props, nothing to do
       if (externalValue) return;
 
@@ -212,7 +211,7 @@ export const DateInput = forwardRef<HTMLInputElement, DateInputProps>(
 
     // Sync explicit value prop changes to internal state
     useEffect(() => {
-      if (mode === 'touch-browser' || mode === 'desktop-browser') return;
+      if (mode === 'touch-browser') return;
       const newIso = (externalValue as string) || '';
       if (!newIso) return;
       setIsoValue(newIso);
@@ -232,7 +231,7 @@ export const DateInput = forwardRef<HTMLInputElement, DateInputProps>(
 
     // Keyboard shortcut handler (works in all modes)
     const handleKeyDown = useCallback((e: KeyboardEvent<HTMLInputElement>) => {
-      const isFormatted = mode === 'desktop-formatted' || mode === 'touch-formatted';
+      const isFormatted = mode === 'desktop' || mode === 'touch-formatted';
       const currentIso = isFormatted ? isoValue : e.currentTarget.value;
       const newDate = resolveShortcutDate(e.key, currentIso);
 
@@ -262,7 +261,9 @@ export const DateInput = forwardRef<HTMLInputElement, DateInputProps>(
       if (parsed) {
         emitDateChange(parsed);
       }
-    }, [dateFormat, emitDateChange]);
+      // Also forward to external onChange for components that listen to it directly
+      externalOnChange?.(e);
+    }, [dateFormat, emitDateChange, externalOnChange]);
 
     // Desktop text mode: reformat on blur
     const handleTextBlur = useCallback((e: React.FocusEvent<HTMLInputElement>) => {
@@ -294,19 +295,6 @@ export const DateInput = forwardRef<HTMLInputElement, DateInputProps>(
         emitDateChange(date);
       }
     }, [emitDateChange]);
-
-    // Browser mode calendar: set value on the native date input via ref
-    const handleBrowserCalendarSelect = useCallback((date: string) => {
-      if (onDateChange) {
-        onDateChange(date);
-      }
-      // Also set via native setter for react-hook-form register() compatibility
-      const node = localRef.current;
-      if (node && date) {
-        nativeInputValueSetter?.call(node, date);
-        node.dispatchEvent(new Event('input', { bubbles: true }));
-      }
-    }, [onDateChange]);
 
     const handleCalendarClose = useCallback(() => {
       setShowCalendar(false);
@@ -396,10 +384,11 @@ export const DateInput = forwardRef<HTMLInputElement, DateInputProps>(
       );
     }
 
-    // --- Desktop + custom format mode ---
-    // Text input that shows and accepts dates in the user's preferred format,
-    // with a calendar icon to open a custom calendar popover.
-    if (mode === 'desktop-formatted') {
+    // --- Desktop mode ---
+    // Text input showing the date in the user's preferred format (or browser
+    // locale), with a calendar icon that opens a custom CalendarPopover.
+    // No native type="date" is used, so no browser picker can appear.
+    if (mode === 'desktop') {
       return (
         <div className="w-full">
           {labelBlock}
@@ -413,7 +402,7 @@ export const DateInput = forwardRef<HTMLInputElement, DateInputProps>(
               onBlur={handleTextBlur}
               onFocus={handleTextFocus}
               onKeyDown={handleKeyDown}
-              placeholder={dateFormat}
+              placeholder={dateFormat !== 'browser' ? dateFormat : ''}
               error={props.error}
               className="pr-9"
               {...props}
@@ -433,49 +422,6 @@ export const DateInput = forwardRef<HTMLInputElement, DateInputProps>(
               <CalendarPopover
                 value={isoValue}
                 onSelect={handleCalendarSelect}
-                onClose={handleCalendarClose}
-                anchorRef={calendarAnchorRef}
-              />
-            )}
-          </div>
-        </div>
-      );
-    }
-
-    // --- Desktop browser mode ---
-    // Native date input with its built-in picker indicator hidden,
-    // replaced by our CalendarPopover for consistent UX.
-    if (mode === 'desktop-browser') {
-      return (
-        <div className="w-full">
-          {labelBlock}
-          <div className="relative" ref={calendarAnchorRef}>
-            <Input
-              ref={mergedRef}
-              id={inputId}
-              type="date"
-              value={externalValue}
-              onChange={externalOnChange}
-              onBlur={externalOnBlur}
-              onKeyDown={handleKeyDown}
-              className="pr-9 date-picker-hide"
-              {...props}
-            />
-            <button
-              type="button"
-              tabIndex={-1}
-              onClick={handleCalendarClick}
-              aria-label="Open date picker"
-              className="absolute inset-y-0 right-0 flex items-center pr-2.5 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
-            >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" />
-              </svg>
-            </button>
-            {showCalendar && (
-              <CalendarPopover
-                value={(externalValue as string) || ''}
-                onSelect={handleBrowserCalendarSelect}
                 onClose={handleCalendarClose}
                 anchorRef={calendarAnchorRef}
               />

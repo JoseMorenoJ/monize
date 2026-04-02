@@ -34,6 +34,10 @@ vi.mock('@/lib/errors', () => ({
   getErrorMessage: (_error: unknown, fallback: string) => fallback,
 }));
 
+vi.mock('@/hooks/useDateFormat', () => ({
+  useDateFormat: () => ({ formatDate: (d: string) => d, dateFormat: 'YYYY-MM-DD' }),
+}));
+
 vi.mock('@/hooks/useNumberFormat', () => ({
   useNumberFormat: () => ({
     formatCurrency: (n: number, _c?: string) => `$${n.toFixed(2)}`,
@@ -348,14 +352,14 @@ describe('PostTransactionDialog', () => {
     render(<PostTransactionDialog {...defaultProps} scheduledTransaction={transactionWithOverride} />);
 
     // Should use overrideDate (2025-02-20), not nextDueDate (2025-02-15)
-    const dateInput = document.querySelector('input[type="date"]') as HTMLInputElement;
+    const dateInput = document.querySelector('input[type="text"]') as HTMLInputElement;
     expect(dateInput.value).toBe('2025-02-20');
   });
 
   it('initializes transaction date to nextDueDate when no override exists', () => {
     render(<PostTransactionDialog {...defaultProps} />);
 
-    const dateInput = document.querySelector('input[type="date"]') as HTMLInputElement;
+    const dateInput = document.querySelector('input[type="text"]') as HTMLInputElement;
     expect(dateInput.value).toBe('2025-02-15');
   });
 
@@ -532,7 +536,7 @@ describe('PostTransactionDialog', () => {
     fireEvent.click(screen.getByText('Today'));
     const today = new Date();
     const expectedDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-    const dateInput = document.querySelector('input[type="date"]') as HTMLInputElement;
+    const dateInput = document.querySelector('input[type="text"]') as HTMLInputElement;
     expect(dateInput.value).toBe(expectedDate);
   });
 

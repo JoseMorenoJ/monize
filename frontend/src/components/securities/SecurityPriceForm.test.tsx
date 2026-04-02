@@ -2,6 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@/test/render';
 import { SecurityPriceForm } from './SecurityPriceForm';
 
+vi.mock('@/hooks/useDateFormat', () => ({
+  useDateFormat: () => ({ formatDate: (d: string) => d, dateFormat: 'YYYY-MM-DD' }),
+}));
+
 describe('SecurityPriceForm', () => {
   const onSubmit = vi.fn().mockResolvedValue(undefined);
   const onCancel = vi.fn();

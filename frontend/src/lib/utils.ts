@@ -122,7 +122,11 @@ export function parseDateFromFormat(input: string, format: string): string | nul
       if (monthIdx === -1) return null;
       return `${m[3]}-${String(monthIdx + 1).padStart(2, '0')}-${m[1].padStart(2, '0')}`;
     }
-    default:
+    default: {
+      // For 'browser' or unknown formats, try YYYY-MM-DD as a universal fallback
+      const m = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+      if (m) return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
       return null;
+    }
   }
 }
