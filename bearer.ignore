@@ -1,6 +1,0 @@
-# False positives: resolve() IS the sanitization step in safePath() and validateFolderPath().
-# safePath() resolves the path then validates it stays within basePath before returning.
-# validateFolderPath() uses resolve() to verify the path is already normalized.
-b04cb91b90deb5e16504baa7ab95f678_0
-b04cb91b90deb5e16504baa7ab95f678_1
-b04cb91b90deb5e16504baa7ab95f678_2
