@@ -29,8 +29,12 @@ describe("ImportRegularProcessorService", () => {
       leftJoinAndSelect: jest.fn().mockReturnThis(),
       where: jest.fn().mockReturnThis(),
       andWhere: jest.fn().mockReturnThis(),
+      select: jest.fn().mockReturnThis(),
+      addSelect: jest.fn().mockReturnThis(),
+      groupBy: jest.fn().mockReturnThis(),
       getOne: jest.fn().mockResolvedValue(result),
       getMany: jest.fn().mockResolvedValue(result ? [result] : []),
+      getRawMany: jest.fn().mockResolvedValue([]),
       getCount: jest.fn().mockResolvedValue(result ? 1 : 0),
     };
     return qb;
@@ -426,6 +430,145 @@ describe("ImportRegularProcessorService", () => {
 
       expect(ctx.importResult.skipped).toBe(2);
       expect(ctx.importResult.imported).toBe(0);
+    });
+
+    it("should skip Quicken merged split transfers when splits were already imported", async () => {
+      // Quicken merges multiple split transfers to the same account into a
+      // single transaction on the receiving side. E.g., Account-A has a split
+      // with $50 and $40 to Account-B; Account-B gets a single $90 transaction.
+      // Since we create individual split-linked transactions ($50 and $40),
+      // the merged $90 should be detected and skipped.
+      const accountMap = new Map<string, string | null>();
+      accountMap.set("Source Account", "acc-source");
+      const ctx = makeContext({ accountMap });
+
+      // QB call sequence for isDuplicateTransfer:
+      //   1. linked-transfer check (getCount)
+      //   2. split-linked check (getCount)
+      //   3. merged split check (getRawMany)
+      let qbCallCount = 0;
+      ctx.queryRunner.manager.createQueryBuilder.mockImplementation(() => {
+        qbCallCount++;
+        const qb = makeMockQueryBuilder(null);
+        if (qbCallCount === 3) {
+          // Merged split check: return a group where 2 splits sum to 90
+          qb.select = jest.fn().mockReturnValue(qb);
+          qb.addSelect = jest.fn().mockReturnValue(qb);
+          qb.groupBy = jest.fn().mockReturnValue(qb);
+          qb.getRawMany = jest.fn().mockResolvedValue([
+            { parentId: "parent-tx-1", totalAmount: "90", splitCount: "2" },
+          ]);
+        }
+        return qb;
+      });
+
+      const qifTx = {
+        date: "2025-01-15",
+        amount: 90,
+        isTransfer: true,
+        transferAccount: "Source Account",
+      };
+
+      await service.processTransaction(ctx, qifTx);
+
+      expect(ctx.importResult.skipped).toBe(1);
+      expect(ctx.importResult.imported).toBe(0);
+    });
+
+    it("should not skip a transfer that does not match any merged split sum", async () => {
+      // A $90 transfer exists but the split-linked transactions sum to a
+      // different amount (e.g. $80), so it should NOT be skipped.
+      const accountMap = new Map<string, string | null>();
+      accountMap.set("Source Account", "acc-source");
+      const ctx = makeContext({ accountMap });
+
+      let qbCallCount = 0;
+      ctx.queryRunner.manager.createQueryBuilder.mockImplementation(() => {
+        qbCallCount++;
+        const qb = makeMockQueryBuilder(null);
+        if (qbCallCount === 3) {
+          // Merged split check: splits sum to 80, not 90
+          qb.select = jest.fn().mockReturnValue(qb);
+          qb.addSelect = jest.fn().mockReturnValue(qb);
+          qb.groupBy = jest.fn().mockReturnValue(qb);
+          qb.getRawMany = jest.fn().mockResolvedValue([
+            { parentId: "parent-tx-1", totalAmount: "80", splitCount: "2" },
+          ]);
+        }
+        return qb;
+      });
+
+      ctx.queryRunner.manager.findOne.mockImplementation(
+        (_entity: any, opts: any) => {
+          if (opts?.where?.id === "acc-source") {
+            return Promise.resolve({
+              id: "acc-source",
+              currencyCode: "CAD",
+            });
+          }
+          return Promise.resolve(null);
+        },
+      );
+
+      const qifTx = {
+        date: "2025-01-15",
+        amount: 90,
+        isTransfer: true,
+        transferAccount: "Source Account",
+      };
+
+      await service.processTransaction(ctx, qifTx);
+
+      expect(ctx.importResult.skipped).toBe(0);
+      expect(ctx.importResult.imported).toBe(1);
+    });
+
+    it("should not skip merged split check when only 1 split exists (not a merge)", async () => {
+      // If there's only a single split transfer (not merged), the transfer
+      // should be handled by the regular duplicate checks, not the merge check.
+      const accountMap = new Map<string, string | null>();
+      accountMap.set("Source Account", "acc-source");
+      const ctx = makeContext({ accountMap });
+
+      let qbCallCount = 0;
+      ctx.queryRunner.manager.createQueryBuilder.mockImplementation(() => {
+        qbCallCount++;
+        const qb = makeMockQueryBuilder(null);
+        if (qbCallCount === 3) {
+          // Merged split check: only 1 split, so count < 2
+          qb.select = jest.fn().mockReturnValue(qb);
+          qb.addSelect = jest.fn().mockReturnValue(qb);
+          qb.groupBy = jest.fn().mockReturnValue(qb);
+          qb.getRawMany = jest.fn().mockResolvedValue([
+            { parentId: "parent-tx-1", totalAmount: "90", splitCount: "1" },
+          ]);
+        }
+        return qb;
+      });
+
+      ctx.queryRunner.manager.findOne.mockImplementation(
+        (_entity: any, opts: any) => {
+          if (opts?.where?.id === "acc-source") {
+            return Promise.resolve({
+              id: "acc-source",
+              currencyCode: "CAD",
+            });
+          }
+          return Promise.resolve(null);
+        },
+      );
+
+      const qifTx = {
+        date: "2025-01-15",
+        amount: 90,
+        isTransfer: true,
+        transferAccount: "Source Account",
+      };
+
+      await service.processTransaction(ctx, qifTx);
+
+      expect(ctx.importResult.skipped).toBe(0);
+      expect(ctx.importResult.imported).toBe(1);
     });
 
     it("should not delete a prior split transaction when a second split transaction shares the same transfer account", async () => {
