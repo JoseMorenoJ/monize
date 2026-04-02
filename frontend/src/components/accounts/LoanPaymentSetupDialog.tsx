@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { DateInput } from '@/components/ui/DateInput';
 import { Select } from '@/components/ui/Select';
 import { CurrencyInput } from '@/components/ui/CurrencyInput';
 import { Combobox } from '@/components/ui/Combobox';
@@ -381,10 +382,10 @@ export function LoanPaymentSetupDialog({
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Next Payment Date *
                 </label>
-                <Input
-                  type="date"
+                <DateInput
                   value={nextDueDate}
-                  onChange={(e) => setNextDueDate(e.target.value)}
+                  onDateChange={(date) => setNextDueDate(date)}
+                  onChange={() => {}}
                 />
               </div>
 

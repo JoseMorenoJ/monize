@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useCallback, useRef, memo } from 'react';
 import { useDateFormat } from '@/hooks/useDateFormat';
+import { DateInput } from '@/components/ui/DateInput';
 import { InvestmentTransaction } from '@/types/investment';
 import { useNumberFormat } from '@/hooks/useNumberFormat';
 import { useExchangeRates } from '@/hooks/useExchangeRates';
@@ -457,24 +458,18 @@ export function InvestmentTransactionList({
             </div>
 
             {/* Date Range */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">From</label>
-              <input
-                type="date"
-                value={filters?.startDate || ''}
-                onChange={(e) => handleFilterChange('startDate', e.target.value)}
-                className="w-full text-sm border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-blue-500 focus:border-blue-500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">To</label>
-              <input
-                type="date"
-                value={filters?.endDate || ''}
-                onChange={(e) => handleFilterChange('endDate', e.target.value)}
-                className="w-full text-sm border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-blue-500 focus:border-blue-500"
-              />
-            </div>
+            <DateInput
+              label="From"
+              value={filters?.startDate || ''}
+              onDateChange={(date) => handleFilterChange('startDate', date)}
+              onChange={(e) => handleFilterChange('startDate', e.target.value)}
+            />
+            <DateInput
+              label="To"
+              value={filters?.endDate || ''}
+              onDateChange={(date) => handleFilterChange('endDate', date)}
+              onChange={(e) => handleFilterChange('endDate', e.target.value)}
+            />
           </div>
 
           {/* Clear Filters */}

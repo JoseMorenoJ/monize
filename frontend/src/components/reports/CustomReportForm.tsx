@@ -6,6 +6,7 @@ import '@/lib/zodConfig';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Input } from '@/components/ui/Input';
+import { DateInput } from '@/components/ui/DateInput';
 import { Select } from '@/components/ui/Select';
 import { IconPicker } from '@/components/ui/IconPicker';
 import { ColorPicker } from '@/components/ui/ColorPicker';
@@ -148,6 +149,7 @@ export function CustomReportForm({ report, onSubmit, onCancel, onDirtyChange, su
     handleSubmit,
     control,
     watch,
+    setValue,
     formState: { errors, isSubmitting, isDirty },
   } = useForm<FormData>({
     resolver: zodResolver(customReportSchema),
@@ -417,17 +419,17 @@ export function CustomReportForm({ report, onSubmit, onCancel, onDirtyChange, su
           />
           {watchTimeframeType === TimeframeType.CUSTOM && (
             <>
-              <Input
+              <DateInput
                 label="Start Date"
-                type="date"
-                {...register('customStartDate')}
                 error={errors.customStartDate?.message}
+                onDateChange={(date) => setValue('customStartDate', date, { shouldDirty: true, shouldValidate: true })}
+                {...register('customStartDate')}
               />
-              <Input
+              <DateInput
                 label="End Date"
-                type="date"
-                {...register('customEndDate')}
                 error={errors.customEndDate?.message}
+                onDateChange={(date) => setValue('customEndDate', date, { shouldDirty: true, shouldValidate: true })}
+                {...register('customEndDate')}
               />
             </>
           )}

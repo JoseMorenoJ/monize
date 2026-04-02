@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { DateInput } from '@/components/ui/DateInput';
 import { CurrencyInput } from '@/components/ui/CurrencyInput';
 import { Select } from '@/components/ui/Select';
 import { STRATEGY_LABELS } from './utils/budget-labels';
@@ -189,10 +190,10 @@ export function BudgetWizardStrategy({
             options={BUDGET_TYPE_OPTIONS}
           />
 
-          <Input
+          <DateInput
             label="Start Date"
-            type="date"
             value={state.periodStart}
+            onDateChange={(date) => updateState({ periodStart: date })}
             onChange={(e) => updateState({ periodStart: e.target.value })}
             error={
               !state.periodStart ? 'Start date is required' : undefined

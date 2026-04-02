@@ -638,6 +638,7 @@ export function AccountForm({ account, onSubmit, onCancel, onDirtyChange, submit
           handleAssetCategoryChange={handleAssetCategoryChange}
           handleAssetCategoryCreate={handleAssetCategoryCreate}
           register={register}
+          setValue={setValue}
           errors={errors}
           watchedDateAcquired={watchedDateAcquired}
         />

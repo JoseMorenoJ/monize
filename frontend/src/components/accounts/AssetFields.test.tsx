@@ -39,6 +39,7 @@ describe('AssetFields', () => {
     handleAssetCategoryChange: vi.fn(),
     handleAssetCategoryCreate: vi.fn(),
     register: mockRegister,
+    setValue: vi.fn(),
     errors: {} as any,
     watchedDateAcquired: undefined as string | undefined,
   };

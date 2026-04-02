@@ -2,6 +2,7 @@
 
 import { MultiSelect, MultiSelectOption } from '@/components/ui/MultiSelect';
 import { Input } from '@/components/ui/Input';
+import { DateInput } from '@/components/ui/DateInput';
 import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
 import { Account } from '@/types/account';
@@ -444,10 +445,15 @@ export function TransactionFilterPanel({
                   }}
                 />
 
-                <Input
+                <DateInput
                   label="Start Date"
-                  type="date"
                   value={filterStartDate}
+                  onDateChange={(date) => {
+                    handleFilterChange(setFilterStartDate, date);
+                    if (filterTimePeriod && filterTimePeriod !== 'custom') {
+                      setFilterTimePeriod('custom');
+                    }
+                  }}
                   onChange={(e) => {
                     handleFilterChange(setFilterStartDate, e.target.value);
                     if (filterTimePeriod && filterTimePeriod !== 'custom') {
@@ -456,10 +462,15 @@ export function TransactionFilterPanel({
                   }}
                 />
 
-                <Input
+                <DateInput
                   label="End Date"
-                  type="date"
                   value={filterEndDate}
+                  onDateChange={(date) => {
+                    handleFilterChange(setFilterEndDate, date);
+                    if (filterTimePeriod && filterTimePeriod !== 'custom') {
+                      setFilterTimePeriod('custom');
+                    }
+                  }}
                   onChange={(e) => {
                     handleFilterChange(setFilterEndDate, e.target.value);
                     if (filterTimePeriod && filterTimePeriod !== 'custom') {
