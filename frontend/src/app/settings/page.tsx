@@ -22,6 +22,7 @@ import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { useDemoStore } from '@/store/demoStore';
 import { createLogger } from '@/lib/logger';
 import { getErrorMessage } from '@/lib/errors';
+import Link from 'next/link';
 
 const logger = createLogger('Settings');
 
@@ -61,7 +62,7 @@ function SettingsContent() {
   }, [isDemoMode]);
 
   const sectionIds = useMemo(
-    () => visibleSections.filter((s) => !s.href).map((s) => s.id),
+    () => visibleSections.map((s) => s.id),
     [visibleSections],
   );
 
@@ -201,8 +202,24 @@ function SettingsContent() {
             )}
 
             {!isDemoMode && (
+              <div id="ai-settings" className="scroll-mt-16 lg:scroll-mt-6">
+                <Link
+                  href="/settings/ai"
+                  className="block bg-white dark:bg-gray-800 shadow dark:shadow-gray-700/50 rounded-lg p-6 mb-6 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                >
+                  <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
+                    AI Settings
+                  </h2>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    Configure AI providers, manage API keys, and view usage statistics.
+                  </p>
+                </Link>
+              </div>
+            )}
+
+            {!isDemoMode && user && (
               <div id="backup-restore" className="scroll-mt-16 lg:scroll-mt-6">
-                {user && <BackupRestoreSection user={user} />}
+                <BackupRestoreSection user={user} />
               </div>
             )}
 
@@ -212,18 +229,18 @@ function SettingsContent() {
               </div>
             )}
 
-            {!isDemoMode && (
+            {!isDemoMode && user && (
               <div id="danger-zone" className="scroll-mt-16 lg:scroll-mt-6">
-                {user && <DangerZoneSection user={user} />}
+                <DangerZoneSection user={user} />
               </div>
             )}
           </div>
         </div>
-      </main>
 
-      <p className="text-center text-xs text-gray-400 dark:text-gray-500 mt-8 mb-4">
-        v{process.env.NEXT_PUBLIC_APP_VERSION}
-      </p>
+        <p className="text-center text-xs text-gray-400 dark:text-gray-500 mt-8 mb-4">
+          v{process.env.NEXT_PUBLIC_APP_VERSION}
+        </p>
+      </main>
     </PageLayout>
   );
 }
