@@ -458,7 +458,7 @@ export const DateInput = forwardRef<HTMLInputElement, DateInputProps>(
               onChange={externalOnChange}
               onBlur={externalOnBlur}
               onKeyDown={handleKeyDown}
-              className="pr-9 [&::-webkit-calendar-picker-indicator]:hidden"
+              className="pr-9 date-picker-hide"
               {...props}
             />
             <button

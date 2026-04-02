@@ -197,3 +197,12 @@ button {
     display: none;
   }
 }
+
+/* Hide native date picker indicator (calendar icon) */
+@utility date-picker-hide {
+  &::-webkit-calendar-picker-indicator {
+    display: none;
+    -webkit-appearance: none;
+  }
+  -moz-appearance: textfield;
+}
