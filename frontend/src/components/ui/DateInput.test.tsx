@@ -1,6 +1,16 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, fireEvent } from '@/test/render';
+import { render, fireEvent, act } from '@/test/render';
 import { DateInput } from './DateInput';
+
+// Default to browser format (native date input mode)
+const mockUseDateFormat = vi.fn(() => ({
+  formatDate: (d: string) => d,
+  dateFormat: 'browser',
+}));
+
+vi.mock('@/hooks/useDateFormat', () => ({
+  useDateFormat: () => mockUseDateFormat(),
+}));
 
 describe('DateInput', () => {
   const onDateChange = vi.fn();
@@ -9,6 +19,7 @@ describe('DateInput', () => {
     vi.clearAllMocks();
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 3, 1)); // 2026-04-01
+    mockUseDateFormat.mockReturnValue({ formatDate: (d: string) => d, dateFormat: 'browser' });
   });
 
   afterEach(() => {
@@ -111,16 +122,16 @@ describe('DateInput', () => {
       expect(onDateChange).toHaveBeenCalledWith('2026-03-31');
     });
 
-    it('PageUp sets first day of previous month', () => {
+    it('PageUp sets first day of next month', () => {
       const { getByLabelText } = renderDateInput('2025-06-15');
       fireEvent.keyDown(getByLabelText('Date'), { key: 'PageUp' });
-      expect(onDateChange).toHaveBeenCalledWith('2025-05-01');
+      expect(onDateChange).toHaveBeenCalledWith('2025-07-01');
     });
 
-    it('PageDown sets first day of following month', () => {
+    it('PageDown sets first day of previous month', () => {
       const { getByLabelText } = renderDateInput('2025-06-15');
       fireEvent.keyDown(getByLabelText('Date'), { key: 'PageDown' });
-      expect(onDateChange).toHaveBeenCalledWith('2025-07-01');
+      expect(onDateChange).toHaveBeenCalledWith('2025-05-01');
     });
 
     it('handles month boundary correctly with +', () => {
@@ -142,9 +153,9 @@ describe('DateInput', () => {
     });
 
     it('handles PageUp across year boundary', () => {
-      const { getByLabelText } = renderDateInput('2025-01-15');
+      const { getByLabelText } = renderDateInput('2025-12-15');
       fireEvent.keyDown(getByLabelText('Date'), { key: 'PageUp' });
-      expect(onDateChange).toHaveBeenCalledWith('2024-12-01');
+      expect(onDateChange).toHaveBeenCalledWith('2026-01-01');
     });
 
     it('handles February last day correctly with H', () => {
@@ -190,7 +201,7 @@ describe('DateInput', () => {
       expect(getByLabelText('Date')).toBeInTheDocument();
     });
 
-    it('renders as type="date"', () => {
+    it('renders as type="date" in browser format mode on desktop', () => {
       const { getByLabelText } = renderDateInput();
       expect(getByLabelText('Date')).toHaveAttribute('type', 'date');
     });
@@ -243,6 +254,220 @@ describe('DateInput', () => {
         />
       );
       expect(container.querySelector('svg.cursor-help')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('text mode (non-browser format)', () => {
+    beforeEach(() => {
+      mockUseDateFormat.mockReturnValue({
+        formatDate: (d: string) => d,
+        dateFormat: 'DD/MM/YYYY',
+      });
+    });
+
+    it('renders as type="text" in non-browser format mode on desktop', () => {
+      const { getByLabelText } = renderDateInput('2025-06-15');
+      expect(getByLabelText('Date')).toHaveAttribute('type', 'text');
+    });
+
+    it('shows calendar icon button on desktop', () => {
+      const { getByLabelText } = renderDateInput('2025-06-15');
+      const calendarBtn = getByLabelText('Open date picker');
+      expect(calendarBtn).toBeInTheDocument();
+      expect(calendarBtn.tagName).toBe('BUTTON');
+    });
+
+    it('opens calendar popover when calendar icon is clicked', () => {
+      const { getByLabelText, getByText } = renderDateInput('2025-06-15');
+      const calendarBtn = getByLabelText('Open date picker');
+
+      fireEvent.click(calendarBtn);
+      // Calendar popover should show with the current month header
+      expect(getByText('Jun 2025')).toBeInTheDocument();
+    });
+
+    it('updates display when date is picked from calendar popover', () => {
+      const { getByLabelText, getByText } = renderDateInput('2025-06-15');
+
+      // Open the calendar
+      fireEvent.click(getByLabelText('Open date picker'));
+      // Click day 25
+      fireEvent.click(getByText('25'));
+
+      expect(onDateChange).toHaveBeenCalledWith('2025-06-25');
+      expect(getByLabelText('Date')).toHaveValue('25/06/2025');
+    });
+
+    it('shows formatted date in tappable display on touch devices', () => {
+      // Simulate a touch device by temporarily overriding matchMedia
+      const originalMatchMedia = window.matchMedia;
+      window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+        matches: query === '(pointer: coarse)',
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      }));
+
+      const { getByLabelText } = renderDateInput('2025-06-15');
+      const display = getByLabelText('Date');
+      // Touch mode renders a button with the formatted date
+      expect(display.tagName).toBe('BUTTON');
+      expect(display.textContent).toBe('15/06/2025');
+
+      // Restore the original mock
+      window.matchMedia = originalMatchMedia;
+    });
+
+    it('opens native picker on tap in touch mode', () => {
+      const originalMatchMedia = window.matchMedia;
+      window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+        matches: query === '(pointer: coarse)',
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      }));
+
+      const { getByLabelText, container } = renderDateInput('2025-06-15');
+      const display = getByLabelText('Date');
+      const nativeInput = container.querySelector('input[type="date"]') as HTMLInputElement;
+
+      // Mock showPicker
+      nativeInput.showPicker = vi.fn();
+      fireEvent.click(display);
+      expect(nativeInput.showPicker).toHaveBeenCalled();
+      expect(nativeInput.value).toBe('2025-06-15');
+
+      window.matchMedia = originalMatchMedia;
+    });
+
+    it('updates formatted display when native picker value changes in touch mode', () => {
+      const originalMatchMedia = window.matchMedia;
+      window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+        matches: query === '(pointer: coarse)',
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      }));
+
+      const { getByLabelText, container } = renderDateInput('2025-06-15');
+      const nativeInput = container.querySelector('input[type="date"]') as HTMLInputElement;
+
+      // Simulate picking a new date from the native picker
+      fireEvent.change(nativeInput, { target: { value: '2025-12-25' } });
+
+      expect(onDateChange).toHaveBeenCalledWith('2025-12-25');
+      const display = getByLabelText('Date');
+      expect(display.textContent).toBe('25/12/2025');
+
+      window.matchMedia = originalMatchMedia;
+    });
+
+    it('shows placeholder with format pattern', () => {
+      const { getByLabelText } = renderDateInput();
+      expect(getByLabelText('Date')).toHaveAttribute('placeholder', 'DD/MM/YYYY');
+    });
+
+    it('displays date in user preferred format', () => {
+      const { getByLabelText } = renderDateInput('2025-06-15');
+      expect(getByLabelText('Date')).toHaveValue('15/06/2025');
+    });
+
+    it('parses typed date in user format and calls onDateChange', () => {
+      const { getByLabelText } = renderDateInput('');
+      const input = getByLabelText('Date');
+      fireEvent.change(input, { target: { value: '25/12/2025' } });
+      expect(onDateChange).toHaveBeenCalledWith('2025-12-25');
+    });
+
+    it('keyboard shortcuts work in text mode', () => {
+      const { getByLabelText } = renderDateInput('2025-06-15');
+      fireEvent.keyDown(getByLabelText('Date'), { key: 't' });
+      expect(onDateChange).toHaveBeenCalledWith('2026-04-01');
+    });
+
+    it('reformats display on blur', () => {
+      const { getByLabelText } = renderDateInput('');
+      const input = getByLabelText('Date');
+      fireEvent.focus(input);
+      fireEvent.change(input, { target: { value: '5/3/2025' } });
+      fireEvent.blur(input);
+      expect(input).toHaveValue('05/03/2025');
+    });
+
+    it('reverts to last valid value on blur with invalid input', () => {
+      const { getByLabelText } = renderDateInput('2025-06-15');
+      const input = getByLabelText('Date');
+      fireEvent.focus(input);
+      fireEvent.change(input, { target: { value: 'invalid' } });
+      fireEvent.blur(input);
+      expect(input).toHaveValue('15/06/2025');
+    });
+
+    it('works with MM/DD/YYYY format', () => {
+      mockUseDateFormat.mockReturnValue({
+        formatDate: (d: string) => d,
+        dateFormat: 'MM/DD/YYYY',
+      });
+      const { getByLabelText } = renderDateInput('2025-06-15');
+      expect(getByLabelText('Date')).toHaveValue('06/15/2025');
+    });
+
+    it('works with DD-MMM-YYYY format', () => {
+      mockUseDateFormat.mockReturnValue({
+        formatDate: (d: string) => d,
+        dateFormat: 'DD-MMM-YYYY',
+      });
+      const { getByLabelText } = renderDateInput('2025-06-15');
+      expect(getByLabelText('Date')).toHaveValue('15-Jun-2025');
+    });
+
+    it('works with YYYY-MM-DD format', () => {
+      mockUseDateFormat.mockReturnValue({
+        formatDate: (d: string) => d,
+        dateFormat: 'YYYY-MM-DD',
+      });
+      const { getByLabelText } = renderDateInput('2025-06-15');
+      expect(getByLabelText('Date')).toHaveValue('2025-06-15');
+    });
+
+    it('reads initial value from DOM ref when no value prop is provided (react-hook-form pattern)', async () => {
+      // Simulate react-hook-form: no value prop, value set through the ref after mount
+      let result: ReturnType<typeof render>;
+      await act(async () => {
+        result = render(
+          <DateInput
+            label="Date"
+            ref={(node) => {
+              // Simulate react-hook-form setting the value through the ref
+              if (node) {
+                node.value = '2025-09-20';
+              }
+            }}
+            onDateChange={onDateChange}
+            onChange={() => {}}
+          />
+        );
+      });
+
+      // Flush the setTimeout(readDomValue, 0) and resulting React updates
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+
+      const input = result!.getByLabelText('Date');
+      expect(input).toHaveValue('20/09/2025');
     });
   });
 });

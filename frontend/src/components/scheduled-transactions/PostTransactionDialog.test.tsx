@@ -34,6 +34,10 @@ vi.mock('@/lib/errors', () => ({
   getErrorMessage: (_error: unknown, fallback: string) => fallback,
 }));
 
+vi.mock('@/hooks/useDateFormat', () => ({
+  useDateFormat: () => ({ formatDate: (d: string) => d, dateFormat: 'browser' }),
+}));
+
 vi.mock('@/hooks/useNumberFormat', () => ({
   useNumberFormat: () => ({
     formatCurrency: (n: number, _c?: string) => `$${n.toFixed(2)}`,

@@ -9,6 +9,7 @@ import { PageLayout } from '@/components/layout/PageLayout';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { DateInput } from '@/components/ui/DateInput';
 import { CurrencyInput } from '@/components/ui/CurrencyInput';
 import { Select } from '@/components/ui/Select';
 import { transactionsApi } from '@/lib/transactions';
@@ -209,11 +210,11 @@ function ReconcileContent() {
             onChange={(e) => setSelectedAccountId(e.target.value)}
           />
 
-          <Input
+          <DateInput
             label="Statement Date"
-            type="date"
             value={statementDate}
-            onChange={(e) => setStatementDate(e.target.value)}
+            onDateChange={(date) => setStatementDate(date)}
+            onChange={() => {}}
           />
 
           <CurrencyInput

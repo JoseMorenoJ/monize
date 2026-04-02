@@ -55,6 +55,10 @@ function createPayee(overrides: Partial<Payee> = {}): Payee {
   };
 }
 
+vi.mock('@/hooks/useDateFormat', () => ({
+  useDateFormat: () => ({ formatDate: (d: string) => d, dateFormat: 'browser' }),
+}));
+
 describe('TransactionFilterPanel', () => {
   const defaultProps = {
     filterAccountIds: [] as string[],

@@ -2,6 +2,7 @@
 
 import { MultiSelect, MultiSelectOption } from '@/components/ui/MultiSelect';
 import { Input } from '@/components/ui/Input';
+import { DateInput } from '@/components/ui/DateInput';
 import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
 import { Account } from '@/types/account';
@@ -105,7 +106,7 @@ export function TransactionFilterPanel({
     <>
       {/* Quick Account Select - Favourites */}
       {filteredAccounts.filter(a => a.isFavourite).length > 0 && (
-        <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-1">
+        <div className="flex items-center gap-2 mb-4 overflow-x-auto scrollbar-hide">
           <span className="text-xs font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap flex-shrink-0">
             Favourites:
           </span>
@@ -444,10 +445,15 @@ export function TransactionFilterPanel({
                   }}
                 />
 
-                <Input
+                <DateInput
                   label="Start Date"
-                  type="date"
                   value={filterStartDate}
+                  onDateChange={(date) => {
+                    handleFilterChange(setFilterStartDate, date);
+                    if (filterTimePeriod && filterTimePeriod !== 'custom') {
+                      setFilterTimePeriod('custom');
+                    }
+                  }}
                   onChange={(e) => {
                     handleFilterChange(setFilterStartDate, e.target.value);
                     if (filterTimePeriod && filterTimePeriod !== 'custom') {
@@ -456,10 +462,15 @@ export function TransactionFilterPanel({
                   }}
                 />
 
-                <Input
+                <DateInput
                   label="End Date"
-                  type="date"
                   value={filterEndDate}
+                  onDateChange={(date) => {
+                    handleFilterChange(setFilterEndDate, date);
+                    if (filterTimePeriod && filterTimePeriod !== 'custom') {
+                      setFilterTimePeriod('custom');
+                    }
+                  }}
                   onChange={(e) => {
                     handleFilterChange(setFilterEndDate, e.target.value);
                     if (filterTimePeriod && filterTimePeriod !== 'custom') {

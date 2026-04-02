@@ -248,6 +248,10 @@ vi.mock('@/lib/categoryUtils', () => ({
   buildCategoryTree: (cats: any[]) => cats.map((c: any) => ({ category: c, children: [] })),
 }));
 
+vi.mock('@/hooks/useDateFormat', () => ({
+  useDateFormat: () => ({ formatDate: (d: string) => d, dateFormat: 'browser' }),
+}));
+
 vi.mock('@/lib/logger', () => ({
   createLogger: () => ({
     error: vi.fn(),

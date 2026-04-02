@@ -37,6 +37,10 @@ vi.mock('@/lib/errors', () => ({
   getErrorMessage: (_error: unknown, fallback: string) => fallback,
 }));
 
+vi.mock('@/hooks/useDateFormat', () => ({
+  useDateFormat: () => ({ formatDate: (d: string) => d, dateFormat: 'browser' }),
+}));
+
 const mockAccountsGetAll = vi.fn();
 const mockCreate = vi.fn().mockResolvedValue({});
 const mockUpdate = vi.fn().mockResolvedValue({});

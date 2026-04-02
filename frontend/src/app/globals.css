@@ -188,3 +188,26 @@ option {
 button {
   font-family: 'Inter', system-ui, sans-serif;
 }
+
+/* Hide scrollbar while maintaining scroll functionality */
+@utility scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Hide native date picker indicator (calendar icon) so only
+   the custom CalendarPopover icon is visible on desktop. */
+
+/* Chrome, Edge, Safari */
+.date-picker-hide::-webkit-calendar-picker-indicator {
+  display: none !important;
+  -webkit-appearance: none;
+}
+
+.date-picker-hide::-webkit-inner-spin-button {
+  display: none !important;
+}
+

@@ -6,6 +6,7 @@ import '@/lib/zodConfig';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Input } from '@/components/ui/Input';
+import { DateInput } from '@/components/ui/DateInput';
 import { SecurityPrice, CreateSecurityPriceData } from '@/types/investment';
 import { useFormSubmitRef } from '@/hooks/useFormSubmitRef';
 import { useFormDirtyNotify } from '@/hooks/useFormDirtyNotify';
@@ -37,6 +38,7 @@ export function SecurityPriceForm({ price, onSubmit, onCancel, onDirtyChange, su
   const {
     register,
     handleSubmit,
+    setValue,
     formState: { errors, isSubmitting, isDirty },
   } = useForm<PriceFormData>({
     resolver: zodResolver(priceSchema),
@@ -67,11 +69,11 @@ export function SecurityPriceForm({ price, onSubmit, onCancel, onDirtyChange, su
 
   return (
     <form onSubmit={handleSubmit(onFormSubmit)} className="space-y-4">
-      <Input
+      <DateInput
         label="Date"
-        type="date"
-        {...register('priceDate')}
         error={errors.priceDate?.message}
+        onDateChange={(date) => setValue('priceDate', date, { shouldDirty: true, shouldValidate: true })}
+        {...register('priceDate')}
       />
 
       <Input

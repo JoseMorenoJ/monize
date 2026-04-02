@@ -9,6 +9,7 @@ import { Modal } from '@/components/ui/Modal';
 import { UnsavedChangesDialog } from '@/components/ui/UnsavedChangesDialog';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { MultiSelect, type MultiSelectOption } from '@/components/ui/MultiSelect';
+import { DateInput } from '@/components/ui/DateInput';
 import { Pagination } from '@/components/ui/Pagination';
 import { PortfolioSummaryCard } from '@/components/investments/PortfolioSummaryCard';
 import { GroupedHoldingsList } from '@/components/investments/GroupedHoldingsList';
@@ -367,14 +368,18 @@ function InvestmentsContent() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                     <MultiSelect label="Payees" options={cashPayeeFilterOptions} value={data.cashFilterPayeeIds} onChange={(values) => { data.setCashFilterPayeeIds(values); data.setCashCurrentPage(1); }} placeholder="All payees" />
                     <MultiSelect label="Categories" options={cashCategoryFilterOptions} value={data.cashFilterCategoryIds} onChange={(values) => { data.setCashFilterCategoryIds(values); data.setCashCurrentPage(1); }} placeholder="All categories" />
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">From</label>
-                      <input type="date" value={data.cashFilterStartDate} onChange={(e) => { data.setCashFilterStartDate(e.target.value); data.setCashCurrentPage(1); }} className="w-full text-sm border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-blue-500 focus:border-blue-500" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">To</label>
-                      <input type="date" value={data.cashFilterEndDate} onChange={(e) => { data.setCashFilterEndDate(e.target.value); data.setCashCurrentPage(1); }} className="w-full text-sm border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-blue-500 focus:border-blue-500" />
-                    </div>
+                    <DateInput
+                      label="From"
+                      value={data.cashFilterStartDate}
+                      onDateChange={(date) => { data.setCashFilterStartDate(date); data.setCashCurrentPage(1); }}
+                      onChange={(e) => { data.setCashFilterStartDate(e.target.value); data.setCashCurrentPage(1); }}
+                    />
+                    <DateInput
+                      label="To"
+                      value={data.cashFilterEndDate}
+                      onDateChange={(date) => { data.setCashFilterEndDate(date); data.setCashCurrentPage(1); }}
+                      onChange={(e) => { data.setCashFilterEndDate(e.target.value); data.setCashCurrentPage(1); }}
+                    />
                   </div>
                   {data.hasActiveCashFilters && (
                     <div className="mt-3 flex justify-end">

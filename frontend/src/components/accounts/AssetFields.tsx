@@ -1,7 +1,7 @@
 'use client';
 
-import { UseFormRegister, FieldErrors } from 'react-hook-form';
-import { Input } from '@/components/ui/Input';
+import { UseFormRegister, UseFormSetValue, FieldErrors } from 'react-hook-form';
+import { DateInput } from '@/components/ui/DateInput';
 import { Combobox } from '@/components/ui/Combobox';
 import { Category } from '@/types/category';
 
@@ -13,6 +13,7 @@ interface AssetFieldsProps {
   handleAssetCategoryChange: (categoryId: string, name: string) => void;
   handleAssetCategoryCreate: (name: string) => Promise<void>;
   register: UseFormRegister<any>;
+  setValue: UseFormSetValue<any>;
   errors: FieldErrors<any>;
   watchedDateAcquired: string | undefined;
 }
@@ -25,6 +26,7 @@ export function AssetFields({
   handleAssetCategoryChange,
   handleAssetCategoryCreate,
   register,
+  setValue,
   errors,
   watchedDateAcquired,
 }: AssetFieldsProps) {
@@ -51,11 +53,10 @@ export function AssetFields({
         onCreateNew={handleAssetCategoryCreate}
         allowCustomValue={true}
       />
-      <Input
+      <DateInput
         label="Date Acquired"
-        type="date"
-        className={watchedDateAcquired ? '' : 'date-empty'}
         error={errors.dateAcquired?.message as string | undefined}
+        onDateChange={(date) => setValue('dateAcquired', date, { shouldDirty: true, shouldValidate: true })}
         {...register('dateAcquired')}
       />
       <p className="text-xs text-gray-500 dark:text-gray-400">

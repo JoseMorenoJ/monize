@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { UseFormRegister, UseFormSetValue, FieldErrors } from 'react-hook-form';
 import { Input } from '@/components/ui/Input';
+import { DateInput } from '@/components/ui/DateInput';
 import { Select } from '@/components/ui/Select';
 import { Combobox } from '@/components/ui/Combobox';
 import { Account, MortgageAmortizationPreview, MortgagePaymentFrequency } from '@/types/account';
@@ -312,10 +313,10 @@ export function MortgageFields({
               {...register('mortgagePaymentFrequency')}
             />
 
-            <Input
+            <DateInput
               label="First Payment Date (required)"
-              type="date"
               error={errors.paymentStartDate?.message as string | undefined}
+              onDateChange={(date) => setValue('paymentStartDate', date, { shouldDirty: true, shouldValidate: true })}
               {...register('paymentStartDate')}
             />
           </div>

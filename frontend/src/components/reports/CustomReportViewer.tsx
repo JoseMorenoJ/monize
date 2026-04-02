@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { ReportChart } from './ReportChart';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/Button';
+import { DateInput } from '@/components/ui/DateInput';
 import { Select } from '@/components/ui/Select';
 import { customReportsApi } from '@/lib/custom-reports';
 import {
@@ -178,28 +179,18 @@ export function CustomReportViewer({ reportId }: CustomReportViewerProps) {
             </div>
             {overrideTimeframe === TimeframeType.CUSTOM && (
               <>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Start Date
-                  </label>
-                  <input
-                    type="date"
-                    value={customStartDate}
-                    onChange={(e) => setCustomStartDate(e.target.value)}
-                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    End Date
-                  </label>
-                  <input
-                    type="date"
-                    value={customEndDate}
-                    onChange={(e) => setCustomEndDate(e.target.value)}
-                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
-                  />
-                </div>
+                <DateInput
+                  label="Start Date"
+                  value={customStartDate}
+                  onDateChange={(date) => setCustomStartDate(date)}
+                  onChange={(e) => setCustomStartDate(e.target.value)}
+                />
+                <DateInput
+                  label="End Date"
+                  value={customEndDate}
+                  onDateChange={(date) => setCustomEndDate(date)}
+                  onChange={(e) => setCustomEndDate(e.target.value)}
+                />
               </>
             )}
             {isExecuting && (

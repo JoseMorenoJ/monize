@@ -303,7 +303,7 @@ export function PostTransactionDialog({
             <DateInput
               label="Transaction Date"
               value={transactionDate}
-              onChange={(e) => setTransactionDate(e.target.value)}
+              onDateChange={(date) => setTransactionDate(date)}
             />
             {transactionDate !== todayStr && (
               <button

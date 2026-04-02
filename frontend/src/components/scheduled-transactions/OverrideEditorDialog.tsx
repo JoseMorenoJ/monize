@@ -211,7 +211,7 @@ export function OverrideEditorDialog({
         <DateInput
           label="Occurrence Date"
           value={selectedDate}
-          onChange={(e) => setSelectedDate(e.target.value)}
+          onDateChange={(date) => setSelectedDate(date)}
         />
 
         {/* Amount */}

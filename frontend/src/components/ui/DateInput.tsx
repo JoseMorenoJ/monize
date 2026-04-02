@@ -1,7 +1,9 @@
-import { forwardRef, InputHTMLAttributes, KeyboardEvent, useCallback, useRef, useState } from 'react';
+import { ChangeEvent, forwardRef, InputHTMLAttributes, KeyboardEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Input } from './Input';
-import { getLocalDateString } from '@/lib/utils';
+import { CalendarPopover } from './CalendarPopover';
+import { cn, getLocalDateString, formatDate, parseDateFromFormat, inputBaseClasses, inputErrorClasses } from '@/lib/utils';
+import { useDateFormat } from '@/hooks/useDateFormat';
 
 interface DateInputProps extends InputHTMLAttributes<HTMLInputElement> {
   label?: string;
@@ -28,8 +30,8 @@ const tooltipContent = (
       <kbd className="font-mono">H</kbd><span>Last day of month</span>
       <kbd className="font-mono">+</kbd><span>Next day</span>
       <kbd className="font-mono">-</kbd><span>Previous day</span>
-      <kbd className="font-mono">PgUp</kbd><span>Previous month</span>
-      <kbd className="font-mono">PgDn</kbd><span>Next month</span>
+      <kbd className="font-mono">PgUp</kbd><span>Next month</span>
+      <kbd className="font-mono">PgDn</kbd><span>Previous month</span>
     </span>
   </>
 );
@@ -120,11 +122,11 @@ function resolveShortcutDate(key: string, currentValue: string): Date | null {
     }
     case 'PageUp': {
       const d = parseOrToday(currentValue);
-      return new Date(d.getFullYear(), d.getMonth() - 1, 1);
+      return new Date(d.getFullYear(), d.getMonth() + 1, 1);
     }
     case 'PageDown': {
       const d = parseOrToday(currentValue);
-      return new Date(d.getFullYear(), d.getMonth() + 1, 1);
+      return new Date(d.getFullYear(), d.getMonth() - 1, 1);
     }
     default:
       return null;
@@ -139,45 +141,352 @@ const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
   'value',
 )?.set;
 
-export const DateInput = forwardRef<HTMLInputElement, DateInputProps>(
-  ({ onDateChange, onKeyDown, label, id, ...props }, ref) => {
-    const inputId = id || (label ? `input-${label.toLowerCase().replace(/\s+/g, '-')}` : undefined);
+// Checks if a string looks like a YYYY-MM-DD date
+function isIsoDate(value: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
 
+function isTouchDevice(): boolean {
+  return typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
+}
+
+type InputMode = 'desktop-formatted' | 'desktop-browser' | 'touch-formatted' | 'touch-browser';
+
+function getInputMode(dateFormat: string): InputMode {
+  const touch = isTouchDevice();
+  if (dateFormat === 'browser') return touch ? 'touch-browser' : 'desktop-browser';
+  return touch ? 'touch-formatted' : 'desktop-formatted';
+}
+
+export const DateInput = forwardRef<HTMLInputElement, DateInputProps>(
+  ({ onDateChange, onKeyDown, onChange: externalOnChange, onBlur: externalOnBlur, value: externalValue, label, id, ...props }, ref) => {
+    const inputId = id || (label ? `input-${label.toLowerCase().replace(/\s+/g, '-')}` : undefined);
+    const { dateFormat } = useDateFormat();
+    const mode = getInputMode(dateFormat);
+
+    // Internal YYYY-MM-DD value for desktop and touch-formatted modes
+    const [isoValue, setIsoValue] = useState<string>((externalValue as string) || '');
+    const [displayValue, setDisplayValue] = useState(() => {
+      const val = (externalValue as string) || '';
+      return val ? formatDate(val, dateFormat) : '';
+    });
+    const isFocusedRef = useRef(false);
+    const localRef = useRef<HTMLInputElement>(null);
+    // Hidden native date input ref for touch-formatted mode
+    const nativeDateRef = useRef<HTMLInputElement>(null);
+
+    // Merged ref: forwards to external ref (react-hook-form register) and keeps
+    // a local reference for reading the DOM value
+    const mergedRef = useCallback((node: HTMLInputElement | null) => {
+      localRef.current = node;
+      if (typeof ref === 'function') ref(node);
+      else if (ref) (ref as React.MutableRefObject<HTMLInputElement | null>).current = node;
+    }, [ref]);
+
+    // On mount in formatted modes, read the initial value from the DOM.
+    // react-hook-form sets defaultValues through the ref after mount, so we
+    // use a microtask to let it complete before reading.
+    useEffect(() => {
+      if (mode === 'touch-browser' || mode === 'desktop-browser') return;
+      // If we already have a value from props, nothing to do
+      if (externalValue) return;
+
+      const readDomValue = () => {
+        const node = localRef.current;
+        if (!node) return;
+        const domVal = node.value;
+        if (domVal && isIsoDate(domVal)) {
+          setIsoValue(domVal);
+          setDisplayValue(formatDate(domVal, dateFormat));
+        }
+      };
+
+      // Try immediately (react-hook-form may have set value synchronously in ref)
+      readDomValue();
+
+      // Also try after a microtask (react-hook-form may set value in an effect)
+      const timer = setTimeout(readDomValue, 0);
+      return () => clearTimeout(timer);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [mode, dateFormat]);
+
+    // Sync explicit value prop changes to internal state
+    useEffect(() => {
+      if (mode === 'touch-browser') return;
+      const newIso = (externalValue as string) || '';
+      if (!newIso) return;
+      setIsoValue(newIso);
+      if (!isFocusedRef.current) {
+        setDisplayValue(formatDate(newIso, dateFormat));
+      }
+    }, [externalValue, dateFormat, mode]);
+
+    // Emit a YYYY-MM-DD value change through all relevant callbacks
+    const emitDateChange = useCallback((dateStr: string) => {
+      setIsoValue(dateStr);
+      setDisplayValue(formatDate(dateStr, dateFormat));
+      if (onDateChange) {
+        onDateChange(dateStr);
+      }
+    }, [onDateChange, dateFormat]);
+
+    // Keyboard shortcut handler (works in all modes)
     const handleKeyDown = useCallback((e: KeyboardEvent<HTMLInputElement>) => {
-      const newDate = resolveShortcutDate(e.key, e.currentTarget.value);
+      const isFormatted = mode === 'desktop-formatted' || mode === 'touch-formatted';
+      const currentIso = isFormatted ? isoValue : e.currentTarget.value;
+      const newDate = resolveShortcutDate(e.key, currentIso);
 
       if (newDate) {
         e.preventDefault();
         const dateStr = getLocalDateString(newDate);
-        if (onDateChange) {
+
+        if (isFormatted) {
+          emitDateChange(dateStr);
+        } else if (onDateChange) {
           onDateChange(dateStr);
         } else {
-          // For controlled components: set the native value and fire a change event
           nativeInputValueSetter?.call(e.currentTarget, dateStr);
           e.currentTarget.dispatchEvent(new Event('input', { bubbles: true }));
         }
       }
 
       onKeyDown?.(e);
-    }, [onDateChange, onKeyDown]);
+    }, [mode, isoValue, emitDateChange, onDateChange, onKeyDown]);
 
+    // Desktop text mode: handle user typing in the formatted input
+    const handleTextChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
+      const text = e.target.value;
+      setDisplayValue(text);
+
+      const parsed = parseDateFromFormat(text, dateFormat);
+      if (parsed) {
+        emitDateChange(parsed);
+      }
+      // Also forward to external onChange for components that listen to it directly
+      externalOnChange?.(e);
+    }, [dateFormat, emitDateChange, externalOnChange]);
+
+    // Desktop text mode: reformat on blur
+    const handleTextBlur = useCallback((e: React.FocusEvent<HTMLInputElement>) => {
+      isFocusedRef.current = false;
+      const parsed = parseDateFromFormat(displayValue, dateFormat);
+      if (parsed) {
+        setDisplayValue(formatDate(parsed, dateFormat));
+        emitDateChange(parsed);
+      } else if (isoValue) {
+        setDisplayValue(formatDate(isoValue, dateFormat));
+      }
+      externalOnBlur?.(e);
+    }, [displayValue, dateFormat, isoValue, emitDateChange, externalOnBlur]);
+
+    const handleTextFocus = useCallback(() => {
+      isFocusedRef.current = true;
+    }, []);
+
+    // Desktop: toggle custom calendar popover
+    const [showCalendar, setShowCalendar] = useState(false);
+    const calendarAnchorRef = useRef<HTMLDivElement>(null);
+
+    const handleCalendarClick = useCallback(() => {
+      setShowCalendar((prev) => !prev);
+    }, []);
+
+    const handleCalendarSelect = useCallback((date: string) => {
+      if (date) {
+        emitDateChange(date);
+      }
+    }, [emitDateChange]);
+
+    const handleCalendarClose = useCallback(() => {
+      setShowCalendar(false);
+    }, []);
+
+    // Touch mode: open the native date picker when the display is tapped
+    const handleTouchTap = useCallback(() => {
+      const picker = nativeDateRef.current;
+      if (!picker) return;
+      // Sync current value to native input before opening
+      picker.value = isoValue;
+      if (typeof picker.showPicker === 'function') {
+        picker.showPicker();
+      } else {
+        // Fallback for older browsers: focus triggers the picker
+        picker.focus();
+        picker.click();
+      }
+    }, [isoValue]);
+
+    // Touch mode: handle native picker selection
+    const handleNativeDateChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
+      const val = e.target.value;
+      if (val && isIsoDate(val)) {
+        emitDateChange(val);
+      }
+    }, [emitDateChange]);
+
+    const labelBlock = label && (
+      <div className="flex items-center mb-1">
+        <label
+          htmlFor={inputId}
+          className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+        >
+          {label}
+        </label>
+        <DateShortcutTooltip />
+      </div>
+    );
+
+    // --- Touch + custom format mode ---
+    // Shows the formatted date in a tappable display; tapping opens a hidden
+    // native date picker so the user gets both their preferred format AND the
+    // native calendar/wheel UI.
+    if (mode === 'touch-formatted') {
+      return (
+        <div className="w-full">
+          {labelBlock}
+          <div className="relative">
+            {/* Visible formatted display the user sees and taps */}
+            <button
+              type="button"
+              id={inputId}
+              onClick={handleTouchTap}
+              className={cn(
+                inputBaseClasses,
+                'border px-3 py-2 focus:ring-1 focus:outline-none text-left',
+                props.error && inputErrorClasses,
+                !displayValue && 'text-gray-400 dark:text-gray-500',
+              )}
+            >
+              {displayValue || dateFormat}
+            </button>
+            {/* Hidden native date input for the picker.
+                Positioned to overlap the button so the popup anchors correctly. */}
+            <input
+              ref={nativeDateRef}
+              type="date"
+              tabIndex={-1}
+              aria-hidden="true"
+              className="absolute inset-0 opacity-0 pointer-events-none"
+              onChange={handleNativeDateChange}
+            />
+            {/* Hidden input for react-hook-form ref/value management */}
+            <input
+              ref={mergedRef}
+              type="hidden"
+              name={props.name}
+              value={isoValue}
+              readOnly
+            />
+          </div>
+          {props.error && (
+            <p className="mt-1 text-sm text-red-600 dark:text-red-400">{props.error}</p>
+          )}
+        </div>
+      );
+    }
+
+    // Calendar icon + popover shared by both desktop modes
+    const calendarButton = (
+      <button
+        type="button"
+        tabIndex={-1}
+        onClick={handleCalendarClick}
+        aria-label="Open date picker"
+        className="absolute top-px bottom-px right-px flex items-center pr-2.5 pl-1 bg-white dark:bg-gray-800 rounded-r-md text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
+      >
+        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" />
+        </svg>
+      </button>
+    );
+
+    // --- Desktop + custom format mode ---
+    // Text input with user's preferred format and CalendarPopover.
+    if (mode === 'desktop-formatted') {
+      return (
+        <div className="w-full">
+          {labelBlock}
+          <div className="relative" ref={calendarAnchorRef}>
+            <Input
+              ref={mergedRef}
+              id={inputId}
+              type="text"
+              value={displayValue}
+              onChange={handleTextChange}
+              onBlur={handleTextBlur}
+              onFocus={handleTextFocus}
+              onKeyDown={handleKeyDown}
+              placeholder={dateFormat}
+              error={props.error}
+              className="pr-9"
+              {...props}
+            />
+            {calendarButton}
+            {showCalendar && (
+              <CalendarPopover
+                value={isoValue}
+                onSelect={handleCalendarSelect}
+                onClose={handleCalendarClose}
+                anchorRef={calendarAnchorRef}
+              />
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // --- Desktop + browser format mode ---
+    // Native date input (supports arrow-key segment navigation) with the
+    // browser's built-in picker icon hidden, replaced by CalendarPopover.
+    if (mode === 'desktop-browser') {
+      return (
+        <div className="w-full">
+          {labelBlock}
+          <div className="relative" ref={calendarAnchorRef}>
+            <Input
+              ref={ref}
+              id={inputId}
+              type="date"
+              value={externalValue}
+              onChange={(e) => {
+                externalOnChange?.(e);
+                if (e.target.value) onDateChange?.(e.target.value);
+              }}
+              onBlur={externalOnBlur}
+              onKeyDown={handleKeyDown}
+              error={props.error}
+              className="pr-9 date-picker-hide"
+              {...props}
+            />
+            {calendarButton}
+            {showCalendar && (
+              <CalendarPopover
+                value={(externalValue as string) || ''}
+                onSelect={(date) => {
+                  if (onDateChange) onDateChange(date);
+                  externalOnChange?.({ target: { value: date } } as ChangeEvent<HTMLInputElement>);
+                }}
+                onClose={handleCalendarClose}
+                anchorRef={calendarAnchorRef}
+              />
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // --- Touch browser mode ---
+    // Native date input using the browser's locale format with native picker.
     return (
       <div className="w-full">
-        {label && (
-          <div className="flex items-center mb-1">
-            <label
-              htmlFor={inputId}
-              className="block text-sm font-medium text-gray-700 dark:text-gray-300"
-            >
-              {label}
-            </label>
-            <DateShortcutTooltip />
-          </div>
-        )}
+        {labelBlock}
         <Input
           ref={ref}
           id={inputId}
           type="date"
+          value={externalValue}
+          onChange={externalOnChange}
+          onBlur={externalOnBlur}
           onKeyDown={handleKeyDown}
           {...props}
         />

@@ -38,6 +38,10 @@ vi.mock('@/lib/errors', () => ({
   getErrorMessage: (_error: unknown, fallback: string) => fallback,
 }));
 
+vi.mock('@/hooks/useDateFormat', () => ({
+  useDateFormat: () => ({ formatDate: (d: string) => d, dateFormat: 'browser' }),
+}));
+
 vi.mock('@/lib/categoryUtils', () => ({
   buildCategoryTree: (cats: any[]) => (cats || []).map((c: any) => ({ category: c })),
 }));
