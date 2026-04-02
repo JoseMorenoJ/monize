@@ -12,8 +12,8 @@ import { useState, useEffect, useCallback } from 'react';
  */
 export function useScrollSpy(
   sectionIds: readonly string[],
-  { rootMargin = '-10% 0px -80% 0px', updateHash = true } = {},
-): string {
+  { rootMargin = '-10% 0px -80% 0px', updateHash = true, enabled = true } = {},
+): [string, (id: string) => void] {
   const [activeId, setActiveId] = useState<string>(() => {
     if (typeof window !== 'undefined' && window.location.hash) {
       const hash = window.location.hash.slice(1);
@@ -39,6 +39,8 @@ export function useScrollSpy(
   );
 
   useEffect(() => {
+    if (!enabled) return;
+
     const observer = new IntersectionObserver(handleIntersect, {
       rootMargin,
       threshold: 0,
@@ -54,21 +56,28 @@ export function useScrollSpy(
     return () => {
       observer.disconnect();
     };
-  }, [sectionIds, rootMargin, handleIntersect]);
+  }, [sectionIds, rootMargin, handleIntersect, enabled]);
 
-  // On mount, scroll to hash target if present
+  // Scroll to hash target when enabled transitions to true
   useEffect(() => {
+    if (!enabled) return;
     if (typeof window !== 'undefined' && window.location.hash) {
       const hash = window.location.hash.slice(1);
       const el = document.getElementById(hash);
       if (el?.scrollIntoView) {
-        // Delay slightly to ensure layout is settled
         requestAnimationFrame(() => {
           el.scrollIntoView({ behavior: 'smooth', block: 'start' });
         });
       }
     }
-  }, []);
+  }, [enabled]);
 
-  return activeId;
+  const setActive = useCallback((id: string) => {
+    setActiveId(id);
+    if (updateHash) {
+      window.history.replaceState(null, '', `#${id}`);
+    }
+  }, [updateHash]);
+
+  return [activeId, setActive];
 }

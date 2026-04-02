@@ -70,7 +70,14 @@ describe('useScrollSpy', () => {
 
   it('returns the first section ID as default active', () => {
     const { result } = renderHook(() => useScrollSpy(sectionIds));
-    expect(result.current).toBe('profile');
+    const [activeId] = result.current;
+    expect(activeId).toBe('profile');
+  });
+
+  it('returns a setActive function', () => {
+    const { result } = renderHook(() => useScrollSpy(sectionIds));
+    const [, setActive] = result.current;
+    expect(typeof setActive).toBe('function');
   });
 
   it('observes all section elements', () => {
@@ -86,7 +93,7 @@ describe('useScrollSpy', () => {
       intersectionCallback([createMockEntry('security', true)]);
     });
 
-    expect(result.current).toBe('security');
+    expect(result.current[0]).toBe('security');
   });
 
   it('ignores non-intersecting entries', () => {
@@ -97,7 +104,7 @@ describe('useScrollSpy', () => {
     });
 
     // Should remain at default
-    expect(result.current).toBe('profile');
+    expect(result.current[0]).toBe('profile');
   });
 
   it('updates window.location.hash via replaceState when updateHash is true', () => {
@@ -125,13 +132,13 @@ describe('useScrollSpy', () => {
   it('reads initial active section from location hash', () => {
     window.history.replaceState(null, '', '#security');
     const { result } = renderHook(() => useScrollSpy(sectionIds));
-    expect(result.current).toBe('security');
+    expect(result.current[0]).toBe('security');
   });
 
   it('ignores unknown hash values', () => {
     window.history.replaceState(null, '', '#unknown-section');
     const { result } = renderHook(() => useScrollSpy(sectionIds));
-    expect(result.current).toBe('profile');
+    expect(result.current[0]).toBe('profile');
   });
 
   it('scrolls to hash target element on mount', () => {
@@ -142,9 +149,6 @@ describe('useScrollSpy', () => {
 
     renderHook(() => useScrollSpy(sectionIds));
 
-    // The scroll happens in requestAnimationFrame, so we need to flush it
-    // In test env, requestAnimationFrame is typically synchronous or we can flush
-    // We'll check the scrollIntoView was set up correctly by testing the hash was read
     expect(document.getElementById('preferences')).toBeTruthy();
   });
 
@@ -166,7 +170,7 @@ describe('useScrollSpy', () => {
 
   it('handles empty section IDs gracefully', () => {
     const { result } = renderHook(() => useScrollSpy([]));
-    expect(result.current).toBe('');
+    expect(result.current[0]).toBe('');
     expect(observeMock).not.toHaveBeenCalled();
   });
 
@@ -192,7 +196,7 @@ describe('useScrollSpy', () => {
     });
 
     // Should pick the first intersecting one
-    expect(result.current).toBe('preferences');
+    expect(result.current[0]).toBe('preferences');
   });
 
   it('re-observes when sectionIds change', () => {
@@ -209,5 +213,74 @@ describe('useScrollSpy', () => {
 
     expect(disconnectMock).toHaveBeenCalled();
     expect(observeMock).toHaveBeenCalledTimes(3);
+  });
+
+  describe('enabled option', () => {
+    it('does not observe when enabled is false', () => {
+      renderHook(() => useScrollSpy(sectionIds, { enabled: false }));
+      expect(observeMock).not.toHaveBeenCalled();
+    });
+
+    it('starts observing when enabled transitions from false to true', () => {
+      const { rerender } = renderHook(
+        ({ enabled }) => useScrollSpy(sectionIds, { enabled }),
+        { initialProps: { enabled: false } },
+      );
+
+      expect(observeMock).not.toHaveBeenCalled();
+
+      rerender({ enabled: true });
+
+      expect(observeMock).toHaveBeenCalledTimes(3);
+    });
+
+    it('disconnects observer when enabled transitions from true to false', () => {
+      const { rerender } = renderHook(
+        ({ enabled }) => useScrollSpy(sectionIds, { enabled }),
+        { initialProps: { enabled: true } },
+      );
+
+      expect(observeMock).toHaveBeenCalledTimes(3);
+      disconnectMock.mockClear();
+
+      rerender({ enabled: false });
+
+      expect(disconnectMock).toHaveBeenCalled();
+    });
+  });
+
+  describe('setActive', () => {
+    it('imperatively sets the active section', () => {
+      const { result } = renderHook(() => useScrollSpy(sectionIds));
+      expect(result.current[0]).toBe('profile');
+
+      act(() => {
+        result.current[1]('security');
+      });
+
+      expect(result.current[0]).toBe('security');
+    });
+
+    it('updates the hash when called with updateHash true', () => {
+      const replaceStateSpy = vi.spyOn(window.history, 'replaceState');
+      const { result } = renderHook(() => useScrollSpy(sectionIds, { updateHash: true }));
+
+      act(() => {
+        result.current[1]('preferences');
+      });
+
+      expect(replaceStateSpy).toHaveBeenCalledWith(null, '', '#preferences');
+    });
+
+    it('does not update the hash when called with updateHash false', () => {
+      const replaceStateSpy = vi.spyOn(window.history, 'replaceState');
+      const { result } = renderHook(() => useScrollSpy(sectionIds, { updateHash: false }));
+
+      act(() => {
+        result.current[1]('preferences');
+      });
+
+      expect(replaceStateSpy).not.toHaveBeenCalled();
+    });
   });
 });

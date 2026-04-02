@@ -65,7 +65,7 @@ function SettingsContent() {
     [visibleSections],
   );
 
-  const activeSection = useScrollSpy(sectionIds);
+  const [activeSection, setActiveSection] = useScrollSpy(sectionIds, { enabled: !isLoading });
 
   useEffect(() => {
     loadData();
@@ -96,10 +96,10 @@ function SettingsContent() {
   const handleSectionClick = useCallback((id: string) => {
     const el = document.getElementById(id);
     if (el) {
+      setActiveSection(id);
       el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      window.history.replaceState(null, '', `#${id}`);
     }
-  }, []);
+  }, [setActiveSection]);
 
   if (isLoading) {
     return (
