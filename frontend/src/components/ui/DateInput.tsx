@@ -30,8 +30,8 @@ const tooltipContent = (
       <kbd className="font-mono">H</kbd><span>Last day of month</span>
       <kbd className="font-mono">+</kbd><span>Next day</span>
       <kbd className="font-mono">-</kbd><span>Previous day</span>
-      <kbd className="font-mono">PgUp</kbd><span>Previous month</span>
-      <kbd className="font-mono">PgDn</kbd><span>Next month</span>
+      <kbd className="font-mono">PgUp</kbd><span>Next month</span>
+      <kbd className="font-mono">PgDn</kbd><span>Previous month</span>
     </span>
   </>
 );
@@ -122,11 +122,11 @@ function resolveShortcutDate(key: string, currentValue: string): Date | null {
     }
     case 'PageUp': {
       const d = parseOrToday(currentValue);
-      return new Date(d.getFullYear(), d.getMonth() - 1, 1);
+      return new Date(d.getFullYear(), d.getMonth() + 1, 1);
     }
     case 'PageDown': {
       const d = parseOrToday(currentValue);
-      return new Date(d.getFullYear(), d.getMonth() + 1, 1);
+      return new Date(d.getFullYear(), d.getMonth() - 1, 1);
     }
     default:
       return null;

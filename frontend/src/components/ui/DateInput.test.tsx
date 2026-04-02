@@ -122,16 +122,16 @@ describe('DateInput', () => {
       expect(onDateChange).toHaveBeenCalledWith('2026-03-31');
     });
 
-    it('PageUp sets first day of previous month', () => {
+    it('PageUp sets first day of next month', () => {
       const { getByLabelText } = renderDateInput('2025-06-15');
       fireEvent.keyDown(getByLabelText('Date'), { key: 'PageUp' });
-      expect(onDateChange).toHaveBeenCalledWith('2025-05-01');
+      expect(onDateChange).toHaveBeenCalledWith('2025-07-01');
     });
 
-    it('PageDown sets first day of following month', () => {
+    it('PageDown sets first day of previous month', () => {
       const { getByLabelText } = renderDateInput('2025-06-15');
       fireEvent.keyDown(getByLabelText('Date'), { key: 'PageDown' });
-      expect(onDateChange).toHaveBeenCalledWith('2025-07-01');
+      expect(onDateChange).toHaveBeenCalledWith('2025-05-01');
     });
 
     it('handles month boundary correctly with +', () => {
@@ -153,9 +153,9 @@ describe('DateInput', () => {
     });
 
     it('handles PageUp across year boundary', () => {
-      const { getByLabelText } = renderDateInput('2025-01-15');
+      const { getByLabelText } = renderDateInput('2025-12-15');
       fireEvent.keyDown(getByLabelText('Date'), { key: 'PageUp' });
-      expect(onDateChange).toHaveBeenCalledWith('2024-12-01');
+      expect(onDateChange).toHaveBeenCalledWith('2026-01-01');
     });
 
     it('handles February last day correctly with H', () => {
