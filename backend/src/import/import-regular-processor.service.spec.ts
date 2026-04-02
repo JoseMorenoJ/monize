@@ -455,9 +455,11 @@ describe("ImportRegularProcessorService", () => {
           qb.select = jest.fn().mockReturnValue(qb);
           qb.addSelect = jest.fn().mockReturnValue(qb);
           qb.groupBy = jest.fn().mockReturnValue(qb);
-          qb.getRawMany = jest.fn().mockResolvedValue([
-            { parentId: "parent-tx-1", totalAmount: "90", splitCount: "2" },
-          ]);
+          qb.getRawMany = jest
+            .fn()
+            .mockResolvedValue([
+              { parentId: "parent-tx-1", totalAmount: "90", splitCount: "2" },
+            ]);
         }
         return qb;
       });
@@ -491,9 +493,11 @@ describe("ImportRegularProcessorService", () => {
           qb.select = jest.fn().mockReturnValue(qb);
           qb.addSelect = jest.fn().mockReturnValue(qb);
           qb.groupBy = jest.fn().mockReturnValue(qb);
-          qb.getRawMany = jest.fn().mockResolvedValue([
-            { parentId: "parent-tx-1", totalAmount: "80", splitCount: "2" },
-          ]);
+          qb.getRawMany = jest
+            .fn()
+            .mockResolvedValue([
+              { parentId: "parent-tx-1", totalAmount: "80", splitCount: "2" },
+            ]);
         }
         return qb;
       });
@@ -539,9 +543,11 @@ describe("ImportRegularProcessorService", () => {
           qb.select = jest.fn().mockReturnValue(qb);
           qb.addSelect = jest.fn().mockReturnValue(qb);
           qb.groupBy = jest.fn().mockReturnValue(qb);
-          qb.getRawMany = jest.fn().mockResolvedValue([
-            { parentId: "parent-tx-1", totalAmount: "90", splitCount: "1" },
-          ]);
+          qb.getRawMany = jest
+            .fn()
+            .mockResolvedValue([
+              { parentId: "parent-tx-1", totalAmount: "90", splitCount: "1" },
+            ]);
         }
         return qb;
       });
@@ -569,6 +575,131 @@ describe("ImportRegularProcessorService", () => {
 
       expect(ctx.importResult.skipped).toBe(0);
       expect(ctx.importResult.imported).toBe(1);
+    });
+
+    it("should skip merged split transfer with case-insensitive account name matching", async () => {
+      // Transfer account name in QIF may differ in casing from accountMap key
+      const accountMap = new Map<string, string | null>();
+      accountMap.set("Source Account", "acc-source");
+      const ctx = makeContext({ accountMap });
+
+      let qbCallCount = 0;
+      ctx.queryRunner.manager.createQueryBuilder.mockImplementation(() => {
+        qbCallCount++;
+        const qb = makeMockQueryBuilder(null);
+        if (qbCallCount === 3) {
+          qb.select = jest.fn().mockReturnValue(qb);
+          qb.addSelect = jest.fn().mockReturnValue(qb);
+          qb.groupBy = jest.fn().mockReturnValue(qb);
+          qb.getRawMany = jest
+            .fn()
+            .mockResolvedValue([
+              { parentId: "parent-tx-1", totalAmount: "90", splitCount: "2" },
+            ]);
+        }
+        return qb;
+      });
+
+      const qifTx = {
+        date: "2025-01-15",
+        amount: 90,
+        isTransfer: true,
+        transferAccount: "source account", // lowercase
+      };
+
+      await service.processTransaction(ctx, qifTx);
+
+      expect(ctx.importResult.skipped).toBe(1);
+      expect(ctx.importResult.imported).toBe(0);
+    });
+
+    it("should not run merged split check for non-transfer transactions", async () => {
+      const ctx = makeContext();
+
+      const qifTx = {
+        date: "2025-01-15",
+        amount: 90,
+        payee: "Store",
+        // Not a transfer: isTransfer is falsy
+      };
+
+      await service.processTransaction(ctx, qifTx);
+
+      expect(ctx.importResult.skipped).toBe(0);
+      expect(ctx.importResult.imported).toBe(1);
+    });
+
+    it("should skip merged split transfer with floating point amounts that round to match", async () => {
+      // Ensure the comparison handles floating-point precision correctly
+      const accountMap = new Map<string, string | null>();
+      accountMap.set("Source Account", "acc-source");
+      const ctx = makeContext({ accountMap });
+
+      let qbCallCount = 0;
+      ctx.queryRunner.manager.createQueryBuilder.mockImplementation(() => {
+        qbCallCount++;
+        const qb = makeMockQueryBuilder(null);
+        if (qbCallCount === 3) {
+          qb.select = jest.fn().mockReturnValue(qb);
+          qb.addSelect = jest.fn().mockReturnValue(qb);
+          qb.groupBy = jest.fn().mockReturnValue(qb);
+          // Sum that is very close due to floating point: 50.005 + 39.995 = 90.00000...01
+          qb.getRawMany = jest.fn().mockResolvedValue([
+            {
+              parentId: "parent-tx-1",
+              totalAmount: "90.0000",
+              splitCount: "3",
+            },
+          ]);
+        }
+        return qb;
+      });
+
+      const qifTx = {
+        date: "2025-01-15",
+        amount: 90,
+        isTransfer: true,
+        transferAccount: "Source Account",
+      };
+
+      await service.processTransaction(ctx, qifTx);
+
+      expect(ctx.importResult.skipped).toBe(1);
+    });
+
+    it("should handle multiple parent groups and match the correct one", async () => {
+      // Two parent split transactions from the same account on the same date,
+      // only one has splits that sum to the merged amount
+      const accountMap = new Map<string, string | null>();
+      accountMap.set("Source Account", "acc-source");
+      const ctx = makeContext({ accountMap });
+
+      let qbCallCount = 0;
+      ctx.queryRunner.manager.createQueryBuilder.mockImplementation(() => {
+        qbCallCount++;
+        const qb = makeMockQueryBuilder(null);
+        if (qbCallCount === 3) {
+          qb.select = jest.fn().mockReturnValue(qb);
+          qb.addSelect = jest.fn().mockReturnValue(qb);
+          qb.groupBy = jest.fn().mockReturnValue(qb);
+          qb.getRawMany = jest.fn().mockResolvedValue([
+            { parentId: "parent-tx-1", totalAmount: "60", splitCount: "2" },
+            { parentId: "parent-tx-2", totalAmount: "90", splitCount: "3" },
+          ]);
+        }
+        return qb;
+      });
+
+      const qifTx = {
+        date: "2025-01-15",
+        amount: 90,
+        isTransfer: true,
+        transferAccount: "Source Account",
+      };
+
+      await service.processTransaction(ctx, qifTx);
+
+      expect(ctx.importResult.skipped).toBe(1);
     });
 
     it("should not delete a prior split transaction when a second split transaction shares the same transfer account", async () => {
