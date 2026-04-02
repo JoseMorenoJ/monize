@@ -240,7 +240,7 @@ export function AutoBackupSection() {
         >
           Backup Folder
         </label>
-        <div className="flex gap-2">
+        <div className="flex flex-col sm:flex-row gap-2">
           <div className="flex-1">
             <Input
               id="auto-backup-folder"
@@ -254,41 +254,41 @@ export function AutoBackupSection() {
               placeholder="/backups"
             />
           </div>
-          <Button
-            variant="outline"
-            onClick={handleOpenBrowse}
-          >
-            Browse...
-          </Button>
-          <Button
-            variant="outline"
-            onClick={handleValidateFolder}
-            disabled={isValidating || !folderPath.trim()}
-          >
-            {isValidating ? 'Validating...' : 'Validate'}
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={handleOpenBrowse}
+            >
+              Browse...
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleValidateFolder}
+              disabled={isValidating || !folderPath.trim()}
+            >
+              {isValidating ? 'Validating...' : 'Validate'}
+            </Button>
+          </div>
         </div>
         {/* Browse dialog */}
         {isBrowseOpen && (
           <div className="mt-2 border border-gray-200 dark:border-gray-600 rounded-lg p-3 bg-gray-50 dark:bg-gray-700/50">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-sm font-medium text-gray-700 dark:text-gray-300 truncate">
-                {browsePath}
-              </p>
-              <div className="flex gap-1">
-                <Button
-                  variant="outline"
-                  onClick={handleSelectBrowsedFolder}
-                >
-                  Select This Folder
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={handleCloseBrowse}
-                >
-                  Cancel
-                </Button>
-              </div>
+            <p className="text-sm font-medium text-gray-700 dark:text-gray-300 break-all mb-2">
+              {browsePath}
+            </p>
+            <div className="flex gap-1 mb-2">
+              <Button
+                variant="outline"
+                onClick={handleSelectBrowsedFolder}
+              >
+                Select This Folder
+              </Button>
+              <Button
+                variant="outline"
+                onClick={handleCloseBrowse}
+              >
+                Cancel
+              </Button>
             </div>
             <div className="max-h-48 overflow-y-auto border border-gray-200 dark:border-gray-600 rounded bg-white dark:bg-gray-800">
               {browsePath !== '/' && (
