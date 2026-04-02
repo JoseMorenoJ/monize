@@ -211,10 +211,3 @@ button {
   display: none !important;
 }
 
-/* Firefox -- hide the native calendar button and clear button */
-@-moz-document url-prefix() {
-  .date-picker-hide {
-    appearance: textfield;
-    -moz-appearance: textfield;
-  }
-}
