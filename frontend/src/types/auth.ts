@@ -96,6 +96,31 @@ export interface UserPreferences {
   updatedAt: string;
 }
 
+export interface AutoBackupSettings {
+  userId: string;
+  enabled: boolean;
+  folderPath: string;
+  frequency: 'daily' | 'every12hours' | 'every6hours' | 'weekly';
+  retentionDaily: number;
+  retentionWeekly: number;
+  retentionMonthly: number;
+  lastBackupAt: string | null;
+  lastBackupStatus: 'success' | 'failed' | null;
+  lastBackupError: string | null;
+  nextBackupAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UpdateAutoBackupSettingsData {
+  enabled?: boolean;
+  folderPath?: string;
+  frequency?: AutoBackupSettings['frequency'];
+  retentionDaily?: number;
+  retentionWeekly?: number;
+  retentionMonthly?: number;
+}
+
 export interface UpdateProfileData {
   firstName?: string;
   lastName?: string;
