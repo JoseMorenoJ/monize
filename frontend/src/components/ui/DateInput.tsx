@@ -409,14 +409,14 @@ export const DateInput = forwardRef<HTMLInputElement, DateInputProps>(
               </svg>
             </button>
             {/* Hidden native date input for the calendar picker.
-                Positioned over the calendar button so the browser popup
-                anchors in the correct place instead of off-screen. */}
+                Spans the full input width so the browser popup anchors
+                centered rather than offset to one side. */}
             <input
               ref={nativeDateRef}
               type="date"
               tabIndex={-1}
               aria-hidden="true"
-              className="absolute right-0 inset-y-0 w-9 opacity-0 pointer-events-none"
+              className="absolute inset-0 opacity-0 pointer-events-none"
               onChange={handleNativeDateChange}
             />
           </div>
