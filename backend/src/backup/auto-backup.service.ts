@@ -652,11 +652,12 @@ export class AutoBackupService {
     timezone: string,
     fromDate: Date,
   ): Date {
-    const [hours, minutes] = backupTime.split(":").map(Number);
+    const [hours] = backupTime.split(":").map(Number);
     const intervalHours = FREQUENCY_HOURS[frequency] ?? 24;
 
-    // Convert the local backup time to a UTC Date for today
-    const todayInTz = this.localTimeToUtc(fromDate, hours, minutes, timezone);
+    // Snap minutes to 0 -- the cron fires at minute 0 of each hour,
+    // so non-zero minutes would cause the backup to run an hour late.
+    const todayInTz = this.localTimeToUtc(fromDate, hours, 0, timezone);
 
     if (frequency === "daily" || frequency === "weekly") {
       const next = new Date(todayInTz);

@@ -1138,12 +1138,12 @@ export class ActionHistoryService {
         case "BUY":
         case "REINVEST":
         case "TRANSFER_IN":
-        case "ADD_SHARES":
           current.quantity += qty;
           current.totalCost += qty * price;
           break;
-        case "SELL":
-        case "TRANSFER_OUT":
+        case "ADD_SHARES":
+          current.quantity += qty;
+          break;
         case "REMOVE_SHARES":
           current.quantity -= qty;
           if (current.quantity <= 0) {
@@ -1151,6 +1151,20 @@ export class ActionHistoryService {
             current.quantity = Math.max(0, current.quantity);
           }
           break;
+        case "SELL":
+        case "TRANSFER_OUT": {
+          const sellQty = qty;
+          if (current.quantity > 0) {
+            const avgCost = current.totalCost / current.quantity;
+            current.totalCost -= sellQty * avgCost;
+            current.quantity -= sellQty;
+          }
+          if (current.quantity <= 0) {
+            current.totalCost = 0;
+            current.quantity = Math.max(0, current.quantity);
+          }
+          break;
+        }
         case "SPLIT": {
           const ratio = qty;
           current.quantity = current.quantity * ratio;
