@@ -1,6 +1,7 @@
 'use client';
 
-import { memo, useState, useRef, useEffect, type JSX } from 'react';
+import { memo, useState, useRef, useEffect, useCallback, type JSX } from 'react';
+import { createPortal } from 'react-dom';
 import { getIconComponent } from '@/components/ui/IconPicker';
 import { Transaction, TransactionStatus } from '@/types/transaction';
 import { CategoryBudgetStatus } from '@/types/budget';
@@ -13,18 +14,34 @@ function CopyDropdown({ density, onDuplicate, onScheduleRecurring }: {
   onScheduleRecurring?: () => void;
 }) {
   const [isOpen, setIsOpen] = useState(false);
+  const buttonRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0 });
+
+  const updatePosition = useCallback(() => {
+    if (buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      setDropdownPos({ top: rect.bottom + 4, left: rect.right });
+    }
+  }, []);
 
   useEffect(() => {
     if (!isOpen) return;
+    updatePosition();
     const handleClickOutside = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node) &&
+          buttonRef.current && !buttonRef.current.contains(e.target as Node)) {
         setIsOpen(false);
       }
     };
+    const handleScroll = () => setIsOpen(false);
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [isOpen]);
+    window.addEventListener('scroll', handleScroll, true);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('scroll', handleScroll, true);
+    };
+  }, [isOpen, updatePosition]);
 
   // If only one action is available, render a simple button
   if (onDuplicate && !onScheduleRecurring) {
@@ -44,8 +61,9 @@ function CopyDropdown({ density, onDuplicate, onScheduleRecurring }: {
   }
 
   return (
-    <div ref={dropdownRef} className="relative inline-block">
+    <div className="relative inline-block">
       <button
+        ref={buttonRef}
         onClick={(e) => { e.stopPropagation(); setIsOpen(prev => !prev); }}
         className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
         title="Copy options"
@@ -63,8 +81,8 @@ function CopyDropdown({ density, onDuplicate, onScheduleRecurring }: {
           </span>
         )}
       </button>
-      {isOpen && (
-        <div className="absolute right-0 z-50 mt-1 w-48 rounded-md shadow-lg bg-white dark:bg-gray-800 ring-1 ring-black/5 dark:ring-white/10 py-1">
+      {isOpen && createPortal(
+        <div ref={dropdownRef} className="fixed z-50 w-56 rounded-md shadow-lg bg-white dark:bg-gray-800 ring-1 ring-black/5 dark:ring-white/10 py-1" style={{ top: dropdownPos.top, left: dropdownPos.left, transform: 'translateX(-100%)' }}>
           {onDuplicate && (
             <button
               onClick={(e) => { e.stopPropagation(); setIsOpen(false); onDuplicate(); }}
@@ -79,7 +97,7 @@ function CopyDropdown({ density, onDuplicate, onScheduleRecurring }: {
           {onScheduleRecurring && (
             <button
               onClick={(e) => { e.stopPropagation(); setIsOpen(false); onScheduleRecurring(); }}
-              className="w-full px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+              className="w-full px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 whitespace-nowrap"
             >
               <svg className="w-4 h-4 shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -87,7 +105,8 @@ function CopyDropdown({ density, onDuplicate, onScheduleRecurring }: {
               Schedule as Recurring
             </button>
           )}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
