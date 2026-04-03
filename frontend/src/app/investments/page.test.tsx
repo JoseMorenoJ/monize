@@ -927,6 +927,17 @@ describe('InvestmentsPage', () => {
     });
 
     it('passes startingBalance from API response to TransactionList', async () => {
+      // Filter to single account so startingBalance is passed through
+      mockLocalStorageState['monize-investments-accounts'] = {
+        value: ['brok-1'],
+        setter: vi.fn((newValue: any) => {
+          mockLocalStorageState['monize-investments-accounts'].value =
+            typeof newValue === 'function'
+              ? newValue(mockLocalStorageState['monize-investments-accounts'].value)
+              : newValue;
+        }),
+      };
+
       mockGetAllTransactions.mockResolvedValue({
         data: [{ id: 'cash-tx-1', transactionDate: '2024-01-15', amount: 100 }],
         pagination: { page: 1, totalPages: 1, total: 1 },
