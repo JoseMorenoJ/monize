@@ -24,6 +24,7 @@ interface NormalTransactionFieldsProps {
   selectedPayeeId: string;
   selectedCategoryId: string;
   payees: Payee[];
+  payeeAliasMap: Record<string, string[]>;
   categoryOptions: Array<{ value: string; label: string }>;
   handlePayeeChange: (payeeId: string, payeeName: string) => void;
   handlePayeeCreate: (name: string) => void;
@@ -46,6 +47,7 @@ export function NormalTransactionFields({
   selectedPayeeId,
   selectedCategoryId,
   payees,
+  payeeAliasMap,
   categoryOptions,
   handlePayeeChange,
   handlePayeeCreate,
@@ -93,6 +95,7 @@ export function NormalTransactionFields({
             value: payee.id,
             label: payee.name,
             subtitle: payee.defaultCategory?.name,
+            keywords: payeeAliasMap[payee.id],
           }))}
           value={selectedPayeeId}
           initialDisplayValue={transaction?.payeeName || ''}
