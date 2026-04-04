@@ -193,11 +193,14 @@ const mockPayeeCreate = vi.fn();
 
 const mockFindInactiveByName = vi.fn().mockResolvedValue(null);
 
+const mockGetAllAliases = vi.fn().mockResolvedValue([]);
+
 vi.mock('@/lib/payees', () => ({
   payeesApi: {
     getAll: (...args: any[]) => mockPayeesGetAll(...args),
     create: (...args: any[]) => mockPayeeCreate(...args),
     findInactiveByName: (...args: any[]) => mockFindInactiveByName(...args),
+    getAllAliases: (...args: any[]) => mockGetAllAliases(...args),
   },
 }));
 

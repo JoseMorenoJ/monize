@@ -38,6 +38,7 @@ interface TransferTransactionFieldsProps {
   setTransferPayeeName: (name: string) => void;
   crossCurrencyInfo: CrossCurrencyInfo | null;
   payees: Payee[];
+  payeeAliasMap?: Record<string, string[]>;
   transaction?: Transaction;
   createdAtSlot?: ReactNode;
 }
@@ -60,6 +61,7 @@ export function TransferTransactionFields({
   setTransferPayeeName,
   crossCurrencyInfo,
   payees,
+  payeeAliasMap,
   transaction: _transaction,
   createdAtSlot,
 }: TransferTransactionFieldsProps) {
@@ -156,6 +158,7 @@ export function TransferTransactionFields({
           options={payees.map(payee => ({
             value: payee.id,
             label: payee.name,
+            keywords: payeeAliasMap?.[payee.id],
           }))}
           value={transferPayeeId}
           initialDisplayValue={transferPayeeName}
