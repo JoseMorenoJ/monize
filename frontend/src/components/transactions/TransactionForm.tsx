@@ -15,7 +15,7 @@ import { MultiSelect } from '@/components/ui/MultiSelect';
 import { Modal } from '@/components/ui/Modal';
 import { TagForm } from '@/components/tags/TagForm';
 import { transactionsApi } from '@/lib/transactions';
-import { getLocalDateString, resolveTimezone, isoToDatetimeLocal, datetimeLocalToIso } from '@/lib/utils';
+import { getLocalDateString, resolveTimezone, isoToDatetimeLocal, datetimeLocalToIso, formatDatetimeLocal, parseDatetimeFromFormat } from '@/lib/utils';
 import { payeesApi } from '@/lib/payees';
 import { categoriesApi } from '@/lib/categories';
 import { accountsApi } from '@/lib/accounts';
@@ -28,6 +28,7 @@ import { Tag } from '@/types/tag';
 import { ReactivatePayeeDialog } from '@/components/payees/ReactivatePayeeDialog';
 import { buildCategoryTree } from '@/lib/categoryUtils';
 import { useNumberFormat } from '@/hooks/useNumberFormat';
+import { useDateFormat } from '@/hooks/useDateFormat';
 import { usePreferencesStore } from '@/store/preferencesStore';
 import { createLogger } from '@/lib/logger';
 import { getErrorMessage } from '@/lib/errors';
@@ -69,6 +70,7 @@ type TransactionMode = 'normal' | 'split' | 'transfer';
 export function TransactionForm({ transaction, duplicateFrom, defaultAccountId, onSuccess, onCancel, onDirtyChange, submitRef }: TransactionFormProps) {
   const { defaultCurrency } = useNumberFormat();
   const showCreatedAt = usePreferencesStore((s) => s.preferences?.showCreatedAt ?? false);
+  const timeFormat = usePreferencesStore((s) => s.preferences?.timeFormat ?? '24h');
   const timezonePref = usePreferencesStore((s) => s.preferences?.timezone);
   const [isLoading, setIsLoading] = useState(false);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -605,16 +607,28 @@ export function TransactionForm({ transaction, duplicateFrom, defaultAccountId, 
 
   // Created At override (only when editing and preference is enabled)
   const userTimezone = resolveTimezone(timezonePref);
+  const { dateFormat } = useDateFormat();
   const [createdAtValue, setCreatedAtValue] = useState(() => {
     if (!transaction?.createdAt) return '';
     return isoToDatetimeLocal(transaction.createdAt, userTimezone);
   });
+  const [createdAtOriginal, setCreatedAtOriginal] = useState(() => {
+    if (!transaction?.createdAt) return '';
+    return isoToDatetimeLocal(transaction.createdAt, userTimezone);
+  });
+  const [createdAtDisplay, setCreatedAtDisplay] = useState(() => {
+    if (!transaction?.createdAt) return '';
+    return formatDatetimeLocal(isoToDatetimeLocal(transaction.createdAt, userTimezone), dateFormat, timeFormat);
+  });
 
-  // Recalculate if the timezone preference loads/changes after initial mount
+  // Recalculate if the timezone preference or date format loads/changes after initial mount
   useEffect(() => {
     if (!transaction?.createdAt) return;
-    setCreatedAtValue(isoToDatetimeLocal(transaction.createdAt, userTimezone));
-  }, [transaction?.createdAt, userTimezone]);
+    const dtLocal = isoToDatetimeLocal(transaction.createdAt, userTimezone);
+    setCreatedAtValue(dtLocal);
+    setCreatedAtOriginal(dtLocal);
+    setCreatedAtDisplay(formatDatetimeLocal(dtLocal, dateFormat, timeFormat));
+  }, [transaction?.createdAt, userTimezone, dateFormat, timeFormat]);
 
   // Tag creation modal state
   const [showTagForm, setShowTagForm] = useState(false);
@@ -678,6 +692,9 @@ export function TransactionForm({ transaction, duplicateFrom, defaultAccountId, 
         }
 
         if (transaction?.isTransfer) {
+          if (showCreatedAt && createdAtValue && createdAtValue !== createdAtOriginal) {
+            transferData.createdAt = datetimeLocalToIso(createdAtValue, userTimezone);
+          }
           await transactionsApi.updateTransfer(transaction.id, transferData);
           toast.success('Transfer updated');
         } else {
@@ -719,7 +736,7 @@ export function TransactionForm({ transaction, duplicateFrom, defaultAccountId, 
       if (transaction) {
         // Include createdAt override if preference is enabled and value was changed
         const updatePayload: any = { ...payload };
-        if (showCreatedAt && createdAtValue) {
+        if (showCreatedAt && createdAtValue && createdAtValue !== createdAtOriginal) {
           updatePayload.createdAt = datetimeLocalToIso(createdAtValue, userTimezone);
         }
         await transactionsApi.update(transaction.id, updatePayload);
@@ -746,9 +763,25 @@ export function TransactionForm({ transaction, duplicateFrom, defaultAccountId, 
         Create Date
       </label>
       <input
-        type="datetime-local"
-        value={createdAtValue}
-        onChange={(e) => setCreatedAtValue(e.target.value)}
+        type="text"
+        value={createdAtDisplay}
+        onChange={(e) => {
+          setCreatedAtDisplay(e.target.value);
+          const parsed = parseDatetimeFromFormat(e.target.value, dateFormat);
+          if (parsed) {
+            setCreatedAtValue(parsed);
+          }
+        }}
+        onBlur={() => {
+          const parsed = parseDatetimeFromFormat(createdAtDisplay, dateFormat);
+          if (parsed) {
+            setCreatedAtValue(parsed);
+            setCreatedAtDisplay(formatDatetimeLocal(parsed, dateFormat, timeFormat));
+          } else if (createdAtValue) {
+            setCreatedAtDisplay(formatDatetimeLocal(createdAtValue, dateFormat, timeFormat));
+          }
+        }}
+        placeholder={`${dateFormat === 'browser' ? 'MM/DD/YYYY' : dateFormat} ${timeFormat === '12h' ? 'h:mm AM/PM' : 'HH:mm'}`}
         className="block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100 dark:focus:border-blue-400 dark:focus:ring-blue-400"
       />
     </div>

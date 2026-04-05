@@ -105,4 +105,12 @@ export class UpdateTransferDto {
   @IsArray()
   @IsUUID("4", { each: true })
   tagIds?: string[];
+
+  @ApiPropertyOptional({
+    description:
+      "Override the created-at timestamp (ISO 8601). Requires showCreatedAt preference enabled.",
+  })
+  @IsOptional()
+  @IsDateString()
+  createdAt?: string;
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { cn, parseLocalDate, formatDate, resolveTimezone, isoToDatetimeLocal, datetimeLocalToIso } from './utils';
+import { cn, parseLocalDate, formatDate, resolveTimezone, isoToDatetimeLocal, datetimeLocalToIso, formatDatetimeLocal, parseDatetimeFromFormat, formatTime, parseTime } from './utils';
 
 describe('cn', () => {
   it('merges class names', () => {
@@ -176,5 +176,145 @@ describe('datetimeLocalToIso', () => {
     expect(roundTrippedDate.getUTCDate()).toBe(originalDate.getUTCDate());
     expect(roundTrippedDate.getUTCHours()).toBe(originalDate.getUTCHours());
     expect(roundTrippedDate.getUTCMinutes()).toBe(originalDate.getUTCMinutes());
+  });
+});
+
+describe('formatTime', () => {
+  it('returns 24h time unchanged when format is 24h', () => {
+    expect(formatTime('14:30', '24h')).toBe('14:30');
+  });
+
+  it('converts afternoon to 12h', () => {
+    expect(formatTime('14:30', '12h')).toBe('2:30 PM');
+  });
+
+  it('converts midnight to 12:00 AM', () => {
+    expect(formatTime('00:00', '12h')).toBe('12:00 AM');
+  });
+
+  it('converts noon to 12:00 PM', () => {
+    expect(formatTime('12:00', '12h')).toBe('12:00 PM');
+  });
+
+  it('converts morning time', () => {
+    expect(formatTime('09:05', '12h')).toBe('9:05 AM');
+  });
+
+  it('returns empty string for empty input', () => {
+    expect(formatTime('', '12h')).toBe('');
+  });
+});
+
+describe('parseTime', () => {
+  it('parses 24h time', () => {
+    expect(parseTime('14:30')).toBe('14:30');
+  });
+
+  it('pads single-digit 24h hours', () => {
+    expect(parseTime('9:05')).toBe('09:05');
+  });
+
+  it('parses 12h PM time', () => {
+    expect(parseTime('2:30 PM')).toBe('14:30');
+  });
+
+  it('parses 12h AM time', () => {
+    expect(parseTime('9:05 AM')).toBe('09:05');
+  });
+
+  it('parses 12:00 AM as midnight', () => {
+    expect(parseTime('12:00 AM')).toBe('00:00');
+  });
+
+  it('parses 12:30 PM as 12:30', () => {
+    expect(parseTime('12:30 PM')).toBe('12:30');
+  });
+
+  it('is case-insensitive', () => {
+    expect(parseTime('2:30 pm')).toBe('14:30');
+  });
+
+  it('returns null for invalid input', () => {
+    expect(parseTime('not-a-time')).toBeNull();
+  });
+
+  it('returns null for empty input', () => {
+    expect(parseTime('')).toBeNull();
+  });
+});
+
+describe('formatDatetimeLocal', () => {
+  it('formats with YYYY-MM-DD in 24h', () => {
+    expect(formatDatetimeLocal('2026-01-15T19:30', 'YYYY-MM-DD')).toBe('2026-01-15 19:30');
+  });
+
+  it('formats with MM/DD/YYYY in 24h', () => {
+    expect(formatDatetimeLocal('2026-01-15T19:30', 'MM/DD/YYYY')).toBe('01/15/2026 19:30');
+  });
+
+  it('formats with DD/MM/YYYY in 24h', () => {
+    expect(formatDatetimeLocal('2026-01-15T19:30', 'DD/MM/YYYY')).toBe('15/01/2026 19:30');
+  });
+
+  it('formats with DD-MMM-YYYY in 24h', () => {
+    expect(formatDatetimeLocal('2026-01-15T19:30', 'DD-MMM-YYYY')).toBe('15-Jan-2026 19:30');
+  });
+
+  it('formats in 12h mode', () => {
+    expect(formatDatetimeLocal('2026-01-15T19:30', 'MM/DD/YYYY', '12h')).toBe('01/15/2026 7:30 PM');
+  });
+
+  it('formats midnight in 12h mode', () => {
+    expect(formatDatetimeLocal('2026-01-15T00:00', 'YYYY-MM-DD', '12h')).toBe('2026-01-15 12:00 AM');
+  });
+
+  it('returns empty string for empty input', () => {
+    expect(formatDatetimeLocal('', 'YYYY-MM-DD')).toBe('');
+  });
+});
+
+describe('parseDatetimeFromFormat', () => {
+  it('parses MM/DD/YYYY HH:mm (24h)', () => {
+    expect(parseDatetimeFromFormat('01/15/2026 19:30', 'MM/DD/YYYY')).toBe('2026-01-15T19:30');
+  });
+
+  it('parses DD/MM/YYYY HH:mm (24h)', () => {
+    expect(parseDatetimeFromFormat('15/01/2026 19:30', 'DD/MM/YYYY')).toBe('2026-01-15T19:30');
+  });
+
+  it('parses YYYY-MM-DD HH:mm (24h)', () => {
+    expect(parseDatetimeFromFormat('2026-01-15 19:30', 'YYYY-MM-DD')).toBe('2026-01-15T19:30');
+  });
+
+  it('parses DD-MMM-YYYY HH:mm (24h)', () => {
+    expect(parseDatetimeFromFormat('15-Jan-2026 19:30', 'DD-MMM-YYYY')).toBe('2026-01-15T19:30');
+  });
+
+  it('pads single-digit hours', () => {
+    expect(parseDatetimeFromFormat('01/15/2026 9:05', 'MM/DD/YYYY')).toBe('2026-01-15T09:05');
+  });
+
+  it('parses 12h AM/PM time', () => {
+    expect(parseDatetimeFromFormat('01/15/2026 7:30 PM', 'MM/DD/YYYY')).toBe('2026-01-15T19:30');
+  });
+
+  it('parses 12h midnight', () => {
+    expect(parseDatetimeFromFormat('01/15/2026 12:00 AM', 'MM/DD/YYYY')).toBe('2026-01-15T00:00');
+  });
+
+  it('parses 12h noon', () => {
+    expect(parseDatetimeFromFormat('01/15/2026 12:30 PM', 'MM/DD/YYYY')).toBe('2026-01-15T12:30');
+  });
+
+  it('returns null for invalid input', () => {
+    expect(parseDatetimeFromFormat('not-a-date', 'MM/DD/YYYY')).toBeNull();
+  });
+
+  it('returns null for missing time', () => {
+    expect(parseDatetimeFromFormat('01/15/2026', 'MM/DD/YYYY')).toBeNull();
+  });
+
+  it('returns null for empty input', () => {
+    expect(parseDatetimeFromFormat('', 'MM/DD/YYYY')).toBeNull();
   });
 });

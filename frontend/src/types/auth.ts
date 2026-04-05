@@ -91,6 +91,7 @@ export interface UserPreferences {
   budgetDigestDay: 'MONDAY' | 'FRIDAY';
   favouriteReportIds: string[];
   showCreatedAt: boolean;
+  timeFormat: '24h' | '12h';
   preferredExchanges: string[];
   createdAt: string;
   updatedAt: string;
@@ -146,6 +147,7 @@ export interface UpdatePreferencesData {
   budgetDigestDay?: 'MONDAY' | 'FRIDAY';
   favouriteReportIds?: string[];
   showCreatedAt?: boolean;
+  timeFormat?: '24h' | '12h';
   preferredExchanges?: string[];
 }
 
