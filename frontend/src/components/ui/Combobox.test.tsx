@@ -1168,4 +1168,84 @@ describe('Combobox', () => {
       expect(clearButton).toBeNull();
     });
   });
+
+  describe('keywords filtering', () => {
+    const keywordOptions = [
+      { value: '1', label: 'Liquor Control Board of Ontario', keywords: ['LCBO', 'liquor store'] },
+      { value: '2', label: 'Starbucks Coffee', keywords: ['SBUX', 'STARBUCKS*'] },
+      { value: '3', label: 'Apple' },
+    ];
+
+    it('filters options by keyword match', async () => {
+      render(<Combobox options={keywordOptions} onChange={onChange} />);
+      const input = screen.getByRole('textbox');
+      fireEvent.focus(input);
+      await new Promise(r => setTimeout(r, 150));
+
+      fireEvent.change(input, { target: { value: 'LCBO' } });
+
+      await waitFor(() => {
+        expect(screen.getByText('Liquor Control Board of Ontario')).toBeInTheDocument();
+        expect(screen.queryByText('Starbucks Coffee')).not.toBeInTheDocument();
+        expect(screen.queryByText('Apple')).not.toBeInTheDocument();
+      });
+    });
+
+    it('shows alias hint when match is from keyword, not label', async () => {
+      render(<Combobox options={keywordOptions} onChange={onChange} />);
+      const input = screen.getByRole('textbox');
+      fireEvent.focus(input);
+      await new Promise(r => setTimeout(r, 150));
+
+      fireEvent.change(input, { target: { value: 'LCBO' } });
+
+      await waitFor(() => {
+        expect(screen.getByText('alias: LCBO')).toBeInTheDocument();
+      });
+    });
+
+    it('does not show alias hint when match is from label', async () => {
+      render(<Combobox options={keywordOptions} onChange={onChange} />);
+      const input = screen.getByRole('textbox');
+      fireEvent.focus(input);
+      await new Promise(r => setTimeout(r, 150));
+
+      fireEvent.change(input, { target: { value: 'Liquor' } });
+
+      await waitFor(() => {
+        expect(screen.getByText('Liquor Control Board of Ontario')).toBeInTheDocument();
+        expect(screen.queryByText(/^alias:/)).not.toBeInTheDocument();
+      });
+    });
+
+    it('selects the correct option when matched by keyword', async () => {
+      render(<Combobox options={keywordOptions} onChange={onChange} />);
+      const input = screen.getByRole('textbox');
+      fireEvent.focus(input);
+      await new Promise(r => setTimeout(r, 150));
+
+      fireEvent.change(input, { target: { value: 'SBUX' } });
+
+      await waitFor(() => {
+        expect(screen.getByText('Starbucks Coffee')).toBeInTheDocument();
+      });
+
+      fireEvent.keyDown(input, { key: 'Enter' });
+
+      expect(onChange).toHaveBeenCalledWith('2', 'Starbucks Coffee');
+    });
+
+    it('matches keywords case-insensitively', async () => {
+      render(<Combobox options={keywordOptions} onChange={onChange} />);
+      const input = screen.getByRole('textbox');
+      fireEvent.focus(input);
+      await new Promise(r => setTimeout(r, 150));
+
+      fireEvent.change(input, { target: { value: 'lcbo' } });
+
+      await waitFor(() => {
+        expect(screen.getByText('Liquor Control Board of Ontario')).toBeInTheDocument();
+      });
+    });
+  });
 });

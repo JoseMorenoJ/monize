@@ -131,6 +131,7 @@ describe('NormalTransactionFields', () => {
     selectedPayeeId: '',
     selectedCategoryId: '',
     payees: [] as Payee[],
+    payeeAliasMap: {} as Record<string, string[]>,
     categoryOptions: [] as Array<{ value: string; label: string }>,
     handlePayeeChange: vi.fn(),
     handlePayeeCreate: vi.fn(),

@@ -8,6 +8,8 @@ interface ComboboxOption {
   value: string;
   label: string;
   subtitle?: string;
+  /** Additional search terms that participate in filtering but are not displayed by default */
+  keywords?: string[];
 }
 
 interface ComboboxProps {
@@ -245,7 +247,8 @@ export function Combobox({
     ? options
         .filter(option =>
           option.label.toLowerCase().includes(filterText.toLowerCase()) ||
-          (option.subtitle && option.subtitle.toLowerCase().includes(filterText.toLowerCase()))
+          (option.subtitle && option.subtitle.toLowerCase().includes(filterText.toLowerCase())) ||
+          (option.keywords && option.keywords.some(kw => kw.toLowerCase().includes(filterText.toLowerCase())))
         )
         .sort((a, b) => {
           const lowerFilter = filterText.toLowerCase();
@@ -470,6 +473,18 @@ export function Combobox({
                   {option.subtitle}
                 </span>
               )}
+              {isTyping && filterText && option.keywords && (() => {
+                const lowerFilter = filterText.toLowerCase();
+                const labelMatches = option.label.toLowerCase().includes(lowerFilter);
+                if (labelMatches) return null;
+                const matchedKeyword = option.keywords.find(kw => kw.toLowerCase().includes(lowerFilter));
+                if (!matchedKeyword) return null;
+                return (
+                  <span className="text-purple-500 dark:text-purple-400 text-xs truncate">
+                    alias: {matchedKeyword}
+                  </span>
+                );
+              })()}
             </div>
             {isSelected && (
               <span className="absolute inset-y-0 right-0 flex items-center pr-4 text-blue-600 dark:text-blue-400">

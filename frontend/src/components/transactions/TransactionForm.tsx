@@ -74,6 +74,7 @@ export function TransactionForm({ transaction, duplicateFrom, defaultAccountId, 
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [payees, setPayees] = useState<Payee[]>([]); // Full list of active payees
+  const [payeeAliasMap, setPayeeAliasMap] = useState<Record<string, string[]>>({}); // payeeId -> alias strings
   const [tags, setTags] = useState<Tag[]>([]);
   // initSource: the transaction to pre-fill from (either editing or duplicating)
   const initSource = transaction || duplicateFrom;
@@ -294,11 +295,22 @@ export function TransactionForm({ transaction, duplicateFrom, defaultAccountId, 
       categoriesApi.getAll(),
       payeesApi.getAll('active'),
       tagsApi.getAll(),
+      payeesApi.getAllAliases(),
     ])
-      .then(async ([accountsData, categoriesData, payeesData, tagsData]) => {
+      .then(async ([accountsData, categoriesData, payeesData, tagsData, aliasesData]) => {
         setAccounts(accountsData);
         setCategories(categoriesData);
         setTags(tagsData);
+
+        // Build payeeId -> alias strings lookup
+        const aliasMap: Record<string, string[]> = {};
+        for (const alias of aliasesData) {
+          if (!aliasMap[alias.payeeId]) {
+            aliasMap[alias.payeeId] = [];
+          }
+          aliasMap[alias.payeeId].push(alias.alias);
+        }
+        setPayeeAliasMap(aliasMap);
 
         // If editing a transaction with a payee that isn't in the active list, fetch it
         if (transaction?.payeeId && !payeesData.some(p => p.id === transaction.payeeId)) {
@@ -793,6 +805,7 @@ export function TransactionForm({ transaction, duplicateFrom, defaultAccountId, 
           selectedPayeeId={selectedPayeeId}
           selectedCategoryId={selectedCategoryId}
           payees={payees}
+          payeeAliasMap={payeeAliasMap}
           categoryOptions={categoryOptions}
           handlePayeeChange={handlePayeeChange}
           handlePayeeCreate={handlePayeeCreate}
@@ -843,6 +856,7 @@ export function TransactionForm({ transaction, duplicateFrom, defaultAccountId, 
           setTransferPayeeName={setTransferPayeeName}
           crossCurrencyInfo={crossCurrencyInfo}
           payees={payees}
+          payeeAliasMap={payeeAliasMap}
           transaction={transaction}
           createdAtSlot={createdAtSlot}
         />
