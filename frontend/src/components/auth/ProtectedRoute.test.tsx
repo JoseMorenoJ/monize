@@ -154,6 +154,7 @@ describe('ProtectedRoute', () => {
         budgetDigestEnabled: true,
         budgetDigestDay: 'MONDAY',
         showCreatedAt: false,
+        timeFormat: '24h',
         favouriteReportIds: [],
         preferredExchanges: [],
         createdAt: '2026-01-01T00:00:00Z',
