@@ -7,6 +7,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import toast from 'react-hot-toast';
 import { Select } from '@/components/ui/Select';
+import { DateInput } from '@/components/ui/DateInput';
 import { SplitEditor, SplitRow, createEmptySplits, toSplitRows, toCreateSplitData } from './SplitEditor';
 import { NormalTransactionFields } from './NormalTransactionFields';
 import { SplitTransactionFields } from './SplitTransactionFields';
@@ -605,15 +606,23 @@ export function TransactionForm({ transaction, duplicateFrom, defaultAccountId, 
 
   // Created At override (only when editing and preference is enabled)
   const userTimezone = resolveTimezone(timezonePref);
-  const [createdAtValue, setCreatedAtValue] = useState(() => {
+  const [createdAtDate, setCreatedAtDate] = useState(() => {
     if (!transaction?.createdAt) return '';
-    return isoToDatetimeLocal(transaction.createdAt, userTimezone);
+    const dtLocal = isoToDatetimeLocal(transaction.createdAt, userTimezone);
+    return dtLocal.split('T')[0] || '';
+  });
+  const [createdAtTime, setCreatedAtTime] = useState(() => {
+    if (!transaction?.createdAt) return '';
+    const dtLocal = isoToDatetimeLocal(transaction.createdAt, userTimezone);
+    return dtLocal.split('T')[1] || '00:00';
   });
 
   // Recalculate if the timezone preference loads/changes after initial mount
   useEffect(() => {
     if (!transaction?.createdAt) return;
-    setCreatedAtValue(isoToDatetimeLocal(transaction.createdAt, userTimezone));
+    const dtLocal = isoToDatetimeLocal(transaction.createdAt, userTimezone);
+    setCreatedAtDate(dtLocal.split('T')[0] || '');
+    setCreatedAtTime(dtLocal.split('T')[1] || '00:00');
   }, [transaction?.createdAt, userTimezone]);
 
   // Tag creation modal state
@@ -719,8 +728,9 @@ export function TransactionForm({ transaction, duplicateFrom, defaultAccountId, 
       if (transaction) {
         // Include createdAt override if preference is enabled and value was changed
         const updatePayload: any = { ...payload };
-        if (showCreatedAt && createdAtValue) {
-          updatePayload.createdAt = datetimeLocalToIso(createdAtValue, userTimezone);
+        if (showCreatedAt && createdAtDate) {
+          const dtLocal = `${createdAtDate}T${createdAtTime || '00:00'}`;
+          updatePayload.createdAt = datetimeLocalToIso(dtLocal, userTimezone);
         }
         await transactionsApi.update(transaction.id, updatePayload);
         toast.success('Transaction updated');
@@ -745,12 +755,20 @@ export function TransactionForm({ transaction, duplicateFrom, defaultAccountId, 
       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
         Create Date
       </label>
-      <input
-        type="datetime-local"
-        value={createdAtValue}
-        onChange={(e) => setCreatedAtValue(e.target.value)}
-        className="block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100 dark:focus:border-blue-400 dark:focus:ring-blue-400"
-      />
+      <div className="flex gap-2">
+        <div className="flex-1">
+          <DateInput
+            value={createdAtDate}
+            onDateChange={(date) => setCreatedAtDate(date)}
+          />
+        </div>
+        <input
+          type="time"
+          value={createdAtTime}
+          onChange={(e) => setCreatedAtTime(e.target.value)}
+          className="block w-28 rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100 dark:focus:border-blue-400 dark:focus:ring-blue-400"
+        />
+      </div>
     </div>
   ) : undefined;
 
