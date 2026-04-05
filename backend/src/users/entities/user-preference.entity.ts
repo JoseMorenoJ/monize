@@ -66,6 +66,9 @@ export class UserPreference {
   @Column({ name: "show_created_at", default: false })
   showCreatedAt: boolean;
 
+  @Column({ name: "time_format", length: 10, default: "24h" })
+  timeFormat: string;
+
   @Column({
     name: "preferred_exchanges",
     type: "text",

@@ -182,6 +182,9 @@ export class UsersService {
     if (dto.showCreatedAt !== undefined) {
       preferences.showCreatedAt = dto.showCreatedAt;
     }
+    if (dto.timeFormat !== undefined) {
+      preferences.timeFormat = dto.timeFormat;
+    }
     if (dto.preferredExchanges !== undefined) {
       preferences.preferredExchanges = dto.preferredExchanges;
     }

@@ -77,6 +77,7 @@ export function PreferencesSection({ preferences, onPreferencesUpdated }: Prefer
   const [defaultCurrency, setDefaultCurrency] = useState(preferences.defaultCurrency);
   const [weekStartsOn, setWeekStartsOn] = useState(preferences.weekStartsOn ?? 1);
   const [showCreatedAt, setShowCreatedAt] = useState(preferences.showCreatedAt ?? false);
+  const [timeFormat, setTimeFormat] = useState<'24h' | '12h'>(preferences.timeFormat ?? '24h');
   const [preferredExchanges, setPreferredExchanges] = useState<string[]>(
     preferences.preferredExchanges ?? [],
   );
@@ -106,6 +107,7 @@ export function PreferencesSection({ preferences, onPreferencesUpdated }: Prefer
         defaultCurrency,
         weekStartsOn,
         showCreatedAt,
+        timeFormat,
         preferredExchanges: preferredExchanges.filter(Boolean),
       };
 
@@ -216,6 +218,18 @@ export function PreferencesSection({ preferences, onPreferencesUpdated }: Prefer
             Show Create Date in transaction forms
           </label>
         </div>
+
+        {showCreatedAt && (
+          <Select
+            label="Time Format"
+            options={[
+              { value: '24h', label: '24-hour (14:30)' },
+              { value: '12h', label: '12-hour (2:30 PM)' },
+            ]}
+            value={timeFormat}
+            onChange={(e) => setTimeFormat(e.target.value as '24h' | '12h')}
+          />
+        )}
       </div>
 
       <div className="mt-6 flex justify-end">

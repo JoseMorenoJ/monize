@@ -121,6 +121,15 @@ export class UpdatePreferencesDto {
   showCreatedAt?: boolean;
 
   @ApiPropertyOptional({
+    description: "Time display format (24h or 12h)",
+    example: "24h",
+  })
+  @IsOptional()
+  @IsString()
+  @IsIn(["24h", "12h"])
+  timeFormat?: string;
+
+  @ApiPropertyOptional({
     description:
       "Preferred exchanges for security lookups, in priority order (max 3)",
     example: ["TSX", "NYSE"],

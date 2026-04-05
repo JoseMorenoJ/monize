@@ -187,39 +187,92 @@ export function parseDateFromFormat(input: string, format: string): string | nul
 }
 
 /**
- * Format a datetime-local string (YYYY-MM-DDTHH:mm) using the user's date
- * format preference, appending the time portion.  e.g. "01/15/2024 19:00"
+ * Format a 24h time string (HH:mm) into the given time format.
  */
-export function formatDatetimeLocal(datetimeLocal: string, dateFormat: string): string {
+export function formatTime(time24: string, timeFormat: string): string {
+  if (!time24) return '';
+  if (timeFormat !== '12h') return time24;
+  const [hStr, mStr] = time24.split(':');
+  const h = Number(hStr);
+  const period = h >= 12 ? 'PM' : 'AM';
+  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return `${h12}:${mStr} ${period}`;
+}
+
+/**
+ * Parse a time string (24h "HH:mm" or 12h "H:mm AM/PM") back to 24h "HH:mm".
+ * Returns null if parsing fails.
+ */
+export function parseTime(input: string): string | null {
+  if (!input) return null;
+  const trimmed = input.trim();
+
+  // Try 24h format first: HH:mm
+  const m24 = trimmed.match(/^(\d{1,2}):(\d{2})$/);
+  if (m24) {
+    const h = Number(m24[1]);
+    if (h > 23) return null;
+    return `${String(h).padStart(2, '0')}:${m24[2]}`;
+  }
+
+  // Try 12h format: H:mm AM/PM
+  const m12 = trimmed.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (m12) {
+    let h = Number(m12[1]);
+    const period = m12[3].toUpperCase();
+    if (h < 1 || h > 12) return null;
+    if (period === 'AM' && h === 12) h = 0;
+    else if (period === 'PM' && h !== 12) h += 12;
+    return `${String(h).padStart(2, '0')}:${m12[2]}`;
+  }
+
+  return null;
+}
+
+/**
+ * Format a datetime-local string (YYYY-MM-DDTHH:mm) using the user's date
+ * and time format preferences.  e.g. "01/15/2024 2:30 PM"
+ */
+export function formatDatetimeLocal(datetimeLocal: string, dateFormat: string, timeFormat: string = '24h'): string {
   if (!datetimeLocal) return '';
   const [datePart, timePart] = datetimeLocal.split('T');
   const formatted = formatDate(datePart, dateFormat);
-  return timePart ? `${formatted} ${timePart}` : formatted;
+  return timePart ? `${formatted} ${formatTime(timePart, timeFormat)}` : formatted;
 }
 
 /**
  * Parse a user-typed datetime string back to a datetime-local value
- * (YYYY-MM-DDTHH:mm).  Accepts "{formatted-date} HH:mm".
+ * (YYYY-MM-DDTHH:mm).  Accepts "{formatted-date} HH:mm" or
+ * "{formatted-date} H:mm AM/PM".
  * Returns null if parsing fails.
  */
 export function parseDatetimeFromFormat(input: string, dateFormat: string): string | null {
   if (!input) return null;
   const trimmed = input.trim();
 
-  // Split on the last space to separate date and time portions
+  // Try splitting off AM/PM time first: "... H:mm AM" or "... H:mm PM"
+  const ampmMatch = trimmed.match(/^(.+)\s+(\d{1,2}:\d{2}\s*(?:AM|PM))$/i);
+  if (ampmMatch) {
+    const datePart = ampmMatch[1];
+    const time24 = parseTime(ampmMatch[2]);
+    if (!time24) return null;
+    const isoDate = parseDateFromFormat(datePart, dateFormat);
+    if (!isoDate) return null;
+    return `${isoDate}T${time24}`;
+  }
+
+  // Fall back to 24h: "... HH:mm"
   const lastSpace = trimmed.lastIndexOf(' ');
   if (lastSpace === -1) return null;
 
   const datePart = trimmed.slice(0, lastSpace);
   const timePart = trimmed.slice(lastSpace + 1);
 
-  // Validate time format HH:mm
-  if (!/^\d{1,2}:\d{2}$/.test(timePart)) return null;
+  const time24 = parseTime(timePart);
+  if (!time24) return null;
 
   const isoDate = parseDateFromFormat(datePart, dateFormat);
   if (!isoDate) return null;
 
-  const [h, m] = timePart.split(':');
-  const hh = h.padStart(2, '0');
-  return `${isoDate}T${hh}:${m}`;
+  return `${isoDate}T${time24}`;
 }
