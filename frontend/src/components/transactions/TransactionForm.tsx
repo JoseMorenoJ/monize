@@ -612,6 +612,10 @@ export function TransactionForm({ transaction, duplicateFrom, defaultAccountId, 
     if (!transaction?.createdAt) return '';
     return isoToDatetimeLocal(transaction.createdAt, userTimezone);
   });
+  const [createdAtOriginal, setCreatedAtOriginal] = useState(() => {
+    if (!transaction?.createdAt) return '';
+    return isoToDatetimeLocal(transaction.createdAt, userTimezone);
+  });
   const [createdAtDisplay, setCreatedAtDisplay] = useState(() => {
     if (!transaction?.createdAt) return '';
     return formatDatetimeLocal(isoToDatetimeLocal(transaction.createdAt, userTimezone), dateFormat, timeFormat);
@@ -622,6 +626,7 @@ export function TransactionForm({ transaction, duplicateFrom, defaultAccountId, 
     if (!transaction?.createdAt) return;
     const dtLocal = isoToDatetimeLocal(transaction.createdAt, userTimezone);
     setCreatedAtValue(dtLocal);
+    setCreatedAtOriginal(dtLocal);
     setCreatedAtDisplay(formatDatetimeLocal(dtLocal, dateFormat, timeFormat));
   }, [transaction?.createdAt, userTimezone, dateFormat, timeFormat]);
 
@@ -687,6 +692,9 @@ export function TransactionForm({ transaction, duplicateFrom, defaultAccountId, 
         }
 
         if (transaction?.isTransfer) {
+          if (showCreatedAt && createdAtValue && createdAtValue !== createdAtOriginal) {
+            transferData.createdAt = datetimeLocalToIso(createdAtValue, userTimezone);
+          }
           await transactionsApi.updateTransfer(transaction.id, transferData);
           toast.success('Transfer updated');
         } else {
@@ -728,7 +736,7 @@ export function TransactionForm({ transaction, duplicateFrom, defaultAccountId, 
       if (transaction) {
         // Include createdAt override if preference is enabled and value was changed
         const updatePayload: any = { ...payload };
-        if (showCreatedAt && createdAtValue) {
+        if (showCreatedAt && createdAtValue && createdAtValue !== createdAtOriginal) {
           updatePayload.createdAt = datetimeLocalToIso(createdAtValue, userTimezone);
         }
         await transactionsApi.update(transaction.id, updatePayload);

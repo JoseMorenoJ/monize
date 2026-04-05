@@ -596,6 +596,8 @@ export class TransactionTransferService {
       data.payeeId = updateDto.payeeId || null;
     if (updateDto.payeeName !== undefined)
       data.payeeName = updateDto.payeeName || null;
+    if ((updateDto as any).createdAt !== undefined)
+      data.createdAt = new Date((updateDto as any).createdAt);
 
     if (
       updateDto.fromAccountId &&
@@ -646,6 +648,8 @@ export class TransactionTransferService {
       data.payeeId = updateDto.payeeId || null;
     if (updateDto.payeeName !== undefined)
       data.payeeName = updateDto.payeeName || null;
+    if ((updateDto as any).createdAt !== undefined)
+      data.createdAt = new Date((updateDto as any).createdAt);
 
     if (updateDto.toAccountId && updateDto.toAccountId !== oldToAccountId) {
       data.accountId = updateDto.toAccountId;
