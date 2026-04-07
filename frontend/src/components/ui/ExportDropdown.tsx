@@ -38,7 +38,6 @@ export function ExportDropdown({ onExportCsv, onExportPdf, disabled }: ExportDro
     try {
       await onExportPdf();
     } catch (error) {
-      // eslint-disable-next-line no-console
       console.error('PDF export failed:', error);
       toast.error('Failed to export PDF. Please try again.');
     } finally {

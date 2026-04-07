@@ -11,7 +11,6 @@ import {
   suggestAccountType,
   formatCategoryPath,
   isInvestmentBrokerageAccount,
-  getCurrencyFromExchange,
 } from './import-utils';
 
 /** Get the full path for a category (e.g., "Parent: Child") */

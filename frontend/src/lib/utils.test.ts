@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { cn, parseLocalDate, formatDate, resolveTimezone, isoToDatetimeLocal, datetimeLocalToIso, formatDatetimeLocal, parseDatetimeFromFormat, formatTime, parseTime } from './utils';
 
 describe('cn', () => {
