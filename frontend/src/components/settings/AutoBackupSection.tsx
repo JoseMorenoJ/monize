@@ -18,10 +18,13 @@ const FREQUENCY_OPTIONS = [
   { value: 'weekly', label: 'Weekly' },
 ];
 
-function formatDateTime(dateStr: string | null): string {
+function formatDateTime(dateStr: string | null, timezone: string): string {
   if (!dateStr) return 'Never';
-  const date = new Date(dateStr);
-  return date.toLocaleString();
+  // Backend stores timestamps as UTC but PostgreSQL 'timestamp' (without tz)
+  // omits the Z suffix, so append it to ensure correct UTC parsing
+  const normalized = /[Z+-]/.test(dateStr.slice(-6)) ? dateStr : dateStr + 'Z';
+  const date = new Date(normalized);
+  return date.toLocaleString(undefined, { timeZone: timezone });
 }
 
 export function AutoBackupSection() {
@@ -458,7 +461,7 @@ export function AutoBackupSection() {
               <div className="flex justify-between">
                 <dt className="text-gray-600 dark:text-gray-400">Last backup</dt>
                 <dd className="font-medium text-gray-900 dark:text-white flex items-center gap-2">
-                  {formatDateTime(settings.lastBackupAt)}
+                  {formatDateTime(settings.lastBackupAt, userTimezone)}
                   {settings.lastBackupStatus === 'success' && (
                     <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">
                       Success
@@ -484,7 +487,7 @@ export function AutoBackupSection() {
               <div className="flex justify-between">
                 <dt className="text-gray-600 dark:text-gray-400">Next backup</dt>
                 <dd className="font-medium text-gray-900 dark:text-white">
-                  {formatDateTime(settings.nextBackupAt)}
+                  {formatDateTime(settings.nextBackupAt, userTimezone)}
                 </dd>
               </div>
             )}
