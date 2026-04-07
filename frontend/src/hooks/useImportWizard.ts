@@ -324,7 +324,7 @@ export function useImportWizard() {
     };
 
     runBulkLookup();
-  }, [step, initialLookupDone, securityMappings, preferredExchanges]);
+  }, [step, initialLookupDone, securityMappings, preferredExchanges, defaultCurrency]);
 
   const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;

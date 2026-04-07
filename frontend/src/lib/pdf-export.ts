@@ -151,7 +151,6 @@ export async function exportToPdf(options: PdfExportOptions): Promise<void> {
       }
     } catch (error) {
       // Chart capture failed; continue with table only
-      // eslint-disable-next-line no-console
       console.warn('PDF chart capture failed, generating table-only PDF:', error);
     }
   }
