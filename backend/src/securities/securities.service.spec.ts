@@ -363,12 +363,20 @@ describe("SecuritiesService", () => {
     it("deletes security when no holdings or transactions exist", async () => {
       securitiesRepository.findOne.mockResolvedValue({ ...mockSecurity });
       securitiesRepository.remove = jest.fn().mockResolvedValue(undefined);
-      holdingsRepository.createQueryBuilder.mockReturnValue({
-        leftJoin: jest.fn().mockReturnThis(),
-        where: jest.fn().mockReturnThis(),
-        andWhere: jest.fn().mockReturnThis(),
-        getCount: jest.fn().mockResolvedValue(0),
-      });
+      holdingsRepository.remove = jest.fn().mockResolvedValue(undefined);
+      holdingsRepository.createQueryBuilder
+        .mockReturnValueOnce({
+          leftJoin: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          getCount: jest.fn().mockResolvedValue(0),
+        })
+        .mockReturnValueOnce({
+          leftJoin: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          getMany: jest.fn().mockResolvedValue([]),
+        });
       investmentTransactionsRepository.createQueryBuilder.mockReturnValue({
         where: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
@@ -401,7 +409,7 @@ describe("SecuritiesService", () => {
 
     it("throws ForbiddenException when security has investment transactions", async () => {
       securitiesRepository.findOne.mockResolvedValue({ ...mockSecurity });
-      holdingsRepository.createQueryBuilder.mockReturnValue({
+      holdingsRepository.createQueryBuilder.mockReturnValueOnce({
         leftJoin: jest.fn().mockReturnThis(),
         where: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
@@ -429,15 +437,123 @@ describe("SecuritiesService", () => {
       );
     });
 
-    it("records action history on remove", async () => {
+    it("deletes security and cleans up zero-quantity holdings", async () => {
+      const zeroHoldings = [
+        { id: "h-1", securityId: "sec-1", accountId: "acc-1", quantity: 0 },
+        { id: "h-2", securityId: "sec-1", accountId: "acc-2", quantity: 0 },
+      ];
       securitiesRepository.findOne.mockResolvedValue({ ...mockSecurity });
       securitiesRepository.remove = jest.fn().mockResolvedValue(undefined);
-      holdingsRepository.createQueryBuilder.mockReturnValue({
-        leftJoin: jest.fn().mockReturnThis(),
+      holdingsRepository.remove = jest.fn().mockResolvedValue(undefined);
+      holdingsRepository.createQueryBuilder
+        .mockReturnValueOnce({
+          leftJoin: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          getCount: jest.fn().mockResolvedValue(0),
+        })
+        .mockReturnValueOnce({
+          leftJoin: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          getMany: jest.fn().mockResolvedValue(zeroHoldings),
+        });
+      investmentTransactionsRepository.createQueryBuilder.mockReturnValue({
         where: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
         getCount: jest.fn().mockResolvedValue(0),
       });
+
+      await service.remove("user-1", "sec-1");
+
+      expect(holdingsRepository.remove).toHaveBeenCalledWith(zeroHoldings);
+      expect(securitiesRepository.remove).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "sec-1" }),
+      );
+    });
+
+    it("does not call holdingsRepository.remove when no zero-quantity holdings exist", async () => {
+      securitiesRepository.findOne.mockResolvedValue({ ...mockSecurity });
+      securitiesRepository.remove = jest.fn().mockResolvedValue(undefined);
+      holdingsRepository.remove = jest.fn().mockResolvedValue(undefined);
+      holdingsRepository.createQueryBuilder
+        .mockReturnValueOnce({
+          leftJoin: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          getCount: jest.fn().mockResolvedValue(0),
+        })
+        .mockReturnValueOnce({
+          leftJoin: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          getMany: jest.fn().mockResolvedValue([]),
+        });
+      investmentTransactionsRepository.createQueryBuilder.mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getCount: jest.fn().mockResolvedValue(0),
+      });
+
+      await service.remove("user-1", "sec-1");
+
+      expect(holdingsRepository.remove).not.toHaveBeenCalled();
+      expect(securitiesRepository.remove).toHaveBeenCalled();
+    });
+
+    it("allows deletion when only zero-quantity holdings exist (ABS threshold check)", async () => {
+      securitiesRepository.findOne.mockResolvedValue({ ...mockSecurity });
+      securitiesRepository.remove = jest.fn().mockResolvedValue(undefined);
+      holdingsRepository.remove = jest.fn().mockResolvedValue(undefined);
+      const andWhereMock = jest.fn().mockReturnThis();
+      holdingsRepository.createQueryBuilder
+        .mockReturnValueOnce({
+          leftJoin: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          andWhere: andWhereMock,
+          getCount: jest.fn().mockResolvedValue(0),
+        })
+        .mockReturnValueOnce({
+          leftJoin: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          getMany: jest.fn().mockResolvedValue([
+            { id: "h-1", securityId: "sec-1", quantity: 0.000000001 },
+          ]),
+        });
+      investmentTransactionsRepository.createQueryBuilder.mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getCount: jest.fn().mockResolvedValue(0),
+      });
+
+      await service.remove("user-1", "sec-1");
+
+      // Verify the ABS threshold filter was applied
+      expect(andWhereMock).toHaveBeenCalledWith(
+        "ABS(holding.quantity) > :threshold",
+        { threshold: 0.00000001 },
+      );
+      expect(securitiesRepository.remove).toHaveBeenCalled();
+    });
+
+    it("records action history on remove", async () => {
+      securitiesRepository.findOne.mockResolvedValue({ ...mockSecurity });
+      securitiesRepository.remove = jest.fn().mockResolvedValue(undefined);
+      holdingsRepository.remove = jest.fn().mockResolvedValue(undefined);
+      holdingsRepository.createQueryBuilder
+        .mockReturnValueOnce({
+          leftJoin: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          getCount: jest.fn().mockResolvedValue(0),
+        })
+        .mockReturnValueOnce({
+          leftJoin: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          getMany: jest.fn().mockResolvedValue([]),
+        });
       investmentTransactionsRepository.createQueryBuilder.mockReturnValue({
         where: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),

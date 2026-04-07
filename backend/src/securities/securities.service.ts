@@ -183,12 +183,14 @@ export class SecuritiesService {
   async remove(userId: string, id: string): Promise<void> {
     const security = await this.findOne(userId, id);
 
-    // Check for any holdings (including zero-quantity ones from closed accounts)
+    // Check for any holdings with non-zero quantity
+    // Using ABS() to handle potential small negative values from rounding
     const holdingsCount = await this.holdingsRepository
       .createQueryBuilder("holding")
       .leftJoin("holding.account", "account")
       .where("holding.securityId = :securityId", { securityId: id })
       .andWhere("account.userId = :userId", { userId })
+      .andWhere("ABS(holding.quantity) > :threshold", { threshold: 0.00000001 })
       .getCount();
 
     if (holdingsCount > 0) {
@@ -208,6 +210,17 @@ export class SecuritiesService {
       throw new ForbiddenException(
         "Cannot delete security that has investment transactions. Delete all related transactions first.",
       );
+    }
+
+    // Clean up any zero-quantity holding records before deleting the security
+    const zeroHoldings = await this.holdingsRepository
+      .createQueryBuilder("holding")
+      .leftJoin("holding.account", "account")
+      .where("holding.securityId = :securityId", { securityId: id })
+      .andWhere("account.userId = :userId", { userId })
+      .getMany();
+    if (zeroHoldings.length > 0) {
+      await this.holdingsRepository.remove(zeroHoldings);
     }
 
     // Security prices cascade-delete via FK constraint
