@@ -364,10 +364,23 @@ const HoldingRow = memo(function HoldingRow({
     return formatPrice(value);
   };
 
+  // Cost basis in account currency comes from the backend using historical
+  // exchange rates stored on each BUY transaction. Market value uses the
+  // current rate (shares are worth what the market says today), so the
+  // gain/loss line below it is derived from those two values — keeping the
+  // displayed rows aligned with the account total row beneath the table.
+  const marketValueAcct =
+    holding.marketValue !== null
+      ? convert(holding.marketValue, holding.currencyCode, accountCurrency)
+      : null;
+  const gainLossAcct =
+    marketValueAcct !== null
+      ? marketValueAcct - holding.costBasisAccountCurrency
+      : null;
+
   const fmtAcctConverted = (value: number | null) => {
     if (value === null || !isForeignToAccount) return null;
-    const converted = convert(value, holding.currencyCode, accountCurrency);
-    return `\u2248 ${formatCurrencyWithCode(converted, accountCurrency)} ${accountCurrency}`;
+    return `\u2248 ${formatCurrencyWithCode(value, accountCurrency)} ${accountCurrency}`;
   };
 
   return (
@@ -399,7 +412,7 @@ const HoldingRow = memo(function HoldingRow({
         <div>{fmtVal(holding.costBasis)}</div>
         {isForeignToAccount && (
           <div className="text-xs font-normal text-gray-400 dark:text-gray-500">
-            {fmtAcctConverted(holding.costBasis)}
+            {fmtAcctConverted(holding.costBasisAccountCurrency)}
           </div>
         )}
       </td>
@@ -407,7 +420,7 @@ const HoldingRow = memo(function HoldingRow({
         <div>{fmtVal(holding.marketValue)}</div>
         {isForeignToAccount && (
           <div className="text-xs font-normal text-gray-400 dark:text-gray-500">
-            {fmtAcctConverted(holding.marketValue)}
+            {fmtAcctConverted(marketValueAcct)}
           </div>
         )}
       </td>
@@ -417,7 +430,7 @@ const HoldingRow = memo(function HoldingRow({
         </div>
         {isForeignToAccount && (
           <div className="text-xs font-normal text-gray-400 dark:text-gray-500">
-            {fmtAcctConverted(holding.gainLoss)}
+            {fmtAcctConverted(gainLossAcct)}
           </div>
         )}
         <div className={`text-xs ${getGainLossColor(holding.gainLossPercent)}`}>

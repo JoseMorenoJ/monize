@@ -56,7 +56,8 @@ describe('GroupedHoldingsList', () => {
         holdings: [
           {
             id: 'h1', symbol: 'XEQT', name: 'iShares Equity', quantity: 100,
-            averageCost: 40, currentPrice: 50, costBasis: 4000, marketValue: 5000,
+            averageCost: 40, currentPrice: 50, costBasis: 4000,
+            costBasisAccountCurrency: 4000, marketValue: 5000,
             gainLoss: 1000, gainLossPercent: 25, currencyCode: 'CAD',
           },
         ],
@@ -74,7 +75,7 @@ describe('GroupedHoldingsList', () => {
         accountId: 'a1', accountName: 'RRSP', currencyCode: 'CAD',
         totalMarketValue: 5000, totalCostBasis: 4000, totalGainLoss: 1000,
         totalGainLossPercent: 25, cashBalance: 0, holdings: [
-          { id: 'h1', symbol: 'XEQT', name: 'iShares', quantity: 10, averageCost: 40, currentPrice: 50, costBasis: 400, marketValue: 500, gainLoss: 100, gainLossPercent: 25, currencyCode: 'CAD' },
+          { id: 'h1', symbol: 'XEQT', name: 'iShares', quantity: 10, averageCost: 40, currentPrice: 50, costBasis: 400, costBasisAccountCurrency: 400, marketValue: 500, gainLoss: 100, gainLossPercent: 25, currencyCode: 'CAD' },
         ],
       },
     ] as any[];
@@ -89,18 +90,23 @@ describe('GroupedHoldingsList', () => {
   });
 
   it('shows account-currency converted values for foreign securities', () => {
-    // CAD brokerage holding a USD security — cost basis, market value, and
-    // gain/loss should also be rendered in the account's currency below the
-    // primary (security currency) figure.
+    // CAD brokerage holding a USD security. Cost basis in the account's
+    // currency comes from the backend (historical exchange rates), while
+    // market value still uses the current rate since shares are worth what
+    // the market says today. Gain/loss is derived from those two values.
+    //
+    // Historical cost basis: 1000 USD was bought when rate was 1.25 -> 1250 CAD
+    // Current market rate (from mock): USD->CAD @ 1.35 -> market value 2025 CAD
+    // Gain/loss in CAD = 2025 - 1250 = 775
     const holdingsByAccount = [
       {
         accountId: 'a1',
         accountName: 'CAD Brokerage',
         currencyCode: 'CAD',
-        totalMarketValue: 1500,
-        totalCostBasis: 1000,
-        totalGainLoss: 500,
-        totalGainLossPercent: 50,
+        totalMarketValue: 2025,
+        totalCostBasis: 1250,
+        totalGainLoss: 775,
+        totalGainLossPercent: 62,
         cashBalance: 0,
         holdings: [
           {
@@ -111,6 +117,7 @@ describe('GroupedHoldingsList', () => {
             averageCost: 100,
             currentPrice: 150,
             costBasis: 1000,
+            costBasisAccountCurrency: 1250,
             marketValue: 1500,
             gainLoss: 500,
             gainLossPercent: 50,
@@ -133,16 +140,19 @@ describe('GroupedHoldingsList', () => {
     expect(screen.getByText(/USD \$1500\.00 USD/)).toBeInTheDocument(); // market value
     expect(screen.getByText(/USD \$500\.00 USD/)).toBeInTheDocument(); // gain/loss
 
-    // Converted to account currency (CAD) at 1.35 rate
+    // Cost basis uses the historical account-currency value from the backend
+    // (1250 CAD), not the current-rate conversion (which would be 1350 CAD).
     expect(
-      screen.getByText(/\u2248 CAD \$1350\.00 CAD/),
-    ).toBeInTheDocument(); // cost basis converted
+      screen.getByText(/\u2248 CAD \$1250\.00 CAD/),
+    ).toBeInTheDocument();
+    // Market value uses the current rate (1500 USD * 1.35 = 2025 CAD)
     expect(
       screen.getByText(/\u2248 CAD \$2025\.00 CAD/),
-    ).toBeInTheDocument(); // market value converted
+    ).toBeInTheDocument();
+    // Gain/loss in CAD is derived: 2025 - 1250 = 775 CAD
     expect(
-      screen.getByText(/\u2248 CAD \$675\.00 CAD/),
-    ).toBeInTheDocument(); // gain/loss converted
+      screen.getByText(/\u2248 CAD \$775\.00 CAD/),
+    ).toBeInTheDocument();
   });
 
   it('does not show converted values when security currency matches account currency', () => {
@@ -165,6 +175,7 @@ describe('GroupedHoldingsList', () => {
             averageCost: 40,
             currentPrice: 50,
             costBasis: 400,
+            costBasisAccountCurrency: 400,
             marketValue: 500,
             gainLoss: 100,
             gainLossPercent: 25,
