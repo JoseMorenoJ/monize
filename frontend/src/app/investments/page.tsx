@@ -59,13 +59,18 @@ function InvestmentsContent() {
     data.loadCashTransactionsIfNeeded(transactionView);
   }, [transactionView, data.loadCashTransactionsIfNeeded]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Reset modal-width tracking when the investment transaction modal closes,
-  // so reopening it starts at the default width without a flicker.
-  useEffect(() => {
-    if (!data.showTransactionForm) {
-      setInvestmentFormNeedsConversion(false);
-    }
-  }, [data.showTransactionForm]);
+  // Reset the modal-width tracking whenever the investment transaction modal
+  // closes (via cancel, success, escape, backdrop, or back button) so reopening
+  // it starts at the default width without a flicker.
+  const closeInvestmentTransactionModal = useCallback(() => {
+    setInvestmentFormNeedsConversion(false);
+    data.close();
+  }, [data.close]);
+
+  const handleInvestmentTransactionSuccess = useCallback(() => {
+    setInvestmentFormNeedsConversion(false);
+    data.handleFormSuccess();
+  }, [data.handleFormSuccess]);
 
   const handleTransactionViewChange = (view: TransactionViewType) => {
     setTransactionView(view);
@@ -448,7 +453,7 @@ function InvestmentsContent() {
       {/* Transaction Form Modal */}
       <Modal
         isOpen={data.showTransactionForm}
-        onClose={data.close}
+        onClose={closeInvestmentTransactionModal}
         maxWidth={investmentFormNeedsConversion ? '3xl' : 'xl'}
         className="p-6"
         {...data.modalProps}
@@ -461,8 +466,8 @@ function InvestmentsContent() {
           allAccounts={data.allAccounts}
           transaction={data.editingTransaction}
           defaultAccountId={data.getSelectedBrokerageAccountId()}
-          onSuccess={data.handleFormSuccess}
-          onCancel={data.close}
+          onSuccess={handleInvestmentTransactionSuccess}
+          onCancel={closeInvestmentTransactionModal}
           onDirtyChange={data.setFormDirty}
           onConversionStateChange={setInvestmentFormNeedsConversion}
           submitRef={data.formSubmitRef}
