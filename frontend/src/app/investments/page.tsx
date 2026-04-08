@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useCallback, useMemo } from 'react';
+import { useEffect, useCallback, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { PageLayout } from '@/components/layout/PageLayout';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -50,11 +50,22 @@ function InvestmentsContent() {
   useOnUndoRedo(handleUndoRedo);
   const [listDensity, setListDensity] = useLocalStorage<DensityLevel>('monize-investments-density', 'normal');
   const [transactionView, setTransactionView] = useLocalStorage<TransactionViewType>('monize-investments-transaction-view', 'brokerage');
+  // Tracks whether the investment transaction form currently shows a currency
+  // conversion section so the modal can be widened to fit it without scrolling.
+  const [investmentFormNeedsConversion, setInvestmentFormNeedsConversion] = useState(false);
 
   // Load cash transactions when view changes
   useEffect(() => {
     data.loadCashTransactionsIfNeeded(transactionView);
   }, [transactionView, data.loadCashTransactionsIfNeeded]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Reset modal-width tracking when the investment transaction modal closes,
+  // so reopening it starts at the default width without a flicker.
+  useEffect(() => {
+    if (!data.showTransactionForm) {
+      setInvestmentFormNeedsConversion(false);
+    }
+  }, [data.showTransactionForm]);
 
   const handleTransactionViewChange = (view: TransactionViewType) => {
     setTransactionView(view);
@@ -435,7 +446,13 @@ function InvestmentsContent() {
       </main>
 
       {/* Transaction Form Modal */}
-      <Modal isOpen={data.showTransactionForm} onClose={data.close} maxWidth="xl" className="p-6" {...data.modalProps}>
+      <Modal
+        isOpen={data.showTransactionForm}
+        onClose={data.close}
+        maxWidth={investmentFormNeedsConversion ? '3xl' : 'xl'}
+        className="p-6"
+        {...data.modalProps}
+      >
         <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">
           {data.editingTransaction ? 'Edit Transaction' : 'New Investment Transaction'}
         </h2>
@@ -447,6 +464,7 @@ function InvestmentsContent() {
           onSuccess={data.handleFormSuccess}
           onCancel={data.close}
           onDirtyChange={data.setFormDirty}
+          onConversionStateChange={setInvestmentFormNeedsConversion}
           submitRef={data.formSubmitRef}
         />
       </Modal>
