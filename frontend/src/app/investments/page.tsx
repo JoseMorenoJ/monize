@@ -62,15 +62,17 @@ function InvestmentsContent() {
   // Reset the modal-width tracking whenever the investment transaction modal
   // closes (via cancel, success, escape, backdrop, or back button) so reopening
   // it starts at the default width without a flicker.
+  const { close: closeTransactionForm, handleFormSuccess } = data;
+
   const closeInvestmentTransactionModal = useCallback(() => {
     setInvestmentFormNeedsConversion(false);
-    data.close();
-  }, [data.close]);
+    closeTransactionForm();
+  }, [closeTransactionForm]);
 
   const handleInvestmentTransactionSuccess = useCallback(() => {
     setInvestmentFormNeedsConversion(false);
-    data.handleFormSuccess();
-  }, [data.handleFormSuccess]);
+    handleFormSuccess();
+  }, [handleFormSuccess]);
 
   const handleTransactionViewChange = (view: TransactionViewType) => {
     setTransactionView(view);
