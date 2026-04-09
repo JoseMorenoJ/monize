@@ -223,7 +223,7 @@ export function BalanceHistoryChart({
 
       {/* Summary footer */}
       {summary && (
-        <div className={`mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 grid ${summary.hasFutureData ? 'grid-cols-4' : 'grid-cols-3'} gap-4 text-center`}>
+        <div className={`mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 grid ${summary.hasFutureData ? 'grid-cols-2' : 'grid-cols-3'} gap-4 text-center`}>
           <div>
             <div className="text-sm text-gray-500 dark:text-gray-400">Starting</div>
             <div
