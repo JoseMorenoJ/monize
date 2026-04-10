@@ -635,7 +635,7 @@ export class ScheduledTransactionsService {
     userId: string,
     id: string,
     postDto?: PostScheduledTransactionDto,
-  ): Promise<ScheduledTransaction> {
+  ): Promise<ScheduledTransaction | null> {
     const scheduled = await this.findOne(userId, id);
 
     const nextDueDateStr =
@@ -765,51 +765,52 @@ export class ScheduledTransactionsService {
         await queryRunner.manager.remove(storedOverride);
       }
 
-      // H10: Calculate next due date once and reuse
-      const newNextDueDate =
-        scheduled.frequency === "ONCE"
-          ? null
-          : this.calculateNextDueDate(
-              new Date(scheduled.nextDueDate),
-              scheduled.frequency,
-            );
+      if (scheduled.frequency === "ONCE") {
+        // One-time bill or deposit: remove the scheduled transaction entirely
+        // after posting so it disappears from the Bills & Deposits page.
+        // Splits and overrides are cleaned up via ON DELETE CASCADE.
+        await queryRunner.manager.delete(ScheduledTransaction, id);
 
-      if (newNextDueDate) {
-        const newNextDueDateStr = formatDateYMD(newNextDueDate);
-        await queryRunner.manager
-          .createQueryBuilder()
-          .delete()
-          .from(ScheduledTransactionOverride)
-          .where("scheduledTransactionId = :id", { id })
-          .andWhere("originalDate < :newNextDueDate", {
-            newNextDueDate: newNextDueDateStr,
-          })
-          .execute();
+        await queryRunner.commitTransaction();
+        return null;
       }
+
+      // Recurring frequency: advance nextDueDate, prune stale overrides,
+      // decrement occurrencesRemaining, deactivate if past endDate.
+      const newNextDueDate = this.calculateNextDueDate(
+        new Date(scheduled.nextDueDate),
+        scheduled.frequency,
+      );
+      const newNextDueDateStr = formatDateYMD(newNextDueDate);
+
+      await queryRunner.manager
+        .createQueryBuilder()
+        .delete()
+        .from(ScheduledTransactionOverride)
+        .where("scheduledTransactionId = :id", { id })
+        .andWhere("originalDate < :newNextDueDate", {
+          newNextDueDate: newNextDueDateStr,
+        })
+        .execute();
 
       const updateFields: Record<string, any> = {
         lastPostedDate: new Date(),
+        nextDueDate: newNextDueDateStr,
       };
 
-      if (scheduled.frequency === "ONCE") {
-        updateFields.isActive = false;
-      } else if (newNextDueDate) {
-        updateFields.nextDueDate = formatDateYMD(newNextDueDate);
-
-        if (
-          scheduled.occurrencesRemaining !== null &&
-          scheduled.occurrencesRemaining > 0
-        ) {
-          const newRemaining = scheduled.occurrencesRemaining - 1;
-          updateFields.occurrencesRemaining = newRemaining;
-          if (newRemaining === 0) {
-            updateFields.isActive = false;
-          }
-        }
-
-        if (scheduled.endDate && newNextDueDate > new Date(scheduled.endDate)) {
+      if (
+        scheduled.occurrencesRemaining !== null &&
+        scheduled.occurrencesRemaining > 0
+      ) {
+        const newRemaining = scheduled.occurrencesRemaining - 1;
+        updateFields.occurrencesRemaining = newRemaining;
+        if (newRemaining === 0) {
           updateFields.isActive = false;
         }
+      }
+
+      if (scheduled.endDate && newNextDueDate > new Date(scheduled.endDate)) {
+        updateFields.isActive = false;
       }
 
       await queryRunner.manager.update(ScheduledTransaction, id, updateFields);

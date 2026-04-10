@@ -1208,21 +1208,93 @@ describe("ScheduledTransactionsService", () => {
       );
     });
 
-    it("should deactivate ONCE frequency after posting", async () => {
+    it("should delete ONCE frequency after posting", async () => {
       const scheduled = makeScheduled({ frequency: "ONCE" });
       stubFindOne(scheduled);
       const overrideQb = mockQueryBuilder(null);
       overrideQb.getOne.mockResolvedValue(null);
       overridesRepo.createQueryBuilder.mockReturnValue(overrideQb);
       accountsRepo.findOne.mockResolvedValue(null);
+      mockQueryRunner.manager.delete = jest
+        .fn()
+        .mockResolvedValue({ affected: 1 });
+
+      const result = await service.post(userId, stId);
+
+      expect(mockQueryRunner.manager.delete).toHaveBeenCalledWith(
+        ScheduledTransaction,
+        stId,
+      );
+      expect(mockQueryRunner.manager.update).not.toHaveBeenCalled();
+      expect(mockQueryRunner.commitTransaction).toHaveBeenCalled();
+      expect(result).toBeNull();
+    });
+
+    it("should still create the underlying transaction when deleting a ONCE", async () => {
+      const scheduled = makeScheduled({ frequency: "ONCE" });
+      stubFindOne(scheduled);
+      const overrideQb = mockQueryBuilder(null);
+      overrideQb.getOne.mockResolvedValue(null);
+      overridesRepo.createQueryBuilder.mockReturnValue(overrideQb);
+      accountsRepo.findOne.mockResolvedValue(null);
+      mockQueryRunner.manager.delete = jest
+        .fn()
+        .mockResolvedValue({ affected: 1 });
 
       await service.post(userId, stId);
 
-      expect(mockQueryRunner.manager.update).toHaveBeenCalledWith(
+      expect(transactionsService.create).toHaveBeenCalledWith(
+        userId,
+        expect.objectContaining({ accountId: "acc-1", amount: -1200 }),
+      );
+    });
+
+    it("should remove a stored override before deleting a ONCE", async () => {
+      const scheduled = makeScheduled({ frequency: "ONCE" });
+      stubFindOne(scheduled);
+      const storedOverride = {
+        id: "ovr-1",
+        amount: null,
+        description: null,
+        isSplit: null,
+        categoryId: null,
+        splits: null,
+      };
+      const overrideQb = mockQueryBuilder(null);
+      overrideQb.getOne.mockResolvedValue(storedOverride);
+      overridesRepo.createQueryBuilder.mockReturnValue(overrideQb);
+      accountsRepo.findOne.mockResolvedValue(null);
+      mockQueryRunner.manager.delete = jest
+        .fn()
+        .mockResolvedValue({ affected: 1 });
+
+      await service.post(userId, stId);
+
+      expect(mockQueryRunner.manager.remove).toHaveBeenCalledWith(
+        storedOverride,
+      );
+      expect(mockQueryRunner.manager.delete).toHaveBeenCalledWith(
         ScheduledTransaction,
         stId,
-        expect.objectContaining({ isActive: false }),
       );
+    });
+
+    it("should not call findOne after deleting a ONCE (would 404)", async () => {
+      const scheduled = makeScheduled({ frequency: "ONCE" });
+      stubFindOne(scheduled);
+      const overrideQb = mockQueryBuilder(null);
+      overrideQb.getOne.mockResolvedValue(null);
+      overridesRepo.createQueryBuilder.mockReturnValue(overrideQb);
+      accountsRepo.findOne.mockResolvedValue(null);
+      mockQueryRunner.manager.delete = jest
+        .fn()
+        .mockResolvedValue({ affected: 1 });
+
+      // findOne is called once at the start of post() to load the entity.
+      // It must NOT be called a second time after the row is deleted.
+      await service.post(userId, stId);
+
+      expect(scheduledRepo.findOne).toHaveBeenCalledTimes(1);
     });
 
     it("should advance nextDueDate for recurring frequency", async () => {
