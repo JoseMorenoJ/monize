@@ -1,5 +1,6 @@
 import { OllamaProvider } from "./ollama.provider";
 import type { AiToolStreamChunk } from "./ai-provider.interface";
+import { longRunningAgent } from "./long-running-fetch";
 
 describe("OllamaProvider", () => {
   let provider: OllamaProvider;
@@ -75,6 +76,37 @@ describe("OllamaProvider", () => {
           messages: [{ role: "user", content: "hi" }],
         }),
       ).rejects.toThrow("Ollama request failed: 500 Internal Server Error");
+    });
+
+    it("passes the long-running undici dispatcher to fetch", async () => {
+      // Regression: see streamWithTools spec for context. complete() also
+      // makes a long-running fetch and must inject the same dispatcher.
+      const encoder = new TextEncoder();
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        body: {
+          getReader: () => ({
+            read: jest
+              .fn()
+              .mockResolvedValueOnce({
+                value: encoder.encode(
+                  '{"message":{"content":""},"done":true}\n',
+                ),
+                done: false,
+              })
+              .mockResolvedValueOnce({ value: undefined, done: true }),
+            releaseLock: jest.fn(),
+          }),
+        },
+      });
+
+      await provider.complete({
+        systemPrompt: "test",
+        messages: [{ role: "user", content: "hi" }],
+      });
+
+      const initArg = (global.fetch as jest.Mock).mock.calls[0][1];
+      expect(initArg.dispatcher).toBe(longRunningAgent);
     });
   });
 
@@ -426,6 +458,31 @@ describe("OllamaProvider", () => {
       expect(bodyArg).toContain('"tools"');
       expect(bodyArg).toContain('"stream":true');
       expect(bodyArg).toContain('"get_account_balances"');
+    });
+
+    it("passes the long-running undici dispatcher to fetch", async () => {
+      // Regression: Node fetch (undici) defaults bodyTimeout to 5 minutes,
+      // which kills slow CPU inference. The Ollama provider must inject the
+      // shared longRunningAgent dispatcher so the request can run for as
+      // long as the model needs to produce its first token.
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { longRunningAgent } = require("./long-running-fetch");
+
+      global.fetch = mockStreamingFetch([
+        '{"message":{"content":""},"done":true}\n',
+      ]);
+
+      const gen = provider.streamWithTools(
+        { systemPrompt: "test", messages: [{ role: "user", content: "hi" }] },
+        tools,
+      );
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      for await (const _chunk of gen) {
+        // consume
+      }
+
+      const initArg = (global.fetch as jest.Mock).mock.calls[0][1];
+      expect(initArg.dispatcher).toBe(longRunningAgent);
     });
 
     it("throws on non-ok response", async () => {

@@ -43,6 +43,19 @@ describe("OpenAiProvider", () => {
     expect(provider.supportsToolUse).toBe(true);
   });
 
+  it("constructs the SDK client with the long-running fetch wrapper", () => {
+    // Regression: the SDK uses Node fetch (undici) under the hood, which
+    // defaults bodyTimeout to 5 minutes. The provider must inject the
+    // long-running fetch wrapper so SDK calls inherit disabled timeouts.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const OpenAI = require("openai").default;
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { longRunningFetch } = require("./long-running-fetch");
+    expect(OpenAI).toHaveBeenCalledWith(
+      expect.objectContaining({ fetch: longRunningFetch }),
+    );
+  });
+
   describe("complete()", () => {
     it("returns formatted response", async () => {
       const result = await provider.complete({

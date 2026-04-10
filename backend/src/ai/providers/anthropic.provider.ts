@@ -9,6 +9,7 @@ import {
   AiToolStreamChunk,
   AiMessage,
 } from "./ai-provider.interface";
+import { longRunningFetch } from "./long-running-fetch";
 
 export class AnthropicProvider implements AiProvider {
   readonly name = "anthropic";
@@ -19,7 +20,12 @@ export class AnthropicProvider implements AiProvider {
   private readonly modelId: string;
 
   constructor(apiKey: string, model?: string) {
-    this.client = new Anthropic({ apiKey });
+    this.client = new Anthropic({
+      apiKey,
+      // Inject our long-running fetch wrapper so SDK calls inherit the
+      // disabled bodyTimeout/headersTimeout. See long-running-fetch.ts.
+      fetch: longRunningFetch,
+    });
     this.modelId = model || "claude-sonnet-4-20250514";
   }
 

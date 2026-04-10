@@ -9,6 +9,7 @@ import {
   AiMessage,
 } from "./ai-provider.interface";
 import { randomUUID } from "crypto";
+import { longRunningAgent } from "./long-running-fetch";
 
 interface OllamaToolCall {
   function: { name: string; arguments: Record<string, unknown> };
@@ -49,13 +50,15 @@ export class OllamaProvider implements AiProvider {
 
     // H14: Timeout covers both fetch and stream consumption
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10 * 60 * 1000); // 10 minutes for CPU inference
+    const timeout = setTimeout(() => controller.abort(), 20 * 60 * 1000); // 20 minutes for CPU inference
 
     try {
       const response = await fetch(`${this.baseUrl}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         signal: controller.signal,
+        // @ts-expect-error — `dispatcher` is an undici-specific option not in lib.dom types
+        dispatcher: longRunningAgent,
         body: JSON.stringify({
           model: this.modelId,
           messages,
@@ -136,13 +139,15 @@ export class OllamaProvider implements AiProvider {
 
     // H14: Timeout covers both fetch and stream consumption
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10 * 60 * 1000);
+    const timeout = setTimeout(() => controller.abort(), 20 * 60 * 1000);
 
     try {
       const response = await fetch(`${this.baseUrl}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         signal: controller.signal,
+        // @ts-expect-error — `dispatcher` is an undici-specific option not in lib.dom types
+        dispatcher: longRunningAgent,
         body: JSON.stringify({
           model: this.modelId,
           messages,
@@ -256,13 +261,15 @@ export class OllamaProvider implements AiProvider {
 
     // H14: Timeout covers both fetch and stream consumption
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15 * 60 * 1000); // 15 minutes for CPU inference
+    const timeout = setTimeout(() => controller.abort(), 20 * 60 * 1000); // 20 minutes for CPU inference
 
     try {
       const response = await fetch(`${this.baseUrl}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         signal: controller.signal,
+        // @ts-expect-error — `dispatcher` is an undici-specific option not in lib.dom types
+        dispatcher: longRunningAgent,
         body: JSON.stringify({
           model: this.modelId,
           messages,

@@ -9,6 +9,7 @@ import {
   AiToolStreamChunk,
   AiMessage,
 } from "./ai-provider.interface";
+import { longRunningFetch } from "./long-running-fetch";
 
 export class OpenAiProvider implements AiProvider {
   readonly name: string = "openai";
@@ -22,6 +23,9 @@ export class OpenAiProvider implements AiProvider {
     this.client = new OpenAI({
       apiKey,
       ...(baseUrl && { baseURL: baseUrl }),
+      // Inject our long-running fetch wrapper so SDK calls inherit the
+      // disabled bodyTimeout/headersTimeout. See long-running-fetch.ts.
+      fetch: longRunningFetch,
     });
     this.modelId = model || "gpt-4o";
   }
