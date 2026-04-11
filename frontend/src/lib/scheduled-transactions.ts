@@ -67,9 +67,11 @@ export const scheduledTransactionsApi = {
     invalidateCache('scheduled:');
   },
 
-  // Post scheduled transaction (create actual transaction and advance)
-  post: async (id: string, data?: PostScheduledTransactionData): Promise<ScheduledTransaction> => {
-    const response = await apiClient.post<ScheduledTransaction>(
+  // Post scheduled transaction (create actual transaction and advance).
+  // Returns null when the scheduled transaction was a one-time entry and was
+  // deleted as part of the post.
+  post: async (id: string, data?: PostScheduledTransactionData): Promise<ScheduledTransaction | null> => {
+    const response = await apiClient.post<ScheduledTransaction | null>(
       `/scheduled-transactions/${id}/post`,
       data || {},
     );
