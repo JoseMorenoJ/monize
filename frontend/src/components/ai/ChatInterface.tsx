@@ -12,6 +12,7 @@ interface ToolCallRecord {
   name: string;
   summary: string;
   input?: Record<string, unknown>;
+  isError?: boolean;
 }
 
 interface Message {
@@ -31,7 +32,12 @@ interface ThinkingState {
   // backend emits assistant_text deltas. Reset on each new tool_start so the
   // user sees the next "thinking" pass cleanly.
   liveText: string;
-  tools: Array<{ name: string; status: 'running' | 'done'; summary?: string }>;
+  tools: Array<{
+    name: string;
+    status: 'running' | 'done';
+    summary?: string;
+    isError?: boolean;
+  }>;
 }
 
 export function ChatInterface() {
@@ -143,26 +149,48 @@ export function ChatInterface() {
             case 'tool_result': {
               // Backfill the summary onto the most recent matching tool entry
               // (model can call the same tool multiple times in a query).
-              for (let i = toolsUsed.length - 1; i >= 0; i--) {
+              // Find the first entry (by call order) matching the name that
+              // hasn't been resolved yet — this is the call this result
+              // belongs to.
+              for (let i = 0; i < toolsUsed.length; i++) {
                 if (
                   toolsUsed[i].name === event.name &&
-                  !toolsUsed[i].summary
+                  !toolsUsed[i].summary &&
+                  toolsUsed[i].isError === undefined
                 ) {
                   toolsUsed[i] = {
                     ...toolsUsed[i],
                     summary: event.summary || '',
+                    isError: event.isError === true,
                   };
                   break;
                 }
               }
-              setThinking((prev) => ({
-                ...prev,
-                tools: prev.tools.map((t) =>
-                  t.name === event.name
-                    ? { ...t, status: 'done', summary: event.summary }
-                    : t,
-                ),
-              }));
+              setThinking((prev) => {
+                // Update only the first still-running tool with this name so
+                // repeated calls to the same tool don't overwrite each
+                // other's pass/fail state.
+                let updated = false;
+                return {
+                  ...prev,
+                  tools: prev.tools.map((t) => {
+                    if (
+                      !updated &&
+                      t.name === event.name &&
+                      t.status === 'running'
+                    ) {
+                      updated = true;
+                      return {
+                        ...t,
+                        status: 'done',
+                        summary: event.summary,
+                        isError: event.isError === true,
+                      };
+                    }
+                    return t;
+                  }),
+                };
+              });
               break;
             }
 
@@ -381,6 +409,20 @@ export function ChatInterface() {
                                   className="opacity-75"
                                   fill="currentColor"
                                   d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                                />
+                              </svg>
+                            ) : tool.isError ? (
+                              <svg
+                                className="w-3 h-3 text-red-500"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                strokeWidth={2}
+                                stroke="currentColor"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M6 18L18 6M6 6l12 12"
                                 />
                               </svg>
                             ) : (

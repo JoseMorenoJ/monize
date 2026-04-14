@@ -89,7 +89,7 @@ describe("FINANCIAL_TOOLS", () => {
         string,
         Record<string, unknown>
       >;
-      expect(props.topN.type).toBe("number");
+      expect(props.topN.type).toBe("integer");
     });
   });
 

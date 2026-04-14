@@ -9,6 +9,54 @@ import { z } from "zod";
 
 const isoDateRegex = /^\d{4}-\d{2}-\d{2}$/;
 
+/**
+ * Direction normalization. The model often sends variants of the same concept
+ * (e.g. "expense" vs "expenses", "all" vs "both"). Normalize these at the
+ * schema boundary so the tool executor gets a consistent canonical value and
+ * the user doesn't see a failed-tool-call for a cosmetic difference.
+ *
+ * Canonical values: "expenses" | "income" | "both"
+ */
+const directionSchema = z.preprocess(
+  (val) => {
+    if (typeof val !== "string") return val;
+    const normalized = val.toLowerCase().trim();
+    // Aliases the model tends to produce.
+    const aliases: Record<string, string> = {
+      expense: "expenses",
+      expenditure: "expenses",
+      expenditures: "expenses",
+      spending: "expenses",
+      out: "expenses",
+      outgoing: "expenses",
+      debit: "expenses",
+      debits: "expenses",
+      earnings: "income",
+      revenue: "income",
+      in: "income",
+      incoming: "income",
+      credit: "income",
+      credits: "income",
+      all: "both",
+      any: "both",
+    };
+    return aliases[normalized] ?? normalized;
+  },
+  z.enum(["expenses", "income", "both"]),
+);
+
+/**
+ * Integer coercion from string. The model sometimes sends topN as "5" or even
+ * "all" (which should be omitted). We coerce clean numeric strings and let
+ * non-numeric values fail validation so the model gets a clear error.
+ */
+const positiveIntSchema = (min: number, max: number) =>
+  z.preprocess(
+    (val) =>
+      typeof val === "string" && /^-?\d+$/.test(val) ? Number(val) : val,
+    z.number().int().min(min).max(max),
+  );
+
 export const queryTransactionsSchema = z.object({
   startDate: z.string().regex(isoDateRegex, "Expected YYYY-MM-DD"),
   endDate: z.string().regex(isoDateRegex, "Expected YYYY-MM-DD"),
@@ -16,7 +64,7 @@ export const queryTransactionsSchema = z.object({
   accountNames: z.array(z.string().max(100)).optional(),
   searchText: z.string().max(200).optional(),
   groupBy: z.enum(["category", "payee", "month", "week"]).optional(),
-  direction: z.enum(["income", "expense", "both"]).optional(),
+  direction: directionSchema.optional(),
 });
 
 export const getAccountBalancesSchema = z.object({
@@ -26,7 +74,7 @@ export const getAccountBalancesSchema = z.object({
 export const getSpendingByCategorySchema = z.object({
   startDate: z.string().regex(isoDateRegex, "Expected YYYY-MM-DD"),
   endDate: z.string().regex(isoDateRegex, "Expected YYYY-MM-DD"),
-  topN: z.number().int().min(1).max(50).optional(),
+  topN: positiveIntSchema(1, 50).optional(),
 });
 
 export const getIncomeSummarySchema = z.object({
@@ -46,7 +94,7 @@ export const comparePeriodsSchema = z.object({
   period2Start: z.string().regex(isoDateRegex, "Expected YYYY-MM-DD"),
   period2End: z.string().regex(isoDateRegex, "Expected YYYY-MM-DD"),
   groupBy: z.enum(["category", "payee"]).optional(),
-  direction: z.enum(["expenses", "income", "all"]).optional(),
+  direction: directionSchema.optional(),
 });
 
 export const getBudgetStatusSchema = z.object({

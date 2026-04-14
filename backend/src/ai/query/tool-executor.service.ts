@@ -28,6 +28,7 @@ interface ToolResult {
   data: unknown;
   summary: string;
   sources: Array<{ type: string; description: string; dateRange?: string }>;
+  isError?: boolean;
 }
 
 @Injectable()
@@ -68,6 +69,7 @@ export class ToolExecutorService {
         data: { error: validation.error },
         summary: `Invalid input for ${toolName}: ${validation.error}`,
         sources: [],
+        isError: true,
       };
     }
     const validatedInput = validation.data;
@@ -123,6 +125,7 @@ export class ToolExecutorService {
         data: { error: "An error occurred while retrieving data." },
         summary: `Error executing ${toolName}: unable to retrieve data.`,
         sources: [],
+        isError: true,
       };
     }
   }

@@ -93,7 +93,7 @@ describe("tool-input-schemas", () => {
         accountNames: ["Checking"],
         searchText: "walmart",
         groupBy: "category",
-        direction: "expense",
+        direction: "expenses",
       });
 
       expect(result.success).toBe(true);
@@ -109,14 +109,39 @@ describe("tool-input-schemas", () => {
       expect(result.success).toBe(false);
     });
 
-    it("rejects invalid direction enum value", () => {
+    it("rejects truly unknown direction enum value", () => {
       const result = queryTransactionsSchema.safeParse({
         startDate: "2026-01-01",
         endDate: "2026-01-31",
-        direction: "credit",
+        direction: "sideways",
       });
 
       expect(result.success).toBe(false);
+    });
+
+    it("normalizes common direction aliases to canonical values", () => {
+      const cases: Array<[string, "expenses" | "income" | "both"]> = [
+        ["expense", "expenses"],
+        ["spending", "expenses"],
+        ["debit", "expenses"],
+        ["EXPENSES", "expenses"],
+        ["earnings", "income"],
+        ["revenue", "income"],
+        ["credit", "income"],
+        ["all", "both"],
+        ["any", "both"],
+      ];
+      for (const [input, expected] of cases) {
+        const result = queryTransactionsSchema.safeParse({
+          startDate: "2026-01-01",
+          endDate: "2026-01-31",
+          direction: input,
+        });
+        expect(result.success).toBe(true);
+        if (result.success) {
+          expect(result.data.direction).toBe(expected);
+        }
+      }
     });
   });
 
@@ -173,6 +198,27 @@ describe("tool-input-schemas", () => {
         startDate: "2026-01-01",
         endDate: "2026-01-31",
         topN: 0,
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("coerces numeric string topN to integer", () => {
+      const result = getSpendingByCategorySchema.safeParse({
+        startDate: "2026-01-01",
+        endDate: "2026-01-31",
+        topN: "10",
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.topN).toBe(10);
+      }
+    });
+
+    it("rejects non-numeric string topN like 'all'", () => {
+      const result = getSpendingByCategorySchema.safeParse({
+        startDate: "2026-01-01",
+        endDate: "2026-01-31",
+        topN: "all",
       });
       expect(result.success).toBe(false);
     });

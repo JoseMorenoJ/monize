@@ -41,7 +41,7 @@ export const FINANCIAL_TOOLS: AiToolDefinition[] = [
           type: "string",
           enum: ["expenses", "income", "both"],
           description:
-            "Filter by direction: 'expenses' for negative amounts, 'income' for positive, 'both' for all. Default: both.",
+            "Filter by direction. Must be EXACTLY one of: 'expenses' (outflows/spending), 'income' (inflows/earnings), or 'both' (default). Do not use 'expense', 'all', 'debit', or any variation.",
         },
       },
       required: ["startDate", "endDate"],
@@ -78,8 +78,11 @@ export const FINANCIAL_TOOLS: AiToolDefinition[] = [
           description: "End date (YYYY-MM-DD)",
         },
         topN: {
-          type: "number",
-          description: "Limit to top N categories by amount (default: all)",
+          type: "integer",
+          minimum: 1,
+          maximum: 50,
+          description:
+            'Optional integer between 1 and 50 to limit to the top N categories by amount. MUST be a number like 10 (not a string like "10" or "all"). Omit this field entirely to get all categories.',
         },
       },
       required: ["startDate", "endDate"],
@@ -158,7 +161,8 @@ export const FINANCIAL_TOOLS: AiToolDefinition[] = [
         direction: {
           type: "string",
           enum: ["expenses", "income", "both"],
-          description: "Filter by direction (default: expenses)",
+          description:
+            "Filter by direction. Must be EXACTLY one of: 'expenses' (default), 'income', or 'both'. Do not use 'expense', 'all', or any variation.",
         },
       },
       required: ["period1Start", "period1End", "period2Start", "period2End"],

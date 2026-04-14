@@ -6,6 +6,7 @@ interface ToolInfo {
   name: string;
   summary: string;
   input?: Record<string, unknown>;
+  isError?: boolean;
 }
 
 interface SourceInfo {
@@ -39,30 +40,64 @@ function ToolDetails({ tool }: { tool: ToolInfo }) {
   const hasInput = tool.input && Object.keys(tool.input).length > 0;
   const hasSummary = !!tool.summary;
   const hasDetails = hasInput || hasSummary;
+  const isError = !!tool.isError;
+
+  const containerClasses = isError
+    ? 'rounded-lg border border-red-200 dark:border-red-900/50 bg-red-50/60 dark:bg-red-900/20 overflow-hidden'
+    : 'rounded-lg border border-blue-100 dark:border-blue-900/50 bg-blue-50/60 dark:bg-blue-900/20 overflow-hidden';
+  const buttonClasses = isError
+    ? 'w-full flex items-center justify-between gap-2 px-2.5 py-1.5 text-left text-xs text-red-700 dark:text-red-300 hover:bg-red-100/60 dark:hover:bg-red-900/30 disabled:cursor-default disabled:hover:bg-transparent transition-colors'
+    : 'w-full flex items-center justify-between gap-2 px-2.5 py-1.5 text-left text-xs text-blue-700 dark:text-blue-300 hover:bg-blue-100/60 dark:hover:bg-blue-900/30 disabled:cursor-default disabled:hover:bg-transparent transition-colors';
+  const detailsClasses = isError
+    ? 'border-t border-red-200 dark:border-red-900/50 px-2.5 py-2 space-y-2 bg-white/40 dark:bg-black/20'
+    : 'border-t border-blue-100 dark:border-blue-900/50 px-2.5 py-2 space-y-2 bg-white/40 dark:bg-black/20';
+  const labelClasses = isError
+    ? 'text-[10px] uppercase tracking-wide text-red-600 dark:text-red-400 font-semibold mb-0.5'
+    : 'text-[10px] uppercase tracking-wide text-blue-600 dark:text-blue-400 font-semibold mb-0.5';
 
   return (
-    <div className="rounded-lg border border-blue-100 dark:border-blue-900/50 bg-blue-50/60 dark:bg-blue-900/20 overflow-hidden">
+    <div className={containerClasses}>
       <button
         type="button"
         onClick={() => hasDetails && setExpanded((v) => !v)}
         disabled={!hasDetails}
         aria-expanded={expanded}
-        className="w-full flex items-center justify-between gap-2 px-2.5 py-1.5 text-left text-xs text-blue-700 dark:text-blue-300 hover:bg-blue-100/60 dark:hover:bg-blue-900/30 disabled:cursor-default disabled:hover:bg-transparent transition-colors"
+        className={buttonClasses}
       >
         <span className="flex items-center gap-1.5 min-w-0">
-          <svg
-            className="w-3 h-3 flex-shrink-0"
-            fill="none"
-            viewBox="0 0 24 24"
-            strokeWidth={2}
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M4.5 12.75l6 6 9-13.5"
-            />
-          </svg>
+          {isError ? (
+            <svg
+              className="w-3 h-3 flex-shrink-0"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={2}
+              stroke="currentColor"
+              aria-label="Tool failed"
+              role="img"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M6 18L18 6M6 6l12 12"
+              />
+            </svg>
+          ) : (
+            <svg
+              className="w-3 h-3 flex-shrink-0"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={2}
+              stroke="currentColor"
+              aria-label="Tool succeeded"
+              role="img"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M4.5 12.75l6 6 9-13.5"
+              />
+            </svg>
+          )}
           <span className="font-medium truncate">{label}</span>
         </span>
         {hasDetails && (
@@ -82,12 +117,10 @@ function ToolDetails({ tool }: { tool: ToolInfo }) {
         )}
       </button>
       {expanded && hasDetails && (
-        <div className="border-t border-blue-100 dark:border-blue-900/50 px-2.5 py-2 space-y-2 bg-white/40 dark:bg-black/20">
+        <div className={detailsClasses}>
           {hasInput && (
             <div>
-              <div className="text-[10px] uppercase tracking-wide text-blue-600 dark:text-blue-400 font-semibold mb-0.5">
-                Input
-              </div>
+              <div className={labelClasses}>Input</div>
               <pre className="text-[11px] text-gray-700 dark:text-gray-200 whitespace-pre-wrap break-words font-mono">
                 {JSON.stringify(tool.input, null, 2)}
               </pre>
@@ -95,9 +128,7 @@ function ToolDetails({ tool }: { tool: ToolInfo }) {
           )}
           {hasSummary && (
             <div>
-              <div className="text-[10px] uppercase tracking-wide text-blue-600 dark:text-blue-400 font-semibold mb-0.5">
-                Result
-              </div>
+              <div className={labelClasses}>Result</div>
               <p className="text-[11px] text-gray-700 dark:text-gray-200 whitespace-pre-wrap break-words">
                 {tool.summary}
               </p>

@@ -402,6 +402,7 @@ export class AiQueryService {
           type: "tool_result",
           name: toolCall.name,
           summary: result.summary,
+          isError: result.isError === true,
         };
 
         // Add tool result message with sanitized string values

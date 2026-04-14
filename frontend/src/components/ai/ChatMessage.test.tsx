@@ -114,6 +114,39 @@ describe('ChatMessage', () => {
       expect(screen.getByText('unknown_tool')).toBeInTheDocument();
     });
 
+    it('shows a success checkmark by default', () => {
+      render(
+        <ChatMessage
+          role="assistant"
+          content="ok"
+          toolsUsed={[{ name: 'query_transactions', summary: 'Found 1' }]}
+        />,
+      );
+      expect(screen.getByLabelText('Tool succeeded')).toBeInTheDocument();
+      expect(screen.queryByLabelText('Tool failed')).not.toBeInTheDocument();
+    });
+
+    it('shows a red X and red-themed container when the tool errored', () => {
+      const { container } = render(
+        <ChatMessage
+          role="assistant"
+          content="ok"
+          toolsUsed={[
+            {
+              name: 'query_transactions',
+              summary: 'Invalid input for query_transactions: ...',
+              isError: true,
+            },
+          ]}
+        />,
+      );
+      expect(screen.getByLabelText('Tool failed')).toBeInTheDocument();
+      expect(screen.queryByLabelText('Tool succeeded')).not.toBeInTheDocument();
+      // The surrounding container uses the red theme.
+      const errored = container.querySelector('.border-red-200');
+      expect(errored).not.toBeNull();
+    });
+
     it('renders all known tool labels correctly', () => {
       const tools = [
         { name: 'query_transactions', expected: 'Transactions' },
