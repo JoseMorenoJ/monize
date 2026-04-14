@@ -149,10 +149,14 @@ export function ChatInterface() {
             case 'tool_result': {
               // Backfill the summary onto the most recent matching tool entry
               // (model can call the same tool multiple times in a query).
-              for (let i = toolsUsed.length - 1; i >= 0; i--) {
+              // Find the first entry (by call order) matching the name that
+              // hasn't been resolved yet — this is the call this result
+              // belongs to.
+              for (let i = 0; i < toolsUsed.length; i++) {
                 if (
                   toolsUsed[i].name === event.name &&
-                  !toolsUsed[i].summary
+                  !toolsUsed[i].summary &&
+                  toolsUsed[i].isError === undefined
                 ) {
                   toolsUsed[i] = {
                     ...toolsUsed[i],
@@ -162,19 +166,31 @@ export function ChatInterface() {
                   break;
                 }
               }
-              setThinking((prev) => ({
-                ...prev,
-                tools: prev.tools.map((t) =>
-                  t.name === event.name
-                    ? {
+              setThinking((prev) => {
+                // Update only the first still-running tool with this name so
+                // repeated calls to the same tool don't overwrite each
+                // other's pass/fail state.
+                let updated = false;
+                return {
+                  ...prev,
+                  tools: prev.tools.map((t) => {
+                    if (
+                      !updated &&
+                      t.name === event.name &&
+                      t.status === 'running'
+                    ) {
+                      updated = true;
+                      return {
                         ...t,
                         status: 'done',
                         summary: event.summary,
                         isError: event.isError === true,
-                      }
-                    : t,
-                ),
-              }));
+                      };
+                    }
+                    return t;
+                  }),
+                };
+              });
               break;
             }
 
