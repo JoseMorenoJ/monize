@@ -147,6 +147,7 @@ export class AiService {
       config: dto.config || {},
       inputCostPer1M: dto.inputCostPer1M ?? null,
       outputCostPer1M: dto.outputCostPer1M ?? null,
+      costCurrency: dto.costCurrency || "USD",
       isActive: true,
     });
 
@@ -187,6 +188,7 @@ export class AiService {
       config.inputCostPer1M = dto.inputCostPer1M;
     if (dto.outputCostPer1M !== undefined)
       config.outputCostPer1M = dto.outputCostPer1M;
+    if (dto.costCurrency !== undefined) config.costCurrency = dto.costCurrency;
 
     if (dto.apiKey !== undefined) {
       if (dto.apiKey) {
@@ -409,6 +411,7 @@ export class AiService {
       config: config.config,
       inputCostPer1M: config.inputCostPer1M,
       outputCostPer1M: config.outputCostPer1M,
+      costCurrency: config.costCurrency ?? "USD",
       createdAt: config.createdAt.toISOString(),
       updatedAt: config.updatedAt.toISOString(),
     };

@@ -12,6 +12,7 @@ export interface AiProviderConfig {
   config: Record<string, unknown>;
   inputCostPer1M: number | null;
   outputCostPer1M: number | null;
+  costCurrency: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -26,6 +27,7 @@ export interface CreateAiProviderConfig {
   config?: Record<string, unknown>;
   inputCostPer1M?: number | null;
   outputCostPer1M?: number | null;
+  costCurrency?: string;
 }
 
 export interface UpdateAiProviderConfig {
@@ -38,26 +40,33 @@ export interface UpdateAiProviderConfig {
   config?: Record<string, unknown>;
   inputCostPer1M?: number | null;
   outputCostPer1M?: number | null;
+  costCurrency?: string;
 }
+
+/**
+ * Aggregated estimated cost keyed by ISO 4217 currency code.
+ * Empty when no configured rates match any logs.
+ */
+export type EstimatedCostByCurrency = Record<string, number>;
 
 export interface AiUsageSummary {
   totalRequests: number;
   totalInputTokens: number;
   totalOutputTokens: number;
-  totalEstimatedCost: number | null;
+  totalEstimatedCostByCurrency: EstimatedCostByCurrency;
   byProvider: Array<{
     provider: string;
     requests: number;
     inputTokens: number;
     outputTokens: number;
-    estimatedCost: number | null;
+    estimatedCostByCurrency: EstimatedCostByCurrency;
   }>;
   byFeature: Array<{
     feature: string;
     requests: number;
     inputTokens: number;
     outputTokens: number;
-    estimatedCost: number | null;
+    estimatedCostByCurrency: EstimatedCostByCurrency;
   }>;
   recentLogs: Array<{
     id: string;
@@ -68,6 +77,7 @@ export interface AiUsageSummary {
     outputTokens: number;
     durationMs: number;
     estimatedCost: number | null;
+    costCurrency: string | null;
     createdAt: string;
   }>;
 }

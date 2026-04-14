@@ -666,6 +666,7 @@ CREATE TABLE ai_provider_configs (
     config JSONB DEFAULT '{}',           -- Provider-specific settings (temperature, maxTokens, etc.)
     input_cost_per_1m NUMERIC(12, 4),    -- User-defined input cost per 1M tokens (for usage cost estimation)
     output_cost_per_1m NUMERIC(12, 4),   -- User-defined output cost per 1M tokens (for usage cost estimation)
+    cost_currency VARCHAR(3) NOT NULL DEFAULT 'USD', -- ISO 4217 currency of the cost rates
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(user_id, provider, priority)

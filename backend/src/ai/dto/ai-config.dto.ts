@@ -6,6 +6,7 @@ import {
   IsIn,
   IsObject,
   IsNumber,
+  Matches,
   MaxLength,
   Min,
   Max,
@@ -106,6 +107,18 @@ export class CreateAiConfigDto {
   @Min(0)
   @Max(1000000)
   outputCostPer1M?: number | null;
+
+  @ApiPropertyOptional({
+    example: "USD",
+    description:
+      "ISO 4217 currency code for the cost rates (e.g. USD, EUR). Defaults to USD.",
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(/^[A-Z]{3}$/, {
+    message: "costCurrency must be a 3-letter ISO 4217 currency code",
+  })
+  costCurrency?: string;
 }
 
 export class UpdateAiConfigDto {
@@ -193,4 +206,16 @@ export class UpdateAiConfigDto {
   @Min(0)
   @Max(1000000)
   outputCostPer1M?: number | null;
+
+  @ApiPropertyOptional({
+    example: "USD",
+    description:
+      "ISO 4217 currency code for the cost rates (e.g. USD, EUR).",
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(/^[A-Z]{3}$/, {
+    message: "costCurrency must be a 3-letter ISO 4217 currency code",
+  })
+  costCurrency?: string;
 }

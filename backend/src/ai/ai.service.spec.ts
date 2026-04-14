@@ -36,6 +36,7 @@ describe("AiService", () => {
     config.config = {};
     config.inputCostPer1M = null;
     config.outputCostPer1M = null;
+    config.costCurrency = "USD";
     config.createdAt = new Date("2024-01-01");
     config.updatedAt = new Date("2024-01-01");
     Object.assign(config, overrides);

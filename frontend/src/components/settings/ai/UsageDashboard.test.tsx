@@ -1,7 +1,32 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@/test/render';
-import { UsageDashboard } from './UsageDashboard';
 import type { AiUsageSummary, AiProviderConfig } from '@/types/ai';
+
+// Mock the stores/hooks the dashboard reads for currency conversion.
+// By default the user's home currency is USD and conversion is 1:1, so the
+// tests that don't care about conversion behave the same as before.
+let mockHomeCurrency = 'USD';
+vi.mock('@/store/preferencesStore', () => ({
+  usePreferencesStore: (selector: (state: unknown) => unknown) =>
+    selector({ preferences: { defaultCurrency: mockHomeCurrency } }),
+}));
+
+vi.mock('@/hooks/useExchangeRates', () => ({
+  useExchangeRates: () => ({
+    convert: (amount: number, from: string, to?: string) => {
+      if (!to || from === to) return amount;
+      // Simple fake rate: EUR->USD = 1.1.
+      if (from === 'EUR' && to === 'USD') return amount * 1.1;
+      if (from === 'USD' && to === 'EUR') return amount / 1.1;
+      return amount;
+    },
+    defaultCurrency: mockHomeCurrency,
+  }),
+}));
+
+// Import after mocks are registered.
+// eslint-disable-next-line import/first
+import { UsageDashboard } from './UsageDashboard';
 
 const noConfigs: AiProviderConfig[] = [];
 
@@ -18,6 +43,7 @@ function makeConfig(overrides: Partial<AiProviderConfig> = {}): AiProviderConfig
     config: {},
     inputCostPer1M: null,
     outputCostPer1M: null,
+    costCurrency: 'USD',
     createdAt: '2024-01-01T00:00:00.000Z',
     updatedAt: '2024-01-01T00:00:00.000Z',
     ...overrides,
@@ -28,7 +54,7 @@ const emptyUsage: AiUsageSummary = {
   totalRequests: 0,
   totalInputTokens: 0,
   totalOutputTokens: 0,
-  totalEstimatedCost: null,
+  totalEstimatedCostByCurrency: {},
   byProvider: [],
   byFeature: [],
   recentLogs: [],
@@ -38,13 +64,31 @@ const populatedUsage: AiUsageSummary = {
   totalRequests: 42,
   totalInputTokens: 5000,
   totalOutputTokens: 2500,
-  totalEstimatedCost: 12.34,
+  totalEstimatedCostByCurrency: { USD: 12.34 },
   byProvider: [
-    { provider: 'anthropic', requests: 30, inputTokens: 3500, outputTokens: 1800, estimatedCost: 10 },
-    { provider: 'openai', requests: 12, inputTokens: 1500, outputTokens: 700, estimatedCost: 2.34 },
+    {
+      provider: 'anthropic',
+      requests: 30,
+      inputTokens: 3500,
+      outputTokens: 1800,
+      estimatedCostByCurrency: { USD: 10 },
+    },
+    {
+      provider: 'openai',
+      requests: 12,
+      inputTokens: 1500,
+      outputTokens: 700,
+      estimatedCostByCurrency: { USD: 2.34 },
+    },
   ],
   byFeature: [
-    { feature: 'categorize', requests: 25, inputTokens: 3000, outputTokens: 1500, estimatedCost: 8.5 },
+    {
+      feature: 'categorize',
+      requests: 25,
+      inputTokens: 3000,
+      outputTokens: 1500,
+      estimatedCostByCurrency: { USD: 8.5 },
+    },
   ],
   recentLogs: [
     {
@@ -56,6 +100,7 @@ const populatedUsage: AiUsageSummary = {
       outputTokens: 50,
       durationMs: 1200,
       estimatedCost: 0.0012,
+      costCurrency: 'USD',
       createdAt: '2024-06-15T12:00:00.000Z',
     },
   ],
@@ -66,6 +111,7 @@ describe('UsageDashboard', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockHomeCurrency = 'USD';
   });
 
   it('renders summary cards', () => {
@@ -107,9 +153,7 @@ describe('UsageDashboard', () => {
       }),
     ];
     render(<UsageDashboard usage={populatedUsage} configs={configs} onPeriodChange={onPeriodChange} />);
-    // By-provider row uses the single-config display name.
     expect(screen.getAllByText('My Claude API').length).toBeGreaterThanOrEqual(1);
-    // Unconfigured provider still falls back to the friendly label.
     expect(screen.getByText('OpenAI (GPT)')).toBeInTheDocument();
   });
 
@@ -119,9 +163,7 @@ describe('UsageDashboard', () => {
       makeConfig({ id: 'c-2', provider: 'anthropic', model: 'claude-haiku-4-20250414', displayName: 'Claude Haiku' }),
     ];
     render(<UsageDashboard usage={populatedUsage} configs={configs} onPeriodChange={onPeriodChange} />);
-    // By-provider row uses the fallback label since there are two anthropic configs.
     expect(screen.getAllByText('Anthropic (Claude)').length).toBeGreaterThanOrEqual(1);
-    // Recent Activity row matches (provider, model) exactly, so it uses the specific config's name.
     expect(screen.getByText('Claude Sonnet')).toBeInTheDocument();
   });
 
@@ -139,7 +181,8 @@ describe('UsageDashboard', () => {
 
   it('shows estimated cost in summary card', () => {
     render(<UsageDashboard usage={populatedUsage} configs={noConfigs} onPeriodChange={onPeriodChange} />);
-    expect(screen.getByText('Est. Cost')).toBeInTheDocument();
+    // "Est. Cost" appears in the summary card and in each table header, so assert at least one exists.
+    expect(screen.getAllByText('Est. Cost').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('$12.34')).toBeInTheDocument();
   });
 
@@ -151,5 +194,36 @@ describe('UsageDashboard', () => {
   it('does not show provider table when empty', () => {
     render(<UsageDashboard usage={emptyUsage} configs={noConfigs} onPeriodChange={onPeriodChange} />);
     expect(screen.queryByText('By Provider')).not.toBeInTheDocument();
+  });
+
+  it('does not show the currency toggle when all costs are in the home currency', () => {
+    render(<UsageDashboard usage={populatedUsage} configs={noConfigs} onPeriodChange={onPeriodChange} />);
+    expect(screen.queryByText(/In provider currency/i)).not.toBeInTheDocument();
+  });
+
+  it('shows the currency toggle and switches between home and provider currency', () => {
+    const foreignUsage: AiUsageSummary = {
+      ...populatedUsage,
+      totalEstimatedCostByCurrency: { EUR: 10 },
+      byProvider: [
+        {
+          provider: 'anthropic',
+          requests: 30,
+          inputTokens: 3500,
+          outputTokens: 1800,
+          estimatedCostByCurrency: { EUR: 10 },
+        },
+      ],
+      recentLogs: [],
+    };
+    render(<UsageDashboard usage={foreignUsage} configs={noConfigs} onPeriodChange={onPeriodChange} />);
+
+    // Home currency (USD) mode is the default: EUR 10 -> USD 11 via the fake rate.
+    // Appears in both the summary card and the byProvider row.
+    expect(screen.getAllByText('$11.00').length).toBeGreaterThanOrEqual(1);
+
+    // Switch to provider currency and assert euros now show up.
+    fireEvent.click(screen.getByText('In provider currency'));
+    expect(screen.getAllByText(/€\s?10\.00/).length).toBeGreaterThanOrEqual(1);
   });
 });

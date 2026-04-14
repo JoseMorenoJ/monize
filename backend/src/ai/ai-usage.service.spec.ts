@@ -116,7 +116,7 @@ describe("AiUsageService", () => {
         totalRequests: 0,
         totalInputTokens: 0,
         totalOutputTokens: 0,
-        totalEstimatedCost: null,
+        totalEstimatedCostByCurrency: {},
         byProvider: [],
         byFeature: [],
         recentLogs: [],
@@ -154,6 +154,7 @@ describe("AiUsageService", () => {
         outputTokens: 50,
         durationMs: 1200,
         estimatedCost: null,
+        costCurrency: null,
         createdAt: "2024-06-15T12:00:00.000Z",
       });
     });
@@ -190,14 +191,14 @@ describe("AiUsageService", () => {
       expect(summary.totalRequests).toBe(5);
       expect(summary.totalInputTokens).toBe(500);
       expect(summary.totalOutputTokens).toBe(250);
-      expect(summary.totalEstimatedCost).toBeNull();
+      expect(summary.totalEstimatedCostByCurrency).toEqual({});
       expect(summary.byProvider).toEqual([
         {
           provider: "anthropic",
           requests: 5,
           inputTokens: 500,
           outputTokens: 250,
-          estimatedCost: null,
+          estimatedCostByCurrency: {},
         },
       ]);
       expect(summary.byFeature).toEqual([
@@ -206,7 +207,7 @@ describe("AiUsageService", () => {
           requests: 3,
           inputTokens: 300,
           outputTokens: 150,
-          estimatedCost: null,
+          estimatedCostByCurrency: {},
         },
       ]);
     });
@@ -219,6 +220,7 @@ describe("AiUsageService", () => {
           model: "claude-sonnet-4-20250514",
           inputCostPer1M: 3,
           outputCostPer1M: 15,
+          costCurrency: "USD",
         },
       ]);
       mockQueryBuilder.getRawMany
@@ -253,18 +255,69 @@ describe("AiUsageService", () => {
 
       const summary = await service.getUsageSummary("user-1");
 
-      expect(summary.totalEstimatedCost).toBe(10.5);
-      expect(summary.byProvider[0].estimatedCost).toBe(10.5);
+      expect(summary.totalEstimatedCostByCurrency).toEqual({ USD: 10.5 });
+      expect(summary.byProvider[0].estimatedCostByCurrency).toEqual({
+        USD: 10.5,
+      });
       expect(summary.recentLogs[0].estimatedCost).toBe(10.5);
+      expect(summary.recentLogs[0].costCurrency).toBe("USD");
     });
 
-    it("returns null cost when provider/model has no configured rate", async () => {
+    it("buckets estimated cost by configured rate currency", async () => {
+      // Two configs with different billing currencies -- costs should not merge.
+      mockConfigRepository.find.mockResolvedValueOnce([
+        {
+          provider: "anthropic",
+          model: "claude-sonnet-4-20250514",
+          inputCostPer1M: 3,
+          outputCostPer1M: 15,
+          costCurrency: "USD",
+        },
+        {
+          provider: "openai",
+          model: "gpt-4o",
+          inputCostPer1M: 2,
+          outputCostPer1M: 8,
+          costCurrency: "EUR",
+        },
+      ]);
+      mockQueryBuilder.getRawMany
+        .mockResolvedValueOnce([
+          {
+            provider: "anthropic",
+            model: "claude-sonnet-4-20250514",
+            requests: "1",
+            // 1M input * $3 + 0 = $3
+            inputTokens: "1000000",
+            outputTokens: "0",
+          },
+          {
+            provider: "openai",
+            model: "gpt-4o",
+            requests: "1",
+            // 1M input * €2 + 0 = €2
+            inputTokens: "1000000",
+            outputTokens: "0",
+          },
+        ])
+        .mockResolvedValueOnce([]);
+
+      const summary = await service.getUsageSummary("user-1");
+
+      expect(summary.totalEstimatedCostByCurrency).toEqual({
+        USD: 3,
+        EUR: 2,
+      });
+    });
+
+    it("returns empty bucket when provider/model has no configured rate", async () => {
       mockConfigRepository.find.mockResolvedValueOnce([
         {
           provider: "anthropic",
           model: "claude-opus-4-20250514",
           inputCostPer1M: 15,
           outputCostPer1M: 75,
+          costCurrency: "USD",
         },
       ]);
       // Log uses a different model than the configured one -- no match, no cost.
@@ -282,8 +335,8 @@ describe("AiUsageService", () => {
 
       const summary = await service.getUsageSummary("user-1");
 
-      expect(summary.totalEstimatedCost).toBeNull();
-      expect(summary.byProvider[0].estimatedCost).toBeNull();
+      expect(summary.totalEstimatedCostByCurrency).toEqual({});
+      expect(summary.byProvider[0].estimatedCostByCurrency).toEqual({});
     });
   });
 

@@ -231,6 +231,18 @@ describe("CreateAiConfigDto", () => {
     const errors = await validate(dto);
     expect(errors).toHaveLength(0);
   });
+
+  it("accepts a valid ISO 4217 cost currency", async () => {
+    const dto = createDto({ provider: "anthropic", costCurrency: "EUR" });
+    const errors = await validate(dto);
+    expect(errors).toHaveLength(0);
+  });
+
+  it("rejects lowercase or non-ISO currency codes", async () => {
+    const dto = createDto({ provider: "anthropic", costCurrency: "usd" });
+    const errors = await validate(dto);
+    expect(errors.find((e) => e.property === "costCurrency")).toBeDefined();
+  });
 });
 
 describe("UpdateAiConfigDto", () => {

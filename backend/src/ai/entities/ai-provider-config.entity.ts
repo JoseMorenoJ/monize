@@ -92,6 +92,14 @@ export class AiProviderConfig {
   })
   outputCostPer1M: number | null;
 
+  @Column({
+    type: "varchar",
+    length: 3,
+    name: "cost_currency",
+    default: "USD",
+  })
+  costCurrency: string;
+
   @CreateDateColumn({ name: "created_at" })
   createdAt: Date;
 

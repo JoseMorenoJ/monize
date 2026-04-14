@@ -4,11 +4,15 @@ import { LessThan, Repository } from "typeorm";
 import { Cron } from "@nestjs/schedule";
 import { AiUsageLog } from "./entities/ai-usage-log.entity";
 import { AiProviderConfig } from "./entities/ai-provider-config.entity";
-import { AiUsageSummary } from "./dto/ai-response.dto";
+import {
+  AiUsageSummary,
+  EstimatedCostByCurrency,
+} from "./dto/ai-response.dto";
 
 interface CostRate {
   inputCostPer1M: number | null;
   outputCostPer1M: number | null;
+  currency: string;
 }
 
 const TOKENS_PER_UNIT = 1_000_000;
@@ -35,6 +39,15 @@ function computeCost(
       ? (outputTokens / TOKENS_PER_UNIT) * rate.outputCostPer1M
       : 0;
   return Math.round((inputCost + outputCost) * 10000) / 10000;
+}
+
+function addCostToBucket(
+  bucket: EstimatedCostByCurrency,
+  currency: string,
+  cost: number,
+): void {
+  const prev = bucket[currency] ?? 0;
+  bucket[currency] = Math.round((prev + cost) * 10000) / 10000;
 }
 
 interface LogUsageParams {
@@ -166,6 +179,7 @@ export class AiUsageService {
             "model",
             "inputCostPer1M",
             "outputCostPer1M",
+            "costCurrency",
           ] as (keyof AiProviderConfig)[],
         }),
       ]);
@@ -176,11 +190,12 @@ export class AiUsageService {
       rateMap.set(rateKey(cfg.provider, cfg.model), {
         inputCostPer1M: cfg.inputCostPer1M,
         outputCostPer1M: cfg.outputCostPer1M,
+        currency: cfg.costCurrency || "USD",
       });
     }
 
-    // Collapse (provider, model) aggregates into byProvider, summing cost
-    // across models. If no logs under a provider match a rate, cost stays null.
+    // Collapse (provider, model) aggregates into byProvider, bucketing costs
+    // by each config's cost currency so we can display/convert per-currency.
     const providerAgg = new Map<
       string,
       {
@@ -188,8 +203,7 @@ export class AiUsageService {
         requests: number;
         inputTokens: number;
         outputTokens: number;
-        cost: number;
-        hasCost: boolean;
+        costs: EstimatedCostByCurrency;
       }
     >();
 
@@ -202,24 +216,22 @@ export class AiUsageService {
       const rate = rateMap.get(rateKey(provider, model));
       const cost = computeCost(inputTokens, outputTokens, rate);
 
-      const existing = providerAgg.get(provider);
-      if (existing) {
-        existing.requests += requests;
-        existing.inputTokens += inputTokens;
-        existing.outputTokens += outputTokens;
-        if (cost !== null) {
-          existing.cost += cost;
-          existing.hasCost = true;
-        }
-      } else {
-        providerAgg.set(provider, {
+      let existing = providerAgg.get(provider);
+      if (!existing) {
+        existing = {
           provider,
-          requests,
-          inputTokens,
-          outputTokens,
-          cost: cost ?? 0,
-          hasCost: cost !== null,
-        });
+          requests: 0,
+          inputTokens: 0,
+          outputTokens: 0,
+          costs: {},
+        };
+        providerAgg.set(provider, existing);
+      }
+      existing.requests += requests;
+      existing.inputTokens += inputTokens;
+      existing.outputTokens += outputTokens;
+      if (cost !== null && rate) {
+        addCostToBucket(existing.costs, rate.currency, cost);
       }
     }
 
@@ -231,8 +243,7 @@ export class AiUsageService {
         requests: number;
         inputTokens: number;
         outputTokens: number;
-        cost: number;
-        hasCost: boolean;
+        costs: EstimatedCostByCurrency;
       }
     >();
 
@@ -246,76 +257,68 @@ export class AiUsageService {
       const rate = rateMap.get(rateKey(provider, model));
       const cost = computeCost(inputTokens, outputTokens, rate);
 
-      const existing = featureAgg.get(feature);
-      if (existing) {
-        existing.requests += requests;
-        existing.inputTokens += inputTokens;
-        existing.outputTokens += outputTokens;
-        if (cost !== null) {
-          existing.cost += cost;
-          existing.hasCost = true;
-        }
-      } else {
-        featureAgg.set(feature, {
+      let existing = featureAgg.get(feature);
+      if (!existing) {
+        existing = {
           feature,
-          requests,
-          inputTokens,
-          outputTokens,
-          cost: cost ?? 0,
-          hasCost: cost !== null,
-        });
+          requests: 0,
+          inputTokens: 0,
+          outputTokens: 0,
+          costs: {},
+        };
+        featureAgg.set(feature, existing);
+      }
+      existing.requests += requests;
+      existing.inputTokens += inputTokens;
+      existing.outputTokens += outputTokens;
+      if (cost !== null && rate) {
+        addCostToBucket(existing.costs, rate.currency, cost);
       }
     }
 
-    // Compute total estimated cost by summing per-provider costs.
-    let totalEstimatedCost: number | null = null;
+    // Sum all provider buckets to produce the totals-by-currency.
+    const totalEstimatedCostByCurrency: EstimatedCostByCurrency = {};
     for (const agg of providerAgg.values()) {
-      if (agg.hasCost) {
-        totalEstimatedCost = (totalEstimatedCost ?? 0) + agg.cost;
+      for (const [currency, amount] of Object.entries(agg.costs)) {
+        addCostToBucket(totalEstimatedCostByCurrency, currency, amount);
       }
-    }
-    if (totalEstimatedCost !== null) {
-      totalEstimatedCost = Math.round(totalEstimatedCost * 10000) / 10000;
     }
 
     return {
       totalRequests: parseInt(totals.totalRequests, 10) || 0,
       totalInputTokens: parseInt(totals.totalInputTokens, 10) || 0,
       totalOutputTokens: parseInt(totals.totalOutputTokens, 10) || 0,
-      totalEstimatedCost,
+      totalEstimatedCostByCurrency,
       byProvider: Array.from(providerAgg.values()).map((agg) => ({
         provider: agg.provider,
         requests: agg.requests,
         inputTokens: agg.inputTokens,
         outputTokens: agg.outputTokens,
-        estimatedCost: agg.hasCost
-          ? Math.round(agg.cost * 10000) / 10000
-          : null,
+        estimatedCostByCurrency: agg.costs,
       })),
       byFeature: Array.from(featureAgg.values()).map((agg) => ({
         feature: agg.feature,
         requests: agg.requests,
         inputTokens: agg.inputTokens,
         outputTokens: agg.outputTokens,
-        estimatedCost: agg.hasCost
-          ? Math.round(agg.cost * 10000) / 10000
-          : null,
+        estimatedCostByCurrency: agg.costs,
       })),
-      recentLogs: recentLogs.map((log) => ({
-        id: log.id,
-        provider: log.provider,
-        model: log.model,
-        feature: log.feature,
-        inputTokens: log.inputTokens,
-        outputTokens: log.outputTokens,
-        durationMs: log.durationMs,
-        estimatedCost: computeCost(
-          log.inputTokens,
-          log.outputTokens,
-          rateMap.get(rateKey(log.provider, log.model)),
-        ),
-        createdAt: log.createdAt.toISOString(),
-      })),
+      recentLogs: recentLogs.map((log) => {
+        const rate = rateMap.get(rateKey(log.provider, log.model));
+        const cost = computeCost(log.inputTokens, log.outputTokens, rate);
+        return {
+          id: log.id,
+          provider: log.provider,
+          model: log.model,
+          feature: log.feature,
+          inputTokens: log.inputTokens,
+          outputTokens: log.outputTokens,
+          durationMs: log.durationMs,
+          estimatedCost: cost,
+          costCurrency: cost !== null && rate ? rate.currency : null,
+          createdAt: log.createdAt.toISOString(),
+        };
+      }),
     };
   }
 }

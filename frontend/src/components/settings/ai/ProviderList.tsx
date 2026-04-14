@@ -140,7 +140,7 @@ export function ProviderList({ configs, encryptionAvailable, onConfigsChanged, h
                     {config.baseUrl && <span className="truncate max-w-xs">URL: {config.baseUrl}</span>}
                     {(config.inputCostPer1M != null || config.outputCostPer1M != null) && (
                       <span>
-                        Cost/1M: ${config.inputCostPer1M ?? 0} in / ${config.outputCostPer1M ?? 0} out
+                        Cost/1M ({config.costCurrency}): {config.inputCostPer1M ?? 0} in / {config.outputCostPer1M ?? 0} out
                       </span>
                     )}
                   </div>

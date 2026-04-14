@@ -20,6 +20,19 @@ const costField = z
   .optional()
   .or(z.literal(''));
 
+// Common billing currencies for AI providers. USD covers Anthropic/OpenAI;
+// the others are included to let users align with locally-billed providers.
+const COST_CURRENCY_OPTIONS = [
+  { value: 'USD', label: 'USD - US Dollar' },
+  { value: 'EUR', label: 'EUR - Euro' },
+  { value: 'GBP', label: 'GBP - British Pound' },
+  { value: 'CAD', label: 'CAD - Canadian Dollar' },
+  { value: 'AUD', label: 'AUD - Australian Dollar' },
+  { value: 'JPY', label: 'JPY - Japanese Yen' },
+  { value: 'CNY', label: 'CNY - Chinese Yuan' },
+  { value: 'INR', label: 'INR - Indian Rupee' },
+];
+
 const providerConfigSchema = z.object({
   provider: z.enum(AI_PROVIDER_TYPES),
   displayName: z.string().max(100, 'Display name must be 100 characters or less').optional().or(z.literal('')),
@@ -29,6 +42,7 @@ const providerConfigSchema = z.object({
   priority: z.string().regex(/^\d*$/, 'Must be a number'),
   inputCostPer1M: costField,
   outputCostPer1M: costField,
+  costCurrency: z.string().regex(/^[A-Z]{3}$/, 'Must be a 3-letter currency code'),
 });
 
 type ProviderConfigFormData = z.infer<typeof providerConfigSchema>;
@@ -64,6 +78,7 @@ export function ProviderConfigForm({ isOpen, onClose, onSubmit, editConfig }: Pr
       priority: String(editConfig?.priority ?? 0),
       inputCostPer1M: editConfig?.inputCostPer1M != null ? String(editConfig.inputCostPer1M) : '',
       outputCostPer1M: editConfig?.outputCostPer1M != null ? String(editConfig.outputCostPer1M) : '',
+      costCurrency: editConfig?.costCurrency || 'USD',
     },
   });
 
@@ -95,6 +110,7 @@ export function ProviderConfigForm({ isOpen, onClose, onSubmit, editConfig }: Pr
         if (formData.priority !== String(editConfig.priority)) data.priority = parseInt(formData.priority, 10) || 0;
         if (newInputCost !== editConfig.inputCostPer1M) data.inputCostPer1M = newInputCost;
         if (newOutputCost !== editConfig.outputCostPer1M) data.outputCostPer1M = newOutputCost;
+        if (formData.costCurrency !== editConfig.costCurrency) data.costCurrency = formData.costCurrency;
         await onSubmit(data);
       } else {
         const data: CreateAiProviderConfig = {
@@ -106,6 +122,7 @@ export function ProviderConfigForm({ isOpen, onClose, onSubmit, editConfig }: Pr
           priority: parseInt(formData.priority, 10) || 0,
           ...(newInputCost !== null && { inputCostPer1M: newInputCost }),
           ...(newOutputCost !== null && { outputCostPer1M: newOutputCost }),
+          costCurrency: formData.costCurrency,
         };
         await onSubmit(data);
       }
@@ -198,11 +215,11 @@ export function ProviderConfigForm({ isOpen, onClose, onSubmit, editConfig }: Pr
               Cost rates (optional)
             </h3>
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-              Enter your provider&apos;s published rates in USD per 1,000,000 tokens to see estimated cost on the Usage dashboard. Leave blank to skip cost estimates.
+              Enter your provider&apos;s published rates per 1,000,000 tokens to see estimated cost on the Usage dashboard. Leave blank to skip cost estimates.
             </p>
             <div className="grid grid-cols-2 gap-3">
               <Input
-                label="Input $ / 1M tokens"
+                label="Input cost / 1M tokens"
                 type="number"
                 step="0.0001"
                 min={0}
@@ -211,7 +228,7 @@ export function ProviderConfigForm({ isOpen, onClose, onSubmit, editConfig }: Pr
                 placeholder="e.g., 3.00"
               />
               <Input
-                label="Output $ / 1M tokens"
+                label="Output cost / 1M tokens"
                 type="number"
                 step="0.0001"
                 min={0}
@@ -219,6 +236,17 @@ export function ProviderConfigForm({ isOpen, onClose, onSubmit, editConfig }: Pr
                 error={errors.outputCostPer1M?.message}
                 placeholder="e.g., 15.00"
               />
+            </div>
+            <div className="mt-3">
+              <Select
+                label="Rate Currency"
+                {...register('costCurrency')}
+                options={COST_CURRENCY_OPTIONS}
+                error={errors.costCurrency?.message}
+              />
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                If this differs from your home currency, the Usage dashboard can convert costs using your saved exchange rates.
+              </p>
             </div>
           </div>
 
