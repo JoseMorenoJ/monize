@@ -244,6 +244,7 @@ describe("ToolExecutorService", () => {
       );
       expect(result.summary).toContain("Invalid input");
       expect(result.sources).toEqual([]);
+      expect(result.isError).toBe(true);
     });
 
     it("rejects missing required fields in tool input (LLM07-F1)", async () => {

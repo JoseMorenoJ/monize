@@ -114,6 +114,9 @@ export interface StreamEvent {
   description?: string;
   summary?: string;
   text?: string;
+  // Set on `tool_result` when the tool failed (validation error, exception, etc.)
+  // The UI uses this to render a red X instead of a green checkmark.
+  isError?: boolean;
   // Tool arguments the model passed to the tool. Present on tool_start so
   // the UI can show the user what the model actually queried for.
   input?: Record<string, unknown>;

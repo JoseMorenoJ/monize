@@ -12,6 +12,7 @@ interface ToolCallRecord {
   name: string;
   summary: string;
   input?: Record<string, unknown>;
+  isError?: boolean;
 }
 
 interface Message {
@@ -31,7 +32,12 @@ interface ThinkingState {
   // backend emits assistant_text deltas. Reset on each new tool_start so the
   // user sees the next "thinking" pass cleanly.
   liveText: string;
-  tools: Array<{ name: string; status: 'running' | 'done'; summary?: string }>;
+  tools: Array<{
+    name: string;
+    status: 'running' | 'done';
+    summary?: string;
+    isError?: boolean;
+  }>;
 }
 
 export function ChatInterface() {
@@ -151,6 +157,7 @@ export function ChatInterface() {
                   toolsUsed[i] = {
                     ...toolsUsed[i],
                     summary: event.summary || '',
+                    isError: event.isError === true,
                   };
                   break;
                 }
@@ -159,7 +166,12 @@ export function ChatInterface() {
                 ...prev,
                 tools: prev.tools.map((t) =>
                   t.name === event.name
-                    ? { ...t, status: 'done', summary: event.summary }
+                    ? {
+                        ...t,
+                        status: 'done',
+                        summary: event.summary,
+                        isError: event.isError === true,
+                      }
                     : t,
                 ),
               }));
@@ -381,6 +393,20 @@ export function ChatInterface() {
                                   className="opacity-75"
                                   fill="currentColor"
                                   d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                                />
+                              </svg>
+                            ) : tool.isError ? (
+                              <svg
+                                className="w-3 h-3 text-red-500"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                strokeWidth={2}
+                                stroke="currentColor"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M6 18L18 6M6 6l12 12"
                                 />
                               </svg>
                             ) : (
