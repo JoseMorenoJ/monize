@@ -199,7 +199,6 @@ export class AiInsightsService {
         this.logger.log(
           `Insights provider call done user=${userId} ` +
             `model=${response.model} ms=${providerCallMs} ` +
-            `stopReason=${response.stopReason} ` +
             `inputTokens=${response.usage.inputTokens} ` +
             `outputTokens=${response.usage.outputTokens} ` +
             `contentChars=${response.content.length}`,
