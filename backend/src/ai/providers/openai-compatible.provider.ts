@@ -1,5 +1,6 @@
 import {
   AiCompletionRequest,
+  AiMessage,
   AiToolCall,
   AiToolDefinition,
   AiToolResponse,
@@ -124,6 +125,52 @@ function makeToolCallId(): string {
 }
 
 /**
+ * Flatten OpenAI-style tool-call / tool-result messages into plain
+ * user/assistant turns.
+ *
+ * Cloudflare Workers AI's OpenAI-compatible endpoint (and some other Llama
+ * backends) accept the `tools` parameter on input but reject assistant
+ * messages carrying `tool_calls` and messages with `role: "tool"` with a
+ * bare `400 (no body)`. Since these backends model tool use as
+ * regular-content JSON anyway, we round-trip through that representation:
+ *
+ * - assistant { content, toolCalls } -> assistant { content: "<content?> <json(toolCalls)>" }
+ * - tool      { name, content }      -> user      { content: "Tool <name> result:\n<content>" }
+ */
+export function flattenToolMessages(messages: AiMessage[]): AiMessage[] {
+  const result: AiMessage[] = [];
+  for (const msg of messages) {
+    if (msg.role === "assistant") {
+      if (msg.toolCalls && msg.toolCalls.length > 0) {
+        const serializedCalls = msg.toolCalls
+          .map((tc) =>
+            JSON.stringify({
+              type: "function",
+              name: tc.name,
+              parameters: tc.input,
+            }),
+          )
+          .join("\n");
+        const content = msg.content
+          ? `${msg.content}\n${serializedCalls}`
+          : serializedCalls;
+        result.push({ role: "assistant", content });
+      } else {
+        result.push({ role: "assistant", content: msg.content });
+      }
+    } else if (msg.role === "tool") {
+      result.push({
+        role: "user",
+        content: `Tool ${msg.name} result:\n${msg.content}`,
+      });
+    } else {
+      result.push(msg);
+    }
+  }
+  return result;
+}
+
+/**
  * Detect whether an in-progress stream's leading text looks like it is
  * building a tool-call blob, so we can buffer instead of surfacing raw
  * JSON to the UI.
@@ -150,7 +197,11 @@ export class OpenAiCompatibleProvider extends OpenAiProvider {
     request: AiCompletionRequest,
     tools: AiToolDefinition[],
   ): Promise<AiToolResponse> {
-    const response = await super.completeWithTools(request, tools);
+    const flattened: AiCompletionRequest = {
+      ...request,
+      messages: flattenToolMessages(request.messages),
+    };
+    const response = await super.completeWithTools(flattened, tools);
     if (response.toolCalls.length > 0) return response;
 
     const inline = parseInlineToolCalls(response.content);
@@ -168,7 +219,11 @@ export class OpenAiCompatibleProvider extends OpenAiProvider {
     request: AiCompletionRequest,
     tools: AiToolDefinition[],
   ): AsyncIterable<AiToolStreamChunk> {
-    const source = super.streamWithTools!(request, tools);
+    const flattened: AiCompletionRequest = {
+      ...request,
+      messages: flattenToolMessages(request.messages),
+    };
+    const source = super.streamWithTools!(flattened, tools);
 
     // Buffer text chunks only when the leading content looks like a tool
     // call blob. For normal text responses we still stream token-by-token.

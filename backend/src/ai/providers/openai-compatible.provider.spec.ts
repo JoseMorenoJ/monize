@@ -1,6 +1,7 @@
-import type { AiToolStreamChunk } from "./ai-provider.interface";
+import type { AiMessage, AiToolStreamChunk } from "./ai-provider.interface";
 import {
   OpenAiCompatibleProvider,
+  flattenToolMessages,
   parseInlineToolCalls,
 } from "./openai-compatible.provider";
 
@@ -103,6 +104,72 @@ describe("parseInlineToolCalls", () => {
   });
 });
 
+describe("flattenToolMessages", () => {
+  it("passes user messages through untouched", () => {
+    const messages: AiMessage[] = [{ role: "user", content: "hi" }];
+    expect(flattenToolMessages(messages)).toEqual(messages);
+  });
+
+  it("serializes assistant tool calls into plain content", () => {
+    const messages: AiMessage[] = [
+      {
+        role: "assistant",
+        content: "",
+        toolCalls: [
+          {
+            id: "call_1",
+            name: "query_transactions",
+            input: { startDate: "2026-03-01" },
+          },
+        ],
+      },
+    ];
+    const out = flattenToolMessages(messages);
+    expect(out).toHaveLength(1);
+    expect(out[0].role).toBe("assistant");
+    // No toolCalls field on output -- Cloudflare rejects it.
+    expect((out[0] as { toolCalls?: unknown }).toolCalls).toBeUndefined();
+    if (out[0].role === "assistant") {
+      const parsed = JSON.parse(out[0].content);
+      expect(parsed.name).toBe("query_transactions");
+      expect(parsed.parameters).toEqual({ startDate: "2026-03-01" });
+    }
+  });
+
+  it("converts tool-result messages into user messages", () => {
+    const messages: AiMessage[] = [
+      {
+        role: "tool",
+        toolCallId: "call_1",
+        name: "query_transactions",
+        content: '{"total":42}',
+      },
+    ];
+    const out = flattenToolMessages(messages);
+    expect(out).toHaveLength(1);
+    expect(out[0].role).toBe("user");
+    if (out[0].role === "user") {
+      expect(out[0].content).toContain("Tool query_transactions result:");
+      expect(out[0].content).toContain('{"total":42}');
+    }
+  });
+
+  it("preserves assistant content alongside tool calls", () => {
+    const messages: AiMessage[] = [
+      {
+        role: "assistant",
+        content: "Let me check.",
+        toolCalls: [{ id: "c1", name: "t", input: {} }],
+      },
+    ];
+    const out = flattenToolMessages(messages);
+    if (out[0].role === "assistant") {
+      expect(out[0].content.startsWith("Let me check.")).toBe(true);
+      expect(out[0].content).toContain('"name":"t"');
+    }
+  });
+});
+
 describe("OpenAiCompatibleProvider", () => {
   let provider: OpenAiCompatibleProvider;
 
@@ -183,6 +250,58 @@ describe("OpenAiCompatibleProvider", () => {
       expect(result.content).toBe("Just a text answer.");
       expect(result.toolCalls).toHaveLength(0);
       expect(result.stopReason).toBe("end_turn");
+    });
+
+    it("flattens prior tool-call / tool-result messages before sending", async () => {
+      mockCreate.mockResolvedValueOnce({
+        choices: [
+          {
+            message: { content: "done.", tool_calls: undefined },
+            finish_reason: "stop",
+          },
+        ],
+        usage: { prompt_tokens: 1, completion_tokens: 1 },
+        model: "llama",
+      });
+
+      await provider.completeWithTools(
+        {
+          systemPrompt: "sys",
+          messages: [
+            { role: "user", content: "hi" },
+            {
+              role: "assistant",
+              content: "",
+              toolCalls: [{ id: "c1", name: "t", input: { a: 1 } }],
+            },
+            {
+              role: "tool",
+              toolCallId: "c1",
+              name: "t",
+              content: '{"ok":true}',
+            },
+          ],
+        },
+        [],
+      );
+
+      const payload = mockCreate.mock.calls[0][0];
+      // No role="tool" messages, no tool_calls on assistant messages.
+      for (const m of payload.messages) {
+        expect(m.role).not.toBe("tool");
+        if (m.role === "assistant") {
+          expect(m.tool_calls).toBeUndefined();
+        }
+      }
+      // Tool result became a user message.
+      const userMessages = payload.messages.filter(
+        (m: { role: string }) => m.role === "user",
+      );
+      expect(
+        userMessages.some((m: { content: string }) =>
+          m.content.includes("Tool t result:"),
+        ),
+      ).toBe(true);
     });
 
     it("does not clobber real structured tool calls", async () => {
