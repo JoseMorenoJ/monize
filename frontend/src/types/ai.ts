@@ -10,6 +10,8 @@ export interface AiProviderConfig {
   apiKeyMasked: string | null;
   baseUrl: string | null;
   config: Record<string, unknown>;
+  inputCostPer1M: number | null;
+  outputCostPer1M: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -22,6 +24,8 @@ export interface CreateAiProviderConfig {
   baseUrl?: string;
   priority?: number;
   config?: Record<string, unknown>;
+  inputCostPer1M?: number | null;
+  outputCostPer1M?: number | null;
 }
 
 export interface UpdateAiProviderConfig {
@@ -32,23 +36,28 @@ export interface UpdateAiProviderConfig {
   priority?: number;
   isActive?: boolean;
   config?: Record<string, unknown>;
+  inputCostPer1M?: number | null;
+  outputCostPer1M?: number | null;
 }
 
 export interface AiUsageSummary {
   totalRequests: number;
   totalInputTokens: number;
   totalOutputTokens: number;
+  totalEstimatedCost: number | null;
   byProvider: Array<{
     provider: string;
     requests: number;
     inputTokens: number;
     outputTokens: number;
+    estimatedCost: number | null;
   }>;
   byFeature: Array<{
     feature: string;
     requests: number;
     inputTokens: number;
     outputTokens: number;
+    estimatedCost: number | null;
   }>;
   recentLogs: Array<{
     id: string;
@@ -58,6 +67,7 @@ export interface AiUsageSummary {
     inputTokens: number;
     outputTokens: number;
     durationMs: number;
+    estimatedCost: number | null;
     createdAt: string;
   }>;
 }

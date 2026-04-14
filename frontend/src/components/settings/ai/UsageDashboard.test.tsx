@@ -7,6 +7,7 @@ const emptyUsage: AiUsageSummary = {
   totalRequests: 0,
   totalInputTokens: 0,
   totalOutputTokens: 0,
+  totalEstimatedCost: null,
   byProvider: [],
   byFeature: [],
   recentLogs: [],
@@ -16,12 +17,13 @@ const populatedUsage: AiUsageSummary = {
   totalRequests: 42,
   totalInputTokens: 5000,
   totalOutputTokens: 2500,
+  totalEstimatedCost: 12.34,
   byProvider: [
-    { provider: 'anthropic', requests: 30, inputTokens: 3500, outputTokens: 1800 },
-    { provider: 'openai', requests: 12, inputTokens: 1500, outputTokens: 700 },
+    { provider: 'anthropic', requests: 30, inputTokens: 3500, outputTokens: 1800, estimatedCost: 10 },
+    { provider: 'openai', requests: 12, inputTokens: 1500, outputTokens: 700, estimatedCost: 2.34 },
   ],
   byFeature: [
-    { feature: 'categorize', requests: 25, inputTokens: 3000, outputTokens: 1500 },
+    { feature: 'categorize', requests: 25, inputTokens: 3000, outputTokens: 1500, estimatedCost: 8.5 },
   ],
   recentLogs: [
     {
@@ -32,6 +34,7 @@ const populatedUsage: AiUsageSummary = {
       inputTokens: 100,
       outputTokens: 50,
       durationMs: 1200,
+      estimatedCost: 0.0012,
       createdAt: '2024-06-15T12:00:00.000Z',
     },
   ],
@@ -83,6 +86,17 @@ describe('UsageDashboard', () => {
   it('shows empty state when no usage data', () => {
     render(<UsageDashboard usage={emptyUsage} onPeriodChange={onPeriodChange} />);
     expect(screen.getByText(/no usage data yet/i)).toBeInTheDocument();
+  });
+
+  it('shows estimated cost in summary card', () => {
+    render(<UsageDashboard usage={populatedUsage} onPeriodChange={onPeriodChange} />);
+    expect(screen.getByText('Est. Cost')).toBeInTheDocument();
+    expect(screen.getByText('$12.34')).toBeInTheDocument();
+  });
+
+  it('shows dash for estimated cost when no rates configured', () => {
+    render(<UsageDashboard usage={emptyUsage} onPeriodChange={onPeriodChange} />);
+    expect(screen.getByText(/set rates on a provider/i)).toBeInTheDocument();
   });
 
   it('does not show provider table when empty', () => {

@@ -201,6 +201,36 @@ describe("CreateAiConfigDto", () => {
     const errors = await validate(dto);
     expect(errors).toHaveLength(0);
   });
+
+  it("accepts valid input and output cost rates", async () => {
+    const dto = createDto({
+      provider: "anthropic",
+      inputCostPer1M: 3,
+      outputCostPer1M: 15,
+    });
+    const errors = await validate(dto);
+    expect(errors).toHaveLength(0);
+  });
+
+  it("rejects negative cost rates", async () => {
+    const dto = createDto({
+      provider: "anthropic",
+      inputCostPer1M: -1,
+    });
+    const errors = await validate(dto);
+    const costErrors = errors.find((e) => e.property === "inputCostPer1M");
+    expect(costErrors).toBeDefined();
+  });
+
+  it("allows null cost rates (for clearing)", async () => {
+    const dto = createDto({
+      provider: "anthropic",
+      inputCostPer1M: null,
+      outputCostPer1M: null,
+    });
+    const errors = await validate(dto);
+    expect(errors).toHaveLength(0);
+  });
 });
 
 describe("UpdateAiConfigDto", () => {

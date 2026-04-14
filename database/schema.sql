@@ -664,6 +664,8 @@ CREATE TABLE ai_provider_configs (
     api_key_enc TEXT,                     -- Encrypted API key (null for Ollama)
     base_url VARCHAR(500),               -- Custom endpoint URL (required for Ollama/compatible)
     config JSONB DEFAULT '{}',           -- Provider-specific settings (temperature, maxTokens, etc.)
+    input_cost_per_1m NUMERIC(12, 4),    -- User-defined input cost per 1M tokens (for usage cost estimation)
+    output_cost_per_1m NUMERIC(12, 4),   -- User-defined output cost per 1M tokens (for usage cost estimation)
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(user_id, provider, priority)

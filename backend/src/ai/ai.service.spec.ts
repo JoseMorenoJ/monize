@@ -34,6 +34,8 @@ describe("AiService", () => {
     config.apiKeyEnc = "encrypted-key";
     config.baseUrl = null;
     config.config = {};
+    config.inputCostPer1M = null;
+    config.outputCostPer1M = null;
     config.createdAt = new Date("2024-01-01");
     config.updatedAt = new Date("2024-01-01");
     Object.assign(config, overrides);

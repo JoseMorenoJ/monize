@@ -14,6 +14,12 @@ import { AI_PROVIDER_LABELS, AI_PROVIDER_DEFAULT_MODELS } from '@/types/ai';
 
 const AI_PROVIDER_TYPES = ['anthropic', 'openai', 'ollama', 'openai-compatible'] as const;
 
+const costField = z
+  .string()
+  .regex(/^(\d+(\.\d{0,4})?)?$/, 'Must be a number with up to 4 decimal places')
+  .optional()
+  .or(z.literal(''));
+
 const providerConfigSchema = z.object({
   provider: z.enum(AI_PROVIDER_TYPES),
   displayName: z.string().max(100, 'Display name must be 100 characters or less').optional().or(z.literal('')),
@@ -21,6 +27,8 @@ const providerConfigSchema = z.object({
   apiKey: z.string().max(500).optional().or(z.literal('')),
   baseUrl: z.string().max(500).optional().or(z.literal('')),
   priority: z.string().regex(/^\d*$/, 'Must be a number'),
+  inputCostPer1M: costField,
+  outputCostPer1M: costField,
 });
 
 type ProviderConfigFormData = z.infer<typeof providerConfigSchema>;
@@ -54,6 +62,8 @@ export function ProviderConfigForm({ isOpen, onClose, onSubmit, editConfig }: Pr
       apiKey: '',
       baseUrl: editConfig?.baseUrl || '',
       priority: String(editConfig?.priority ?? 0),
+      inputCostPer1M: editConfig?.inputCostPer1M != null ? String(editConfig.inputCostPer1M) : '',
+      outputCostPer1M: editConfig?.outputCostPer1M != null ? String(editConfig.outputCostPer1M) : '',
     },
   });
 
@@ -63,10 +73,19 @@ export function ProviderConfigForm({ isOpen, onClose, onSubmit, editConfig }: Pr
   const needsApiKey = provider !== 'ollama';
   const modelSuggestions = AI_PROVIDER_DEFAULT_MODELS[provider] || [];
 
+  const parseCost = (value: string | undefined): number | null => {
+    if (value === undefined || value === '') return null;
+    const parsed = parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
   const onFormSubmit = async (formData: ProviderConfigFormData) => {
     setError('');
 
     try {
+      const newInputCost = parseCost(formData.inputCostPer1M);
+      const newOutputCost = parseCost(formData.outputCostPer1M);
+
       if (editConfig) {
         const data: UpdateAiProviderConfig = {};
         if (formData.displayName !== (editConfig.displayName || '')) data.displayName = formData.displayName || undefined;
@@ -74,6 +93,8 @@ export function ProviderConfigForm({ isOpen, onClose, onSubmit, editConfig }: Pr
         if (formData.apiKey) data.apiKey = formData.apiKey;
         if (formData.baseUrl !== (editConfig.baseUrl || '')) data.baseUrl = formData.baseUrl || undefined;
         if (formData.priority !== String(editConfig.priority)) data.priority = parseInt(formData.priority, 10) || 0;
+        if (newInputCost !== editConfig.inputCostPer1M) data.inputCostPer1M = newInputCost;
+        if (newOutputCost !== editConfig.outputCostPer1M) data.outputCostPer1M = newOutputCost;
         await onSubmit(data);
       } else {
         const data: CreateAiProviderConfig = {
@@ -83,6 +104,8 @@ export function ProviderConfigForm({ isOpen, onClose, onSubmit, editConfig }: Pr
           ...(formData.apiKey && { apiKey: formData.apiKey }),
           ...(formData.baseUrl && { baseUrl: formData.baseUrl }),
           priority: parseInt(formData.priority, 10) || 0,
+          ...(newInputCost !== null && { inputCostPer1M: newInputCost }),
+          ...(newOutputCost !== null && { outputCostPer1M: newOutputCost }),
         };
         await onSubmit(data);
       }
@@ -169,6 +192,35 @@ export function ProviderConfigForm({ isOpen, onClose, onSubmit, editConfig }: Pr
           <p className="text-xs text-gray-500 dark:text-gray-400 -mt-3">
             Lower number = higher priority. Used for fallback ordering.
           </p>
+
+          <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
+            <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Cost rates (optional)
+            </h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+              Enter your provider&apos;s published rates in USD per 1,000,000 tokens to see estimated cost on the Usage dashboard. Leave blank to skip cost estimates.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <Input
+                label="Input $ / 1M tokens"
+                type="number"
+                step="0.0001"
+                min={0}
+                {...register('inputCostPer1M')}
+                error={errors.inputCostPer1M?.message}
+                placeholder="e.g., 3.00"
+              />
+              <Input
+                label="Output $ / 1M tokens"
+                type="number"
+                step="0.0001"
+                min={0}
+                {...register('outputCostPer1M')}
+                error={errors.outputCostPer1M?.message}
+                placeholder="e.g., 15.00"
+              />
+            </div>
+          </div>
 
           {error && (
             <p className="text-sm text-red-600 dark:text-red-400">{error}</p>

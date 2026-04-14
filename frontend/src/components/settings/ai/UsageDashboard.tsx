@@ -15,6 +15,17 @@ const PERIOD_OPTIONS = [
   { label: 'All time', value: undefined },
 ];
 
+const costFormatter = new Intl.NumberFormat(undefined, {
+  style: 'currency',
+  currency: 'USD',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 4,
+});
+
+function formatCost(cost: number | null): string {
+  return cost === null ? '-' : costFormatter.format(cost);
+}
+
 export function UsageDashboard({ usage, onPeriodChange }: UsageDashboardProps) {
   const [selectedPeriod, setSelectedPeriod] = useState<number | undefined>(30);
 
@@ -45,7 +56,7 @@ export function UsageDashboard({ usage, onPeriodChange }: UsageDashboardProps) {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
           <p className="text-xs text-gray-500 dark:text-gray-400">Total Requests</p>
           <p className="text-2xl font-bold text-gray-900 dark:text-white">
@@ -64,6 +75,20 @@ export function UsageDashboard({ usage, onPeriodChange }: UsageDashboardProps) {
             {usage.totalOutputTokens.toLocaleString()}
           </p>
         </div>
+        <div
+          className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4"
+          title="Estimated using the cost rates you configured on each provider. Excludes any activity where no matching rate is set."
+        >
+          <p className="text-xs text-gray-500 dark:text-gray-400">Est. Cost</p>
+          <p className="text-2xl font-bold text-gray-900 dark:text-white">
+            {formatCost(usage.totalEstimatedCost)}
+          </p>
+          {usage.totalEstimatedCost === null && (
+            <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1">
+              Set rates on a provider to enable
+            </p>
+          )}
+        </div>
       </div>
 
       {/* By Provider */}
@@ -78,6 +103,7 @@ export function UsageDashboard({ usage, onPeriodChange }: UsageDashboardProps) {
                   <th className="pb-2 font-medium text-right">Requests</th>
                   <th className="pb-2 font-medium text-right">Input Tokens</th>
                   <th className="pb-2 font-medium text-right">Output Tokens</th>
+                  <th className="pb-2 font-medium text-right">Est. Cost</th>
                 </tr>
               </thead>
               <tbody>
@@ -87,6 +113,7 @@ export function UsageDashboard({ usage, onPeriodChange }: UsageDashboardProps) {
                     <td className="py-2 text-right text-gray-600 dark:text-gray-300">{row.requests.toLocaleString()}</td>
                     <td className="py-2 text-right text-gray-600 dark:text-gray-300">{row.inputTokens.toLocaleString()}</td>
                     <td className="py-2 text-right text-gray-600 dark:text-gray-300">{row.outputTokens.toLocaleString()}</td>
+                    <td className="py-2 text-right text-gray-600 dark:text-gray-300">{formatCost(row.estimatedCost)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -108,6 +135,7 @@ export function UsageDashboard({ usage, onPeriodChange }: UsageDashboardProps) {
                   <th className="pb-2 font-medium">Feature</th>
                   <th className="pb-2 font-medium text-right">Tokens</th>
                   <th className="pb-2 font-medium text-right">Duration</th>
+                  <th className="pb-2 font-medium text-right">Est. Cost</th>
                 </tr>
               </thead>
               <tbody>
@@ -123,6 +151,9 @@ export function UsageDashboard({ usage, onPeriodChange }: UsageDashboardProps) {
                     </td>
                     <td className="py-2 text-right text-gray-600 dark:text-gray-300">
                       {log.durationMs}ms
+                    </td>
+                    <td className="py-2 text-right text-gray-600 dark:text-gray-300">
+                      {formatCost(log.estimatedCost)}
                     </td>
                   </tr>
                 ))}
