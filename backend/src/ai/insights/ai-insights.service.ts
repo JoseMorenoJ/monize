@@ -454,86 +454,142 @@ export class AiInsightsService {
     content: string,
     userId: string,
   ): RawInsight[] {
+    const MAX_JSON_SIZE = 100 * 1024; // 100KB
     const trimmed = content.trim();
     const preview = trimmed.slice(0, 500).replace(/\s+/g, " ");
-    // LLM02-F1: Use non-greedy regex and enforce size limit
-    const jsonMatch = trimmed.match(/\[[\s\S]*?\]/);
-    if (!jsonMatch) {
+
+    // Some providers (notably OpenAI-compatible endpoints like Cloudflare)
+    // wrap JSON output in markdown code fences even when asked not to.
+    // Strip them before attempting JSON extraction.
+    const stripped = this.stripMarkdownFences(trimmed);
+
+    const insightsArray = this.extractInsightsArray(stripped);
+    if (!insightsArray) {
       this.logger.warn(
-        `AI response did not contain a JSON array user=${userId} ` +
+        `AI response did not contain a JSON insights array user=${userId} ` +
           `contentChars=${content.length} preview="${preview}"`,
       );
       return [];
     }
 
-    const MAX_JSON_SIZE = 100 * 1024; // 100KB
-    if (jsonMatch[0].length > MAX_JSON_SIZE) {
+    // Serialized-size guard on the extracted array (defense in depth).
+    if (JSON.stringify(insightsArray).length > MAX_JSON_SIZE) {
       this.logger.warn(
         `AI insights JSON too large user=${userId} ` +
-          `bytes=${jsonMatch[0].length} limit=${MAX_JSON_SIZE}`,
+          `items=${insightsArray.length} limit=${MAX_JSON_SIZE}`,
       );
       return [];
     }
 
-    try {
-      const parsed = JSON.parse(jsonMatch[0]);
-      if (!Array.isArray(parsed)) {
-        this.logger.warn(
-          `Parsed AI response is not an array user=${userId} ` +
-            `parsedType=${typeof parsed} preview="${preview}"`,
+    const validTypes = new Set([
+      "anomaly",
+      "trend",
+      "subscription",
+      "budget_pace",
+      "seasonal",
+      "new_recurring",
+    ]);
+    const validSeverities = new Set(["info", "warning", "alert"]);
+
+    const rawCount = insightsArray.length;
+    const validated = insightsArray
+      .filter((item: unknown) => {
+        if (!item || typeof item !== "object") return false;
+        const obj = item as Record<string, unknown>;
+        return (
+          typeof obj.type === "string" &&
+          validTypes.has(obj.type) &&
+          typeof obj.title === "string" &&
+          typeof obj.description === "string" &&
+          typeof obj.severity === "string" &&
+          validSeverities.has(obj.severity)
         );
-        return [];
-      }
+      })
+      .map((item) => {
+        const obj = item as Record<string, unknown>;
+        return {
+          type: obj.type as string,
+          title: String(obj.title).substring(0, 255),
+          description: String(obj.description).substring(0, 5000),
+          severity: obj.severity as string,
+          data: this.sanitizeData(obj.data),
+        };
+      });
 
-      const validTypes = new Set([
-        "anomaly",
-        "trend",
-        "subscription",
-        "budget_pace",
-        "seasonal",
-        "new_recurring",
-      ]);
-      const validSeverities = new Set(["info", "warning", "alert"]);
-
-      const rawCount = parsed.length;
-      const validated = parsed
-        .filter((item: unknown) => {
-          if (!item || typeof item !== "object") return false;
-          const obj = item as Record<string, unknown>;
-          return (
-            typeof obj.type === "string" &&
-            validTypes.has(obj.type) &&
-            typeof obj.title === "string" &&
-            typeof obj.description === "string" &&
-            typeof obj.severity === "string" &&
-            validSeverities.has(obj.severity)
-          );
-        })
-        .map((item: Record<string, unknown>) => ({
-          type: item.type as string,
-          title: String(item.title).substring(0, 255),
-          description: String(item.description).substring(0, 5000),
-          severity: item.severity as string,
-          data: this.sanitizeData(item.data),
-        }));
-
-      if (rawCount !== validated.length) {
-        this.logger.warn(
-          `Filtered invalid insights user=${userId} ` +
-            `raw=${rawCount} valid=${validated.length} ` +
-            `dropped=${rawCount - validated.length}`,
-        );
-      }
-
-      return validated;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown error";
+    if (rawCount !== validated.length) {
       this.logger.warn(
-        `Failed to parse AI insights response user=${userId}: ${message} ` +
-          `preview="${preview}"`,
+        `Filtered invalid insights user=${userId} ` +
+          `raw=${rawCount} valid=${validated.length} ` +
+          `dropped=${rawCount - validated.length}`,
       );
-      return [];
     }
+
+    return validated;
+  }
+
+  private stripMarkdownFences(text: string): string {
+    const fenceMatch = text.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?```\s*$/i);
+    if (fenceMatch) {
+      return fenceMatch[1].trim();
+    }
+    return text;
+  }
+
+  /**
+   * Extract the insights array from the model output. Accepts the
+   * strict contract ({"insights": [...]}) as well as legacy/tolerant shapes
+   * (a bare array, or an object with the array under a commonly-seen key).
+   * Returns null if no insights array can be recovered.
+   */
+  private extractInsightsArray(text: string): unknown[] | null {
+    if (!text) return null;
+
+    // 1. Try to parse the whole thing as JSON first (strict-shape path).
+    const direct = this.safeJsonParse(text);
+    if (direct !== undefined) {
+      const arr = this.findInsightsArrayIn(direct);
+      if (arr) return arr;
+    }
+
+    // 2. Fall back to regex-extracting the first object blob, for models
+    //    that emit preamble/trailing text around the JSON.
+    const objectMatch = text.match(/\{[\s\S]*\}/);
+    if (objectMatch) {
+      const parsed = this.safeJsonParse(objectMatch[0]);
+      if (parsed !== undefined) {
+        const arr = this.findInsightsArrayIn(parsed);
+        if (arr) return arr;
+      }
+    }
+
+    // 3. Legacy/tolerant: accept a bare array (pre-wrapper contract).
+    //    LLM02-F1: non-greedy regex bounds the match size.
+    const arrayMatch = text.match(/\[[\s\S]*?\]/);
+    if (arrayMatch) {
+      const parsed = this.safeJsonParse(arrayMatch[0]);
+      if (Array.isArray(parsed)) return parsed;
+    }
+
+    return null;
+  }
+
+  private safeJsonParse(text: string): unknown | undefined {
+    try {
+      return JSON.parse(text);
+    } catch {
+      return undefined;
+    }
+  }
+
+  private findInsightsArrayIn(value: unknown): unknown[] | null {
+    if (Array.isArray(value)) return value;
+    if (!value || typeof value !== "object") return null;
+    const obj = value as Record<string, unknown>;
+    if (Array.isArray(obj.insights)) return obj.insights;
+    // Some models emit alternate key names; accept the common ones.
+    if (Array.isArray(obj.results)) return obj.results;
+    if (Array.isArray(obj.data)) return obj.data;
+    return null;
   }
 
   private async saveInsights(
