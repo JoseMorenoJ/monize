@@ -5,6 +5,7 @@ import { AiService } from "../ai.service";
 import { AiUsageService } from "../ai-usage.service";
 import { FinancialContextBuilder } from "../context/financial-context.builder";
 import { ToolExecutorService } from "./tool-executor.service";
+import { OllamaModelDoesNotSupportToolsError } from "../providers/ollama.provider";
 
 describe("AiQueryService", () => {
   let service: AiQueryService;
@@ -317,6 +318,22 @@ describe("AiQueryService", () => {
       expect(errorEvent!.message).toContain(
         "The AI provider encountered an error processing your query.",
       );
+    });
+
+    it("surfaces OllamaModelDoesNotSupportToolsError message verbatim (retry won't help)", async () => {
+      (mockProvider.completeWithTools as jest.Mock).mockRejectedValueOnce(
+        new OllamaModelDoesNotSupportToolsError("deepseek-r1:latest"),
+      );
+
+      const events = await collectEvents(userId, "Any query");
+
+      const errorEvent = events.find((e) => e.type === "error");
+      expect(errorEvent).toBeDefined();
+      // User needs to know what model to switch to — don't hide behind a
+      // generic "try again" message.
+      expect(errorEvent!.message).toContain("deepseek-r1:latest");
+      expect(errorEvent!.message).toContain("does not support tool use");
+      expect(errorEvent!.message).not.toContain("Please try again");
     });
 
     it("logs usage after successful completion", async () => {

@@ -9,6 +9,7 @@ import {
   AiProvider,
   AiToolCall,
 } from "../providers/ai-provider.interface";
+import { OllamaModelDoesNotSupportToolsError } from "../providers/ollama.provider";
 import { assessInjectionRisk } from "../context/prompt-injection-detector";
 import { QUERY_SAFETY_REMINDER } from "../context/prompt-templates";
 import { sanitizeToolResultStrings } from "../context/prompt-sanitize";
@@ -310,10 +311,16 @@ export class AiQueryService {
           Date.now() - startTime,
           rawMessage,
         );
+        // For errors the user can act on (e.g. Ollama model lacks tool
+        // support), surface the specific message instead of the generic
+        // "try again" — retrying without changing the model won't help.
+        const userMessage =
+          error instanceof OllamaModelDoesNotSupportToolsError
+            ? error.message
+            : "The AI provider encountered an error processing your query. Please try again.";
         yield {
           type: "error",
-          message:
-            "The AI provider encountered an error processing your query. Please try again.",
+          message: userMessage,
         };
         return;
       }

@@ -1,4 +1,5 @@
 import type { AiToolStreamChunk } from "./ai-provider.interface";
+import { OllamaModelDoesNotSupportToolsError } from "./ollama.provider";
 
 // Mock the long-running-fetch helper so tests can keep using `global.fetch`.
 // In production, longRunningFetch calls undici.fetch directly with our
@@ -531,6 +532,63 @@ describe("OllamaProvider", () => {
           }
         })(),
       ).rejects.toThrow("Ollama request failed: 503 Service Unavailable");
+    });
+
+    it("throws a typed error when Ollama reports the model does not support tools", async () => {
+      // Ollama returns 400 with this JSON body when the loaded model's
+      // Modelfile template doesn't declare tool support (e.g. the default
+      // deepseek-r1:latest in Ollama's registry).
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: false,
+        status: 400,
+        statusText: "Bad Request",
+        text: () =>
+          Promise.resolve(
+            '{"error":"registry.ollama.ai/library/deepseek-r1:latest does not support tools"}',
+          ),
+      });
+
+      const gen = provider.streamWithTools(
+        { systemPrompt: "test", messages: [{ role: "user", content: "hi" }] },
+        tools,
+      );
+
+      await expect(
+        (async () => {
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          for await (const _chunk of gen) {
+            // consume
+          }
+        })(),
+      ).rejects.toBeInstanceOf(OllamaModelDoesNotSupportToolsError);
+    });
+
+    it("includes the model id and remediation advice in the tool-unsupported error", async () => {
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: false,
+        status: 400,
+        statusText: "Bad Request",
+        text: () =>
+          Promise.resolve(
+            '{"error":"registry.ollama.ai/library/deepseek-r1:latest does not support tools"}',
+          ),
+      });
+
+      const gen = provider.streamWithTools(
+        { systemPrompt: "test", messages: [{ role: "user", content: "hi" }] },
+        tools,
+      );
+
+      await expect(
+        (async () => {
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          for await (const _chunk of gen) {
+            // consume
+          }
+        })(),
+        // The provider was instantiated with modelId "llama3" in beforeEach,
+        // so that's the id we expect to see reflected in the error.
+      ).rejects.toThrow(/llama3.*does not support tool use/s);
     });
 
     it("throws when response body is null", async () => {
