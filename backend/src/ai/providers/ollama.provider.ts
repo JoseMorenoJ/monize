@@ -20,6 +20,32 @@ import { longRunningFetch } from "./long-running-fetch";
  */
 const PROGRESS_LOG_INTERVAL_MS = 30_000;
 
+/**
+ * Thrown when Ollama rejects a tool-calling request because the loaded model's
+ * Modelfile template does not advertise tool support (e.g. the default
+ * `deepseek-r1:latest` in Ollama's registry, which predates DeepSeek's 0528
+ * tool-calling update). Retrying is pointless — the user needs to switch to
+ * a tool-calling-capable model. The query service surfaces the message of
+ * this error verbatim to the user so they know what action to take.
+ */
+export class OllamaModelDoesNotSupportToolsError extends Error {
+  readonly model: string;
+
+  constructor(model: string) {
+    super(
+      `The Ollama model "${model}" does not support tool use, so the AI ` +
+        `Assistant cannot run queries against your data. DeepSeek-R1 (0528+) ` +
+        `added function calling, but Ollama's default registry templates ` +
+        `still declare no tool support. Switch to a tool-calling-capable ` +
+        `model such as "MFDoom/deepseek-r1-tool-calling", ` +
+        `"okamototk/deepseek-r1", "llama3.1", or "qwen2.5", then update the ` +
+        `Ollama model in your AI provider settings.`,
+    );
+    this.name = "OllamaModelDoesNotSupportToolsError";
+    this.model = model;
+  }
+}
+
 interface OllamaToolCall {
   function: { name: string; arguments: Record<string, unknown> };
 }
@@ -365,6 +391,9 @@ export class OllamaProvider implements AiProvider {
         this.logger.error(
           `streamWithTools non-OK url=${url} status=${response.status} body=${bodyText.substring(0, 500)}`,
         );
+        if (this.isModelDoesNotSupportToolsBody(bodyText)) {
+          throw new OllamaModelDoesNotSupportToolsError(this.modelId);
+        }
         throw new Error(
           `Ollama request failed: ${response.status} ${response.statusText}`,
         );
@@ -470,6 +499,27 @@ export class OllamaProvider implements AiProvider {
       throw error;
     } finally {
       clearTimeout(timeout);
+    }
+  }
+
+  /**
+   * Ollama returns 400 with `{"error":"...does not support tools"}` when the
+   * loaded model's Modelfile template doesn't declare tool support. Match the
+   * stable substring of that message so we can convert it into a typed error
+   * with actionable remediation. Matches both parsed-JSON and raw-text bodies
+   * defensively.
+   */
+  private isModelDoesNotSupportToolsBody(bodyText: string): boolean {
+    if (!bodyText) return false;
+    if (/does not support tools/i.test(bodyText)) return true;
+    try {
+      const parsed = JSON.parse(bodyText) as { error?: unknown };
+      return (
+        typeof parsed.error === "string" &&
+        /does not support tools/i.test(parsed.error)
+      );
+    } catch {
+      return false;
     }
   }
 
