@@ -10,6 +10,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Default to read-only access for all jobs. Jobs that need more (e.g. the
+# build-and-push job which pushes a version commit and GHCR images) opt in
+# with their own `permissions:` block. See CWE-275.
+permissions:
+  contents: read
+
 jobs:
   backend-lint:
     name: Backend Lint & Type Check

@@ -950,7 +950,7 @@ describe("AuthService", () => {
       expect(result.user).toBeDefined();
       expect(result.accessToken).toBe("mock-jwt-token");
       expect(result.refreshToken).toBeTruthy();
-      expect(result.trustedDeviceToken).toBeUndefined();
+      expect(result.trustedDeviceRef).toBeUndefined();
     });
 
     it("creates trusted device token when rememberDevice is true", async () => {
@@ -976,7 +976,7 @@ describe("AuthService", () => {
         "192.168.1.1",
       );
 
-      expect(result.trustedDeviceToken).toBeTruthy();
+      expect(result.trustedDeviceRef).toBeTruthy();
       expect(trustedDevicesRepository.save).toHaveBeenCalled();
     });
 
@@ -2092,7 +2092,7 @@ describe("AuthService", () => {
   // ---------------------------------------------------------------
 
   describe("login with trusted device bypassing 2FA", () => {
-    it("bypasses 2FA when trustedDeviceToken is valid", async () => {
+    it("bypasses 2FA when trustedDeviceRef is valid", async () => {
       const hashedPassword = await bcrypt.hash("ValidPass123!", 10);
 
       const encryptedSecret = encrypt("TESTSECRET", TEST_TOTP_KEY);

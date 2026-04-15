@@ -11,6 +11,19 @@ import { OidcService } from "./oidc/oidc.service";
 import { EmailService } from "../notifications/email.service";
 import { DemoModeService } from "../common/demo-mode.service";
 import { TokenService } from "./token.service";
+import { encrypt, derivePurposeKey } from "./crypto.util";
+
+// Matches the JWT_SECRET used in the configService mock below; kept in one
+// place so encrypt/decrypt in tests can round-trip against the controller's
+// derived trusted-device-cookie key.
+const TEST_JWT_SECRET = "test-jwt-secret-for-spec-32-characters-min";
+const TRUSTED_DEVICE_COOKIE_KEY = derivePurposeKey(
+  TEST_JWT_SECRET,
+  "trusted-device-cookie",
+);
+function encryptTrustedDeviceCookieForTest(plaintext: string): string {
+  return encrypt(plaintext, TRUSTED_DEVICE_COOKIE_KEY);
+}
 
 jest.mock("openid-client", () => ({}));
 
@@ -110,6 +123,7 @@ describe("AuthController", () => {
             LOCAL_AUTH_ENABLED: "true",
             REGISTRATION_ENABLED: "true",
             FORCE_2FA: "false",
+            JWT_SECRET: "test-jwt-secret-for-spec-32-characters-min",
             NODE_ENV: "test",
             PUBLIC_APP_URL: "http://localhost:3000",
           };
@@ -154,6 +168,7 @@ describe("AuthController", () => {
             LOCAL_AUTH_ENABLED: "false",
             REGISTRATION_ENABLED: "true",
             FORCE_2FA: "false",
+            JWT_SECRET: "test-jwt-secret-for-spec-32-characters-min",
             NODE_ENV: "test",
           };
           return config[key] ?? defaultValue;
@@ -199,6 +214,7 @@ describe("AuthController", () => {
             LOCAL_AUTH_ENABLED: "true",
             REGISTRATION_ENABLED: "false",
             FORCE_2FA: "false",
+            JWT_SECRET: "test-jwt-secret-for-spec-32-characters-min",
             NODE_ENV: "test",
           };
           return config[key] ?? defaultValue;
@@ -276,6 +292,7 @@ describe("AuthController", () => {
             LOCAL_AUTH_ENABLED: "false",
             REGISTRATION_ENABLED: "true",
             FORCE_2FA: "false",
+            JWT_SECRET: "test-jwt-secret-for-spec-32-characters-min",
             NODE_ENV: "test",
           };
           return config[key] ?? defaultValue;
@@ -507,6 +524,7 @@ describe("AuthController", () => {
             LOCAL_AUTH_ENABLED: "false",
             REGISTRATION_ENABLED: "true",
             FORCE_2FA: "false",
+            JWT_SECRET: "test-jwt-secret-for-spec-32-characters-min",
             NODE_ENV: "test",
           };
           return config[key] ?? defaultValue;
@@ -822,7 +840,7 @@ describe("AuthController", () => {
         accessToken: "2fa-access",
         refreshToken: "2fa-refresh",
         user: { id: "user-1", email: "test@example.com" },
-        trustedDeviceToken: null,
+        trustedDeviceRef: null,
       };
       authService.verify2FA.mockResolvedValue(verifyResult);
       const res = mockRes();
@@ -864,7 +882,7 @@ describe("AuthController", () => {
         accessToken: "2fa-access",
         refreshToken: "2fa-refresh",
         user: { id: "user-1", email: "test@example.com" },
-        trustedDeviceToken: "trusted-device-token-abc",
+        trustedDeviceRef: "trusted-device-token-abc",
       };
       authService.verify2FA.mockResolvedValue(verifyResult);
       const res = mockRes();
@@ -888,23 +906,33 @@ describe("AuthController", () => {
         "Test Browser",
         "192.168.1.100",
       );
+      // The cookie value is an AES-256-GCM ciphertext of the trusted-device
+      // ref; we can't predict the bytes (random salt/iv) but we can assert
+      // the format (salt:iv:authTag:ciphertext, 4 hex segments) and that
+      // the plaintext is not leaked.
       expect(res.cookie).toHaveBeenCalledWith(
         "trusted_device",
-        "trusted-device-token-abc",
+        expect.stringMatching(
+          /^[0-9a-f]+:[0-9a-f]+:[0-9a-f]+:[0-9a-f]+$/i,
+        ),
         expect.objectContaining({
           httpOnly: true,
           sameSite: "lax",
           maxAge: 14 * 24 * 60 * 60 * 1000,
         }),
       );
+      const cookieCall = (res.cookie as jest.Mock).mock.calls.find(
+        (c) => c[0] === "trusted_device",
+      );
+      expect(cookieCall?.[1]).not.toBe("trusted-device-token-abc");
     });
 
-    it("does not set trusted_device cookie when trustedDeviceToken is null", async () => {
+    it("does not set trusted_device cookie when trustedDeviceRef is null", async () => {
       const verifyResult = {
         accessToken: "2fa-access",
         refreshToken: "2fa-refresh",
         user: { id: "user-1", email: "test@example.com" },
-        trustedDeviceToken: null,
+        trustedDeviceRef: null,
       };
       authService.verify2FA.mockResolvedValue(verifyResult);
       const res = mockRes();
@@ -933,7 +961,7 @@ describe("AuthController", () => {
         accessToken: "2fa-access",
         refreshToken: "2fa-refresh",
         user: { id: "user-1" },
-        trustedDeviceToken: null,
+        trustedDeviceRef: null,
       };
       authService.verify2FA.mockResolvedValue(verifyResult);
       const res = mockRes();
@@ -1255,7 +1283,7 @@ describe("AuthController", () => {
     });
   });
 
-  describe("login with trustedDeviceToken", () => {
+  describe("login with trustedDeviceRef", () => {
     it("passes trusted_device cookie to authService.login", async () => {
       const loginResult = {
         accessToken: "access-token",
@@ -1264,8 +1292,12 @@ describe("AuthController", () => {
       };
       authService.login.mockResolvedValue(loginResult);
       const res = mockRes();
+      // Cookie carries the AES-256-GCM ciphertext of the trusted-device ref
+      // (CWE-312); the controller decrypts before forwarding to the service.
+      const encryptedCookie =
+        encryptTrustedDeviceCookieForTest("my-trusted-token");
       const expressReq = {
-        cookies: { trusted_device: "my-trusted-token" },
+        cookies: { trusted_device: encryptedCookie },
         headers: { "user-agent": "TestBrowser/1.0" },
       } as any;
       const dto = { email: "test@example.com", password: "password" };
@@ -1275,6 +1307,29 @@ describe("AuthController", () => {
       expect(authService.login).toHaveBeenCalledWith(
         dto,
         "my-trusted-token",
+        "TestBrowser/1.0",
+      );
+    });
+
+    it("passes undefined when trusted_device cookie has invalid ciphertext", async () => {
+      const loginResult = {
+        accessToken: "access-token",
+        refreshToken: "refresh-token",
+        user: { id: "user-1", email: "test@example.com" },
+      };
+      authService.login.mockResolvedValue(loginResult);
+      const res = mockRes();
+      const expressReq = {
+        cookies: { trusted_device: "not-a-valid-ciphertext" },
+        headers: { "user-agent": "TestBrowser/1.0" },
+      } as any;
+      const dto = { email: "test@example.com", password: "password" };
+
+      await controller.login(dto as any, expressReq, res as any);
+
+      expect(authService.login).toHaveBeenCalledWith(
+        dto,
+        undefined,
         "TestBrowser/1.0",
       );
     });
@@ -1311,6 +1366,7 @@ describe("AuthController", () => {
             LOCAL_AUTH_ENABLED: "true",
             REGISTRATION_ENABLED: "true",
             FORCE_2FA: "false",
+            JWT_SECRET: "test-jwt-secret-for-spec-32-characters-min",
             NODE_ENV: "production",
           };
           return config[key] ?? defaultValue;
@@ -1365,6 +1421,7 @@ describe("AuthController", () => {
             LOCAL_AUTH_ENABLED: "true",
             REGISTRATION_ENABLED: "true",
             FORCE_2FA: "false",
+            JWT_SECRET: "test-jwt-secret-for-spec-32-characters-min",
             NODE_ENV: "production",
             DISABLE_HTTPS_HEADERS: "true",
           };
