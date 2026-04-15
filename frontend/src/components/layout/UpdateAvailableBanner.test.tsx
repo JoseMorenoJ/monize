@@ -126,6 +126,59 @@ describe('UpdateAvailableBanner', () => {
     expect(container.firstChild).toBeNull();
   });
 
+  it('silently swallows a failed getStatus call and renders nothing', async () => {
+    useAuthStore.setState({ user: adminUser, isAuthenticated: true });
+    vi.mocked(updatesApi.getStatus).mockRejectedValueOnce(new Error('boom'));
+
+    const { container } = await renderBanner();
+
+    await waitFor(() => {
+      expect(updatesApi.getStatus).toHaveBeenCalled();
+    });
+    expect(container.firstChild).toBeNull();
+  });
+
+  it('falls back to a generic message when latestVersion is missing', async () => {
+    useAuthStore.setState({ user: adminUser, isAuthenticated: true });
+    vi.mocked(updatesApi.getStatus).mockResolvedValue({
+      ...baseStatus,
+      latestVersion: null,
+    });
+
+    await renderBanner();
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/A new version of Monize is available/),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it('un-hides the banner if dismiss fails so the user can retry', async () => {
+    useAuthStore.setState({ user: adminUser, isAuthenticated: true });
+    vi.mocked(updatesApi.getStatus).mockResolvedValue(baseStatus);
+    vi.mocked(updatesApi.dismiss).mockRejectedValueOnce(new Error('boom'));
+
+    await renderBanner();
+
+    const dismissButton = await screen.findByRole('button', {
+      name: /dismiss update notification/i,
+    });
+
+    await act(async () => {
+      fireEvent.click(dismissButton);
+    });
+
+    await waitFor(() => {
+      expect(updatesApi.dismiss).toHaveBeenCalledTimes(1);
+    });
+
+    // After the failed dismiss, the banner should be visible again.
+    expect(
+      screen.getByText(/Monize v1\.9\.0 is available/),
+    ).toBeInTheDocument();
+  });
+
   it('hides the banner and calls dismiss when the user clicks Dismiss', async () => {
     useAuthStore.setState({ user: adminUser, isAuthenticated: true });
     vi.mocked(updatesApi.getStatus).mockResolvedValue(baseStatus);

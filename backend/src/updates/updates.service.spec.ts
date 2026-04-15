@@ -162,6 +162,28 @@ describe("UpdatesService", () => {
       expect(status.error).toBe("unreachable");
       expect(status.updateAvailable).toBe(false);
     });
+
+    it("handles non-Error throwables in the catch branch", async () => {
+      fetchMock.mockRejectedValueOnce("string-thrown-value");
+
+      await service.refreshLatestRelease();
+      preferencesRepo.findOne.mockResolvedValue(null);
+
+      const status = await service.getStatus("user-1");
+      expect(status.error).toBe("unreachable");
+    });
+
+    it("falls back to tag_name when release.name is empty", async () => {
+      fetchMock.mockResolvedValueOnce(
+        mockOkResponse(buildRelease({ name: "" })),
+      );
+
+      await service.refreshLatestRelease();
+      preferencesRepo.findOne.mockResolvedValue(null);
+
+      const status = await service.getStatus("user-1");
+      expect(status.releaseName).toBe("v99.0.0");
+    });
   });
 
   describe("getStatus dismissal flag", () => {
@@ -231,6 +253,36 @@ describe("UpdatesService", () => {
       const result = await service.dismiss("user-1");
       expect(result).toEqual({ dismissed: false, version: null });
       expect(preferencesRepo.save).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("enabled lifecycle", () => {
+    it("onModuleInit triggers an initial refresh in the background", async () => {
+      fetchMock.mockResolvedValueOnce(mockOkResponse(buildRelease()));
+
+      service.onModuleInit();
+
+      // onModuleInit is fire-and-forget; wait a tick for the microtask queue
+      // so the kicked-off refresh can complete.
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock).toHaveBeenCalledWith(
+        "https://api.github.com/repos/kenlasko/monize/releases/latest",
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            "User-Agent": "Monize-UpdateCheck",
+          }),
+        }),
+      );
+    });
+
+    it("scheduledRefresh hits GitHub when enabled", async () => {
+      fetchMock.mockResolvedValueOnce(mockOkResponse(buildRelease()));
+
+      await service.scheduledRefresh();
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
     });
   });
 
