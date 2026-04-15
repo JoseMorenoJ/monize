@@ -19,7 +19,10 @@ import { MergePayeeDto } from "./dto/merge-payee.dto";
 import { ActionHistoryService } from "../action-history/action-history.service";
 
 function escapeLikeWildcards(value: string): string {
-  return value.replace(/[%_]/g, "\\$&");
+  // Escape backslash first, then the LIKE wildcards. Escaping only the
+  // wildcards would leave backslashes unescaped, letting an attacker submit
+  // '\%' and neutralise the escaping (CWE-20).
+  return value.replace(/\\/g, "\\\\").replace(/[%_]/g, "\\$&");
 }
 
 /**

@@ -1,6 +1,7 @@
 import { Page, expect } from '@playwright/test';
+import { randomBytes } from 'crypto';
 
-const uniqueId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+const uniqueId = () => Date.now().toString(36) + randomBytes(3).toString('hex');
 
 export async function registerUser(
   page: Page,

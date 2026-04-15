@@ -87,6 +87,12 @@ function toProperCase(value: string): string {
  * few lines. Checks for tabs and semicolons before falling back to comma.
  */
 function detectDelimiter(content: string): string {
+  // Defensive: ensure we received a real string. An attacker could submit a
+  // JSON body where `content` is an object like {length: 1e100}; iterating on
+  // `.length` without this check is a CWE-834 loop-bound injection.
+  if (typeof content !== "string") {
+    return ",";
+  }
   // Take the first few lines (up to 5) for detection
   const sampleLines = content.split(/\r?\n/, 5).filter((l) => l.trim());
 
@@ -149,6 +155,12 @@ function detectDelimiter(content: string): string {
  * - Empty rows are skipped
  */
 function parseCsvRows(content: string, delimiter: string): string[][] {
+  // Defensive: ensure we received a real string. An attacker could submit a
+  // JSON body where `content` is an object like {length: 1e100}; iterating on
+  // `.length` without this check is a CWE-834 loop-bound injection.
+  if (typeof content !== "string") {
+    return [];
+  }
   const rows: string[][] = [];
   let currentRow: string[] = [];
   let currentField = "";

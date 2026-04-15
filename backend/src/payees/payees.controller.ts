@@ -22,6 +22,7 @@ import {
   ApiQuery,
 } from "@nestjs/swagger";
 import { AuthGuard } from "@nestjs/passport";
+import { assertStringParam } from "../common/query-param-utils";
 import { PayeesService } from "./payees.service";
 import { CreatePayeeDto } from "./dto/create-payee.dto";
 import { UpdatePayeeDto } from "./dto/update-payee.dto";
@@ -85,7 +86,8 @@ export class PayeesController {
     @Query("q") query: string,
     @Query("limit", new DefaultValuePipe(10), ParseIntPipe) limit: number,
   ): Promise<Payee[]> {
-    const safeQuery = query ? query.slice(0, 200) : "";
+    const q = assertStringParam(query, "q");
+    const safeQuery = q ? q.slice(0, 200) : "";
     const safeLimit = Math.min(Math.max(limit, 1), 200);
     return this.payeesService.search(req.user.id, safeQuery, safeLimit);
   }
@@ -103,7 +105,8 @@ export class PayeesController {
     type: [Payee],
   })
   autocomplete(@Request() req, @Query("q") query: string): Promise<Payee[]> {
-    const safeQuery = query ? query.slice(0, 200) : "";
+    const q = assertStringParam(query, "q");
+    const safeQuery = q ? q.slice(0, 200) : "";
     return this.payeesService.autocomplete(req.user.id, safeQuery);
   }
 
@@ -350,7 +353,8 @@ export class PayeesController {
     description: "Matching inactive payee or null",
   })
   findInactiveByName(@Request() req, @Query("name") name: string) {
-    const safeName = name ? name.slice(0, 255) : "";
+    const n = assertStringParam(name, "name");
+    const safeName = n ? n.slice(0, 255) : "";
     return this.payeesService.findInactiveByName(req.user.id, safeName);
   }
 

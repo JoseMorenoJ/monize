@@ -209,8 +209,7 @@ export class UpdateAiConfigDto {
 
   @ApiPropertyOptional({
     example: "USD",
-    description:
-      "ISO 4217 currency code for the cost rates (e.g. USD, EUR).",
+    description: "ISO 4217 currency code for the cost rates (e.g. USD, EUR).",
   })
   @IsOptional()
   @IsString()

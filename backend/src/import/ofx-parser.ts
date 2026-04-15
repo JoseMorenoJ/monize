@@ -39,9 +39,12 @@ function truncate(value: string, maxLength: number): string {
  */
 function parseOfxDate(dateStr: string): string {
   if (!dateStr) return "";
-  // Strip timezone info and fractional seconds
+  // Strip timezone info and fractional seconds.
+  // Use [^\]]* (instead of .*) so the inner match is unambiguous and the
+  // regex cannot exhibit polynomial backtracking on inputs like '[[[['
+  // (CWE-1333).
   const cleaned = dateStr
-    .replace(/\[.*\]/, "")
+    .replace(/\[[^\]]*\]/, "")
     .replace(/\..*/, "")
     .trim();
   if (cleaned.length < 8) return "";

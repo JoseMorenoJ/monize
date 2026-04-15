@@ -80,3 +80,24 @@ export function validateDateParam(
     );
   }
 }
+
+/**
+ * Assert that a query parameter value is a scalar (not an array or object).
+ * Express parses duplicated query keys as arrays and nested bracket syntax
+ * as objects; both can bypass string-based sanitization because their
+ * prototype methods (includes, indexOf, slice, ...) behave differently from
+ * String.prototype equivalents (CWE-843). Call this at the controller
+ * boundary before using a raw query param with string methods.
+ */
+export function assertStringParam<T extends string | undefined>(
+  value: T | string[] | Record<string, unknown>,
+  paramName: string,
+): T {
+  if (value === undefined || value === null) {
+    return value as T;
+  }
+  if (Array.isArray(value) || typeof value === "object") {
+    throw new BadRequestException(`${paramName} must be a single string value`);
+  }
+  return value as T;
+}

@@ -587,7 +587,10 @@ function parseCategoryOrTransfer(value: string): {
 
   // Transfers are denoted by [Account Name]
   // Tags can also appear on transfers: [Account Name]/TagName
-  const transferMatch = value.match(/^\[(.+)\](.*)$/);
+  // Use a negated character class [^\]]+ (instead of .+) to avoid the
+  // ambiguity that causes polynomial backtracking on pathological inputs
+  // like '[a]a]a]...' (CWE-1333).
+  const transferMatch = value.match(/^\[([^\]]+)\](.*)$/);
   if (transferMatch) {
     const tagNames = extractTagNames(transferMatch[2]);
     return {

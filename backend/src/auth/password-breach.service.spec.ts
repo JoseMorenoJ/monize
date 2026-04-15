@@ -17,6 +17,9 @@ describe("PasswordBreachService", () => {
     fetchSpy.mockRestore();
   });
 
+  // SHA-1 is used here only to replicate HIBP's k-Anonymity API format
+  // inside unit-test fixtures. This is not a password-storage hash.
+  // codeql[js/insufficient-password-hash]
   function sha1Suffix(password: string): string {
     return crypto
       .createHash("sha1")

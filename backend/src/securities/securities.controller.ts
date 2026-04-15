@@ -25,6 +25,7 @@ import {
 import { AuthGuard } from "@nestjs/passport";
 import { Throttle } from "@nestjs/throttler";
 import { ParseSymbolPipe } from "../common/pipes/parse-symbol.pipe";
+import { assertStringParam } from "../common/query-param-utils";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import { Roles } from "../auth/decorators/roles.decorator";
 import { SecuritiesService } from "./securities.service";
@@ -109,7 +110,8 @@ export class SecuritiesController {
   @ApiQuery({ name: "q", required: true, description: "Search query" })
   @ApiResponse({ status: 200, description: "Search results", type: [Security] })
   search(@Request() req, @Query("q") query: string): Promise<Security[]> {
-    const safeQuery = query ? query.slice(0, 200) : "";
+    const q = assertStringParam(query, "q");
+    const safeQuery = q ? q.slice(0, 200) : "";
     return this.securitiesService.search(req.user.id, safeQuery);
   }
 
@@ -146,9 +148,11 @@ export class SecuritiesController {
     @Query("q") query: string,
     @Query("exchanges") exchanges?: string,
   ): Promise<SecurityLookupResult | null> {
-    const safeQuery = query ? query.slice(0, 200) : "";
-    const preferredExchanges = exchanges
-      ? exchanges
+    const q = assertStringParam(query, "q");
+    const exch = assertStringParam(exchanges, "exchanges");
+    const safeQuery = q ? q.slice(0, 200) : "";
+    const preferredExchanges = exch
+      ? exch
           .split(",")
           .map((e) => e.trim().slice(0, 20))
           .filter(Boolean)

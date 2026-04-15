@@ -449,10 +449,7 @@ export class AiInsightsService {
     return sections.join("\n");
   }
 
-  private parseInsightsResponse(
-    content: string,
-    userId: string,
-  ): RawInsight[] {
+  private parseInsightsResponse(content: string, userId: string): RawInsight[] {
     const MAX_JSON_SIZE = 100 * 1024; // 100KB
     const trimmed = content.trim();
     const preview = trimmed.slice(0, 500).replace(/\s+/g, " ");

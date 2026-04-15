@@ -15,6 +15,7 @@ import {
   ApiBearerAuth,
   ApiQuery,
 } from "@nestjs/swagger";
+import { assertStringParam } from "../common/query-param-utils";
 import { NetWorthService } from "./net-worth.service";
 
 @ApiTags("Net Worth")
@@ -72,14 +73,18 @@ export class NetWorthController {
     @Query("accountIds") accountIds?: string,
     @Query("displayCurrency") displayCurrency?: string,
   ) {
+    const sd = assertStringParam(startDate, "startDate");
+    const ed = assertStringParam(endDate, "endDate");
+    const aIds = assertStringParam(accountIds, "accountIds");
+    const curr = assertStringParam(displayCurrency, "displayCurrency");
     const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-    if (startDate && !dateRegex.test(startDate))
+    if (sd && !dateRegex.test(sd))
       throw new BadRequestException("startDate must be YYYY-MM-DD");
-    if (endDate && !dateRegex.test(endDate))
+    if (ed && !dateRegex.test(ed))
       throw new BadRequestException("endDate must be YYYY-MM-DD");
     const uuidRegex =
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-    const ids = accountIds ? accountIds.split(",").filter(Boolean) : undefined;
+    const ids = aIds ? aIds.split(",").filter(Boolean) : undefined;
     if (ids) {
       for (const id of ids) {
         if (!uuidRegex.test(id))
@@ -88,13 +93,11 @@ export class NetWorthController {
           );
       }
     }
-    const safeCurrency = displayCurrency
-      ? displayCurrency.slice(0, 3).toUpperCase()
-      : undefined;
+    const safeCurrency = curr ? curr.slice(0, 3).toUpperCase() : undefined;
     return this.netWorthService.getMonthlyInvestments(
       req.user.id,
-      startDate,
-      endDate,
+      sd,
+      ed,
       ids,
       safeCurrency,
     );
@@ -125,14 +128,18 @@ export class NetWorthController {
     @Query("accountIds") accountIds?: string,
     @Query("displayCurrency") displayCurrency?: string,
   ) {
+    const sd = assertStringParam(startDate, "startDate");
+    const ed = assertStringParam(endDate, "endDate");
+    const aIds = assertStringParam(accountIds, "accountIds");
+    const curr = assertStringParam(displayCurrency, "displayCurrency");
     const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-    if (startDate && !dateRegex.test(startDate))
+    if (sd && !dateRegex.test(sd))
       throw new BadRequestException("startDate must be YYYY-MM-DD");
-    if (endDate && !dateRegex.test(endDate))
+    if (ed && !dateRegex.test(ed))
       throw new BadRequestException("endDate must be YYYY-MM-DD");
     const uuidRegex =
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-    const ids = accountIds ? accountIds.split(",").filter(Boolean) : undefined;
+    const ids = aIds ? aIds.split(",").filter(Boolean) : undefined;
     if (ids) {
       for (const id of ids) {
         if (!uuidRegex.test(id))
@@ -141,13 +148,11 @@ export class NetWorthController {
           );
       }
     }
-    const safeCurrency = displayCurrency
-      ? displayCurrency.slice(0, 3).toUpperCase()
-      : undefined;
+    const safeCurrency = curr ? curr.slice(0, 3).toUpperCase() : undefined;
     return this.netWorthService.getDailyInvestments(
       req.user.id,
-      startDate,
-      endDate,
+      sd,
+      ed,
       ids,
       safeCurrency,
     );
