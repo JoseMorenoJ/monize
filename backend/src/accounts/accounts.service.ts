@@ -1092,6 +1092,13 @@ export class AccountsService {
   }
 
   async reorderFavourites(userId: string, accountIds: string[]): Promise<void> {
+    // Defensive: reject anything that isn't a proper array. An attacker could
+    // submit {length: 1e100} and force an unbounded loop (CWE-834). The DTO
+    // layer already validates this via @IsArray, but we re-check here so the
+    // invariant is visible to static analysis.
+    if (!Array.isArray(accountIds)) {
+      throw new BadRequestException("accountIds must be an array");
+    }
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();

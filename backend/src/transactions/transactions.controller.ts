@@ -39,6 +39,7 @@ import {
   parseUuids,
   parseCategoryIds,
   validateDateParam,
+  assertStringParam,
   UUID_REGEX,
   DATE_REGEX,
 } from "../common/query-param-utils";
@@ -198,7 +199,8 @@ export class TransactionsController {
     }
 
     // Truncate search to prevent excessive ILIKE query length
-    const sanitizedSearch = search ? search.slice(0, 200) : undefined;
+    const searchStr = assertStringParam(search, "search");
+    const sanitizedSearch = searchStr ? searchStr.slice(0, 200) : undefined;
 
     const parsedAmountFrom =
       amountFrom !== undefined ? parseFloat(amountFrom) : undefined;

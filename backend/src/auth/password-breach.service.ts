@@ -8,9 +8,14 @@ export class PasswordBreachService {
 
   async isBreached(password: string): Promise<boolean> {
     try {
-      // SHA-1 is required by the HIBP k-Anonymity API protocol.
-      // Only the first 5 hex chars are sent; the full hash never leaves this process.
+      // SHA-1 is required by the HIBP k-Anonymity API protocol; we are not
+      // using it to hash passwords for storage. Only the first 5 hex chars
+      // of the hash ever leave this process (the prefix is sent to HIBP to
+      // receive back a list of matching suffixes for local comparison). The
+      // password itself and the remaining 35 hex chars of the hash never
+      // leave the process. This is a known-safe use of SHA-1.
       // bearer:disable javascript_lang_weak_hash_sha1
+      // codeql[js/insufficient-password-hash]
       const sha1 = crypto
         .createHash("sha1")
         .update(password)

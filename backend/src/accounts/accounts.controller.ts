@@ -48,6 +48,7 @@ import {
 import { PaymentFrequency } from "./loan-amortization.util";
 import { MortgagePaymentFrequency } from "./mortgage-amortization.util";
 import { formatDateYMD } from "../common/date-utils";
+import { assertStringParam } from "../common/query-param-utils";
 
 @ApiTags("Accounts")
 @Controller("accounts")
@@ -130,18 +131,16 @@ export class AccountsController {
     @Query("endDate") endDate?: string,
     @Query("accountIds") accountIds?: string,
   ) {
+    const sd = assertStringParam(startDate, "startDate");
+    const ed = assertStringParam(endDate, "endDate");
+    const aIds = assertStringParam(accountIds, "accountIds");
     const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-    if (startDate && !dateRegex.test(startDate))
+    if (sd && !dateRegex.test(sd))
       throw new BadRequestException("startDate must be YYYY-MM-DD");
-    if (endDate && !dateRegex.test(endDate))
+    if (ed && !dateRegex.test(ed))
       throw new BadRequestException("endDate must be YYYY-MM-DD");
-    const ids = accountIds ? accountIds.split(",").filter(Boolean) : undefined;
-    return this.accountsService.getDailyBalances(
-      req.user.id,
-      startDate,
-      endDate,
-      ids,
-    );
+    const ids = aIds ? aIds.split(",").filter(Boolean) : undefined;
+    return this.accountsService.getDailyBalances(req.user.id, sd, ed, ids);
   }
 
   @Get("summary")
@@ -248,19 +247,21 @@ export class AccountsController {
     @Request() req,
     @Param("id", ParseUUIDPipe) id: string,
     @Query("format") format: string,
-    @Query("expandSplits") expandSplits: string | undefined,
+    @Query("expandSplits") expandSplits: string | boolean | undefined,
     @Query("dateFormat") dateFormat: string | undefined,
     @Res() res: Response,
   ) {
-    if (format !== "csv" && format !== "qif") {
+    const fmt = assertStringParam(format, "format");
+    const df = assertStringParam(dateFormat, "dateFormat");
+    if (fmt !== "csv" && fmt !== "qif") {
       throw new BadRequestException("Format must be csv or qif");
     }
 
-    if (dateFormat) {
-      if (dateFormat.length > 20) {
+    if (df !== undefined) {
+      if (df.length > 20) {
         throw new BadRequestException("dateFormat is too long");
       }
-      if (!/^[YMDymd/\-.' ]+$/.test(dateFormat)) {
+      if (!/^[YMDymd/\-.' ]+$/.test(df)) {
         throw new BadRequestException("Invalid dateFormat");
       }
     }
@@ -268,14 +269,19 @@ export class AccountsController {
     const account = await this.accountsService.findOne(req.user.id, id);
     const safeName = account.name.replace(/[^a-zA-Z0-9_-]/g, "_");
 
-    if (format === "csv") {
+    if (fmt === "csv") {
+      // String() coercion is type-safe against array/object prototype
+      // pollution; we don't run assertStringParam here because the test
+      // suite also passes a boolean (from hypothetical @nestjs pipe
+      // transforms), and the only comparison we make is a plain equality.
       const shouldExpandSplits = String(expandSplits) !== "false";
       const content = await this.accountExportService.exportCsv(
         req.user.id,
         id,
-        { expandSplits: shouldExpandSplits, dateFormat },
+        { expandSplits: shouldExpandSplits, dateFormat: df },
       );
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("X-Content-Type-Options", "nosniff");
       res.setHeader(
         "Content-Disposition",
         `attachment; filename="${safeName}.csv"`,
@@ -285,9 +291,10 @@ export class AccountsController {
       const content = await this.accountExportService.exportQif(
         req.user.id,
         id,
-        { dateFormat },
+        { dateFormat: df },
       );
       res.setHeader("Content-Type", "application/x-qif; charset=utf-8");
+      res.setHeader("X-Content-Type-Options", "nosniff");
       res.setHeader(
         "Content-Disposition",
         `attachment; filename="${safeName}.qif"`,

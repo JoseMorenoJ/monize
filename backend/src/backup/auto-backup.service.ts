@@ -105,8 +105,7 @@ export class AutoBackupService {
     }
 
     if (dto.folderPath !== undefined) {
-      this.validateFolderPath(dto.folderPath);
-      settings.folderPath = dto.folderPath;
+      settings.folderPath = this.validateFolderPath(dto.folderPath);
     }
     if (dto.frequency !== undefined) {
       settings.frequency = dto.frequency;
@@ -154,8 +153,8 @@ export class AutoBackupService {
     folderPath: string,
   ): Promise<{ valid: boolean; error?: string }> {
     try {
-      this.validateFolderPath(folderPath);
-      await this.assertFolderWritable(folderPath);
+      const safePath = this.validateFolderPath(folderPath);
+      await this.assertFolderWritable(safePath);
       return { valid: true };
     } catch (error) {
       return { valid: false, error: error.message };
@@ -165,29 +164,29 @@ export class AutoBackupService {
   async browseFolders(
     folderPath: string,
   ): Promise<{ current: string; directories: string[] }> {
-    this.validateFolderPath(folderPath);
+    const safePath = this.validateFolderPath(folderPath);
 
     let stat: Awaited<ReturnType<typeof fs.stat>>;
     try {
-      stat = await fs.stat(folderPath);
+      stat = await fs.stat(safePath);
     } catch (error) {
       if (error.code === "ENOENT") {
-        throw new BadRequestException(`Folder does not exist: ${folderPath}`);
+        throw new BadRequestException(`Folder does not exist: ${safePath}`);
       }
-      throw new BadRequestException(`Cannot access folder: ${folderPath}`);
+      throw new BadRequestException(`Cannot access folder: ${safePath}`);
     }
 
     if (!stat.isDirectory()) {
-      throw new BadRequestException(`Path is not a directory: ${folderPath}`);
+      throw new BadRequestException(`Path is not a directory: ${safePath}`);
     }
 
-    const entries = await fs.readdir(folderPath, { withFileTypes: true });
+    const entries = await fs.readdir(safePath, { withFileTypes: true });
     const directories = entries
       .filter((e) => e.isDirectory() && !e.name.startsWith("."))
       .map((e) => e.name)
       .sort((a, b) => a.localeCompare(b));
 
-    return { current: folderPath, directories };
+    return { current: safePath, directories };
   }
 
   async runManualBackup(
@@ -674,7 +673,19 @@ export class AutoBackupService {
     return full;
   }
 
-  private validateFolderPath(folderPath: string): void {
+  /**
+   * Validate a user-supplied folder path and return the normalized form.
+   * All filesystem operations must use the returned value (not the original
+   * input) so CodeQL/SAST tools can see the explicit sanitization boundary
+   * (CWE-22: Path traversal).
+   */
+  private validateFolderPath(folderPath: string): string {
+    if (typeof folderPath !== "string") {
+      throw new BadRequestException("Folder path must be a string");
+    }
+    if (folderPath.length > 4096) {
+      throw new BadRequestException("Folder path is too long");
+    }
     if (!folderPath.startsWith("/")) {
       throw new BadRequestException("Folder path must be an absolute path");
     }
@@ -686,39 +697,46 @@ export class AutoBackupService {
     if (folderPath.includes("\0")) {
       throw new BadRequestException("Folder path must not contain null bytes");
     }
+    // Trim trailing slashes without a greedy regex (avoids ReDoS on '/' runs).
+    let trimmed = folderPath;
+    while (trimmed.length > 1 && trimmed.endsWith("/")) {
+      trimmed = trimmed.slice(0, -1);
+    }
     // Ensure the resolved path matches the input (no symlink-like tricks via //)
-    const normalized = resolve(folderPath);
-    if (
-      normalized !== folderPath &&
-      normalized !== folderPath.replace(/\/+$/, "")
-    ) {
+    const normalized = resolve(trimmed);
+    if (normalized !== trimmed) {
       throw new BadRequestException(
         "Folder path must be a normalized absolute path",
       );
     }
+    return normalized;
   }
 
   private async assertFolderWritable(folderPath: string): Promise<void> {
+    // Re-validate defensively: this method is also invoked with folder paths
+    // read back from the database (originally user-supplied), so CWE-22
+    // sanitization must run every time before we touch the filesystem.
+    const safePath = this.validateFolderPath(folderPath);
     try {
-      const stat = await fs.stat(folderPath);
+      const stat = await fs.stat(safePath);
       if (!stat.isDirectory()) {
-        throw new BadRequestException(`Path is not a directory: ${folderPath}`);
+        throw new BadRequestException(`Path is not a directory: ${safePath}`);
       }
     } catch (error) {
       if (error.code === "ENOENT") {
         throw new BadRequestException(
-          `Folder does not exist: ${folderPath}. Ensure the path is mapped as a Docker volume.`,
+          `Folder does not exist: ${safePath}. Ensure the path is mapped as a Docker volume.`,
         );
       }
       if (error instanceof BadRequestException) throw error;
       throw new BadRequestException(
-        `Cannot access folder: ${folderPath} - ${error.message}`,
+        `Cannot access folder: ${safePath} - ${error.message}`,
       );
     }
 
     // Test write access by creating and removing a temporary file
     const testFile = this.safePath(
-      folderPath,
+      safePath,
       `.monize-write-test-${Date.now()}`,
     );
     try {
@@ -726,7 +744,7 @@ export class AutoBackupService {
       await fs.unlink(testFile);
     } catch {
       throw new BadRequestException(
-        `Folder is not writable: ${folderPath}. Check container permissions.`,
+        `Folder is not writable: ${safePath}. Check container permissions.`,
       );
     }
   }

@@ -297,7 +297,11 @@ export class AccountExportService {
   private escapeCsv(value: string): string {
     // Guard against CSV formula injection: prefix with single quote if the
     // value starts with a character that spreadsheets interpret as a formula.
-    let safe = value;
+    // Coerce to string defensively: this method receives values that may
+    // originate from HTTP query params where duplicated keys parse to arrays
+    // (CWE-843); String() normalizes any non-string into a safe scalar before
+    // applying string-only sanitization.
+    let safe = typeof value === "string" ? value : String(value);
     if (/^[=+\-@\t\r]/.test(safe)) {
       safe = `'${safe}`;
     }

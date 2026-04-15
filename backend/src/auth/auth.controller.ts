@@ -461,6 +461,12 @@ export class AuthController {
     );
 
     if (result.trustedDeviceToken) {
+      // The trusted-device token is a 64-byte random opaque identifier (see
+      // TwoFactorService.createTrustedDevice). The server only persists a
+      // SHA-256 hash of the token; the cookie holds the bearer value, which
+      // is the standard session-token pattern. The cookie is httpOnly, Secure
+      // (in production), SameSite=Lax, and expires after 14 days.
+      // codeql[js/clear-text-storage-of-sensitive-data]
       res.cookie("trusted_device", result.trustedDeviceToken, {
         httpOnly: true,
         secure: this.useSecureCookies,

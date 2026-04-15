@@ -175,8 +175,14 @@ export class ToolExecutorService {
     const categoryNames = input.categoryNames as string[] | undefined;
     const accountNames = input.accountNames as string[] | undefined;
     const rawSearchText = input.searchText as string | undefined;
+    // Escape backslash first, then the LIKE wildcards. Escaping only the
+    // wildcards would leave backslashes unescaped, letting an attacker submit
+    // '\%' and neutralise the escaping (CWE-20).
     const sanitizedSearchText = rawSearchText
-      ? rawSearchText.substring(0, 200).replace(/[%_]/g, "\\$&")
+      ? rawSearchText
+          .substring(0, 200)
+          .replace(/\\/g, "\\\\")
+          .replace(/[%_]/g, "\\$&")
       : undefined;
     const groupBy = input.groupBy as string | undefined;
     const direction = input.direction as string | undefined;
@@ -248,8 +254,12 @@ export class ToolExecutorService {
     categoryIds?: string[],
     searchText?: string,
   ): Promise<unknown> {
+    // Escape backslash first, then the LIKE wildcards (see above).
     const safeSearchText = searchText
-      ? searchText.substring(0, 200).replace(/[%_]/g, "\\$&")
+      ? searchText
+          .substring(0, 200)
+          .replace(/\\/g, "\\\\")
+          .replace(/[%_]/g, "\\$&")
       : undefined;
 
     const qb = this.transactionRepo
