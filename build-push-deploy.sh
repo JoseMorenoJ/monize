@@ -1,6 +1,7 @@
 #!/bin/sh
 # This script builds and deploys the Monize backend and frontend to my private Kubernetes registry
 # then restarts the Monize pods to use the new images.
+# THIS IS NOT INTENDED FOR PUBLIC USE. DO NOT USE THIS AS A TEMPLATE FOR YOUR OWN PROJECTS.
 
 set -e
 

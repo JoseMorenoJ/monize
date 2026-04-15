@@ -65,6 +65,8 @@ backup.sql
 # Sensitive data
 secrets/
 credentials/
+*.docx
+*.pdf
 
 # Claude Code
 .claude/worktrees/
