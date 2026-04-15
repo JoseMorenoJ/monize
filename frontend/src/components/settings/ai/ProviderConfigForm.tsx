@@ -191,12 +191,19 @@ export function ProviderConfigForm({ isOpen, onClose, onSubmit, editConfig }: Pr
           )}
 
           {needsBaseUrl && (
-            <Input
-              label="Base URL"
-              {...register('baseUrl')}
-              error={errors.baseUrl?.message}
-              placeholder={provider === 'ollama' ? 'http://localhost:11434' : 'https://api.example.com/v1'}
-            />
+            <div>
+              <Input
+                label="Base URL"
+                {...register('baseUrl')}
+                error={errors.baseUrl?.message}
+                placeholder={provider === 'ollama' ? 'http://localhost:11434' : 'https://api.example.com/v1'}
+              />
+              {provider === 'openai-compatible' && (
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  For Ollama Cloud use <code>https://ollama.com/v1</code> and paste your Ollama Cloud API key in the API Key field. The model name must include the <code>-cloud</code> suffix (e.g. <code>qwen3:30b-cloud</code>).
+                </p>
+              )}
+            </div>
           )}
 
           <Input

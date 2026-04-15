@@ -34,12 +34,12 @@ export class OllamaModelDoesNotSupportToolsError extends Error {
   constructor(model: string) {
     super(
       `The Ollama model "${model}" does not support tool use, so the AI ` +
-        `Assistant cannot run queries against your data. DeepSeek-R1 (0528+) ` +
-        `added function calling, but Ollama's default registry templates ` +
-        `still declare no tool support. Switch to a tool-calling-capable ` +
-        `model such as "MFDoom/deepseek-r1-tool-calling", ` +
-        `"okamototk/deepseek-r1", "llama3.1", or "qwen2.5", then update the ` +
-        `Ollama model in your AI provider settings.`,
+        `Assistant cannot run queries against your data. Switch to a ` +
+        `tool-calling-capable model in your AI provider settings. Models ` +
+        `known to work well with Monize: "ministral-3", "qwen3:30b", ` +
+        `"gpt-oss:20b", and "MFDoom/deepseek-r1-tool-calling:8b". Small ` +
+        `models (under ~7B parameters) often advertise tool support but ` +
+        `follow instructions poorly; prefer 8B+ parameter models.`,
     );
     this.name = "OllamaModelDoesNotSupportToolsError";
     this.model = model;
@@ -540,8 +540,8 @@ export class OllamaProvider implements AiProvider {
   private toOllamaMessages(
     messages: AiMessage[],
     systemPrompt: string,
-  ): Array<{ role: string; content: string }> {
-    const result: Array<{ role: string; content: string }> = [
+  ): Array<Record<string, unknown>> {
+    const result: Array<Record<string, unknown>> = [
       { role: "system", content: systemPrompt },
     ];
 
@@ -549,9 +549,33 @@ export class OllamaProvider implements AiProvider {
       if (msg.role === "user") {
         result.push({ role: "user", content: msg.content });
       } else if (msg.role === "assistant") {
-        result.push({ role: "assistant", content: msg.content });
+        // Ollama Cloud (and stricter backends) validate that tool-result
+        // messages reference a tool_call_id produced earlier in the same
+        // conversation. If we don't relay the assistant's tool_calls, the
+        // cloud rejects the follow-up with "Unexpected tool call id ...".
+        if (msg.toolCalls && msg.toolCalls.length > 0) {
+          result.push({
+            role: "assistant",
+            content: msg.content,
+            tool_calls: msg.toolCalls.map((tc) => ({
+              id: tc.id,
+              type: "function",
+              function: {
+                name: tc.name,
+                arguments: tc.input,
+              },
+            })),
+          });
+        } else {
+          result.push({ role: "assistant", content: msg.content });
+        }
       } else if (msg.role === "tool") {
-        result.push({ role: "tool", content: msg.content });
+        result.push({
+          role: "tool",
+          tool_call_id: msg.toolCallId,
+          name: msg.name,
+          content: msg.content,
+        });
       }
     }
 
