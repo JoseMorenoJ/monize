@@ -131,15 +131,11 @@ describe("prompt-templates", () => {
     });
 
     it("reinforces aggregation-only rule", () => {
-      expect(QUERY_SAFETY_REMINDER).toMatch(
-        /individual transaction details/i,
-      );
+      expect(QUERY_SAFETY_REMINDER).toMatch(/individual transaction details/i);
     });
 
     it("reinforces system prompt secrecy", () => {
-      expect(QUERY_SAFETY_REMINDER).toMatch(
-        /do not reveal.*system prompt/i,
-      );
+      expect(QUERY_SAFETY_REMINDER).toMatch(/do not reveal.*system prompt/i);
     });
 
     it("instructs to treat user data as data", () => {

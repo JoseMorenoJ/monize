@@ -822,7 +822,7 @@ describe("AuthController", () => {
         accessToken: "2fa-access",
         refreshToken: "2fa-refresh",
         user: { id: "user-1", email: "test@example.com" },
-        trustedDeviceToken: null,
+        trustedDeviceRef: null,
       };
       authService.verify2FA.mockResolvedValue(verifyResult);
       const res = mockRes();
@@ -864,7 +864,7 @@ describe("AuthController", () => {
         accessToken: "2fa-access",
         refreshToken: "2fa-refresh",
         user: { id: "user-1", email: "test@example.com" },
-        trustedDeviceToken: "trusted-device-token-abc",
+        trustedDeviceRef: "trusted-device-token-abc",
       };
       authService.verify2FA.mockResolvedValue(verifyResult);
       const res = mockRes();
@@ -899,12 +899,12 @@ describe("AuthController", () => {
       );
     });
 
-    it("does not set trusted_device cookie when trustedDeviceToken is null", async () => {
+    it("does not set trusted_device cookie when trustedDeviceRef is null", async () => {
       const verifyResult = {
         accessToken: "2fa-access",
         refreshToken: "2fa-refresh",
         user: { id: "user-1", email: "test@example.com" },
-        trustedDeviceToken: null,
+        trustedDeviceRef: null,
       };
       authService.verify2FA.mockResolvedValue(verifyResult);
       const res = mockRes();
@@ -933,7 +933,7 @@ describe("AuthController", () => {
         accessToken: "2fa-access",
         refreshToken: "2fa-refresh",
         user: { id: "user-1" },
-        trustedDeviceToken: null,
+        trustedDeviceRef: null,
       };
       authService.verify2FA.mockResolvedValue(verifyResult);
       const res = mockRes();
@@ -1255,7 +1255,7 @@ describe("AuthController", () => {
     });
   });
 
-  describe("login with trustedDeviceToken", () => {
+  describe("login with trustedDeviceRef", () => {
     it("passes trusted_device cookie to authService.login", async () => {
       const loginResult = {
         accessToken: "access-token",

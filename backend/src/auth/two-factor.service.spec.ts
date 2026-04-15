@@ -243,7 +243,7 @@ describe("TwoFactorService", () => {
       expect(result.accessToken).toBe("mock-access-token");
       expect(result.refreshToken).toBe("mock-refresh-token");
       expect(result.user).toBeDefined();
-      expect(result.trustedDeviceToken).toBeUndefined();
+      expect(result.trustedDeviceRef).toBeUndefined();
     });
 
     it("should create a trusted device when rememberDevice is true", async () => {
@@ -258,7 +258,7 @@ describe("TwoFactorService", () => {
         "127.0.0.1",
       );
 
-      expect(result.trustedDeviceToken).toBeDefined();
+      expect(result.trustedDeviceRef).toBeDefined();
       expect(trustedDevicesRepository.save).toHaveBeenCalled();
     });
 

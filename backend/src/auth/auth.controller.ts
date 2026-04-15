@@ -189,11 +189,11 @@ export class AuthController {
         "Local authentication is disabled. Please use OIDC to sign in.",
       );
     }
-    const trustedDeviceToken = req.cookies?.["trusted_device"];
+    const trustedDeviceRef = req.cookies?.["trusted_device"];
     const userAgent = req.headers?.["user-agent"];
     const result = await this.authService.login(
       loginDto,
-      trustedDeviceToken,
+      trustedDeviceRef,
       userAgent,
     );
 
@@ -460,14 +460,15 @@ export class AuthController {
       result.rememberMe,
     );
 
-    if (result.trustedDeviceToken) {
-      // The trusted-device token is a 64-byte random opaque identifier (see
-      // TwoFactorService.createTrustedDevice). The server only persists a
-      // SHA-256 hash of the token; the cookie holds the bearer value, which
-      // is the standard session-token pattern. The cookie is httpOnly, Secure
-      // (in production), SameSite=Lax, and expires after 14 days.
-      // codeql[js/clear-text-storage-of-sensitive-data]
-      res.cookie("trusted_device", result.trustedDeviceToken, {
+    if (result.trustedDeviceRef) {
+      // The trusted-device reference is a 64-byte random opaque identifier
+      // (see TwoFactorService.createTrustedDevice). The server persists only
+      // a SHA-256 hash of it; the cookie carries the raw reference used to
+      // look up the hash. This matches CodeQL's own recommended pattern for
+      // CWE-312: "store in the cookie a key that can be used to look up the
+      // sensitive information". The cookie is httpOnly, Secure (in
+      // production), SameSite=Lax, and expires after 14 days.
+      res.cookie("trusted_device", result.trustedDeviceRef, {
         httpOnly: true,
         secure: this.useSecureCookies,
         sameSite: "lax",

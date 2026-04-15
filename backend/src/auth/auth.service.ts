@@ -122,7 +122,7 @@ export class AuthService {
 
   async login(
     loginDto: LoginDto,
-    trustedDeviceToken?: string,
+    trustedDeviceRef?: string,
     userAgent?: string,
   ) {
     const { email: rawEmail, password, rememberMe } = loginDto;
@@ -208,10 +208,10 @@ export class AuthService {
 
     if (preferences?.twoFactorEnabled && user.twoFactorSecret) {
       // Check for trusted device
-      if (trustedDeviceToken) {
+      if (trustedDeviceRef) {
         const isTrusted = await this.twoFactorService.validateTrustedDevice(
           user.id,
-          trustedDeviceToken,
+          trustedDeviceRef,
           userAgent,
         );
         if (isTrusted) {

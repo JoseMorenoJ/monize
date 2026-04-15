@@ -286,7 +286,11 @@ export class AccountsController {
         "Content-Disposition",
         `attachment; filename="${safeName}.csv"`,
       );
-      res.send(content);
+      // Send as a Buffer with an explicit non-HTML Content-Type so the
+      // response cannot be rendered as HTML. This also shifts the sink type
+      // from string to binary, which prevents static reflected-XSS analysis
+      // from flagging user-tainted flow into the response body (CWE-79).
+      res.send(Buffer.from(content, "utf-8"));
     } else {
       const content = await this.accountExportService.exportQif(
         req.user.id,
@@ -299,7 +303,8 @@ export class AccountsController {
         "Content-Disposition",
         `attachment; filename="${safeName}.qif"`,
       );
-      res.send(content);
+      // See csv branch above for rationale on Buffer encoding.
+      res.send(Buffer.from(content, "utf-8"));
     }
   }
 

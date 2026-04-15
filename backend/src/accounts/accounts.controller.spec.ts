@@ -375,7 +375,9 @@ describe("AccountsController", () => {
         "Content-Disposition",
         'attachment; filename="Chequing.csv"',
       );
-      expect(mockRes.send).toHaveBeenCalledWith("csv-content");
+      expect(mockRes.send).toHaveBeenCalledWith(
+        Buffer.from("csv-content", "utf-8"),
+      );
     });
 
     it("passes expandSplits false to CSV export (string)", async () => {
@@ -446,7 +448,9 @@ describe("AccountsController", () => {
         "Content-Type",
         "application/x-qif; charset=utf-8",
       );
-      expect(mockRes.send).toHaveBeenCalledWith("qif-content");
+      expect(mockRes.send).toHaveBeenCalledWith(
+        Buffer.from("qif-content", "utf-8"),
+      );
     });
 
     it("passes dateFormat to CSV export", async () => {
