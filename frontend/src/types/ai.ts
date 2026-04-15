@@ -106,7 +106,12 @@ export const AI_PROVIDER_LABELS: Record<AiProviderType, string> = {
 export const AI_PROVIDER_DEFAULT_MODELS: Record<AiProviderType, string[]> = {
   anthropic: ['claude-sonnet-4-20250514', 'claude-haiku-4-20250414', 'claude-opus-4-20250514'],
   openai: ['gpt-4o', 'gpt-4o-mini', 'o3-mini'],
-  ollama: ['llama3', 'llama3:70b', 'mistral', 'codellama', 'phi3'],
+  ollama: [
+    'ministral-3:latest',
+    'qwen3:30b',
+    'gpt-oss:20b',
+    'MFDoom/deepseek-r1-tool-calling:8b',
+  ],
   'openai-compatible': [],
 };
 
