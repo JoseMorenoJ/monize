@@ -45,11 +45,12 @@ function parseOfxDate(dateStr: string): string {
   if (dateStr.length > 64) {
     dateStr = dateStr.slice(0, 64);
   }
-  // Strip timezone info and fractional seconds. Use [^\[\]]* (neither '['
+  // Strip timezone info and fractional seconds. Use [^[\]]* (neither '['
   // nor ']') so the inner match is anchored unambiguously between a single
-  // pair of brackets.
+  // pair of brackets. Inside a character class, '[' does not require
+  // escaping, only ']' does.
   const cleaned = dateStr
-    .replace(/\[[^\[\]]*\]/, "")
+    .replace(/\[[^[\]]*\]/, "")
     .replace(/\..*/, "")
     .trim();
   if (cleaned.length < 8) return "";
