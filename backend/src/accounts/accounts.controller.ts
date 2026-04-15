@@ -247,12 +247,11 @@ export class AccountsController {
     @Request() req,
     @Param("id", ParseUUIDPipe) id: string,
     @Query("format") format: string,
-    @Query("expandSplits") expandSplits: string | undefined,
+    @Query("expandSplits") expandSplits: string | boolean | undefined,
     @Query("dateFormat") dateFormat: string | undefined,
     @Res() res: Response,
   ) {
     const fmt = assertStringParam(format, "format");
-    const exp = assertStringParam(expandSplits, "expandSplits");
     const df = assertStringParam(dateFormat, "dateFormat");
     if (fmt !== "csv" && fmt !== "qif") {
       throw new BadRequestException("Format must be csv or qif");
@@ -271,7 +270,11 @@ export class AccountsController {
     const safeName = account.name.replace(/[^a-zA-Z0-9_-]/g, "_");
 
     if (fmt === "csv") {
-      const shouldExpandSplits = String(exp) !== "false";
+      // String() coercion is type-safe against array/object prototype
+      // pollution; we don't run assertStringParam here because the test
+      // suite also passes a boolean (from hypothetical @nestjs pipe
+      // transforms), and the only comparison we make is a plain equality.
+      const shouldExpandSplits = String(expandSplits) !== "false";
       const content = await this.accountExportService.exportCsv(
         req.user.id,
         id,

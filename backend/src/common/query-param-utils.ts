@@ -82,22 +82,25 @@ export function validateDateParam(
 }
 
 /**
- * Assert that a query parameter value is a scalar (not an array or object).
+ * Assert that a query parameter value is a single string.
  * Express parses duplicated query keys as arrays and nested bracket syntax
  * as objects; both can bypass string-based sanitization because their
  * prototype methods (includes, indexOf, slice, ...) behave differently from
  * String.prototype equivalents (CWE-843). Call this at the controller
  * boundary before using a raw query param with string methods.
+ *
+ * Uses a strict `typeof === "string"` check so CodeQL recognises this as a
+ * dataflow sanitizer for `js/type-confusion-through-parameter-tampering`.
  */
-export function assertStringParam<T extends string | undefined>(
-  value: T | string[] | Record<string, unknown>,
+export function assertStringParam(
+  value: unknown,
   paramName: string,
-): T {
+): string | undefined {
   if (value === undefined || value === null) {
-    return value as T;
+    return undefined;
   }
-  if (Array.isArray(value) || typeof value === "object") {
+  if (typeof value !== "string") {
     throw new BadRequestException(`${paramName} must be a single string value`);
   }
-  return value as T;
+  return value;
 }
