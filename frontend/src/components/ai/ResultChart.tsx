@@ -36,6 +36,34 @@ function formatCurrency(value: number | undefined): string {
   return `$${value.toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
 }
 
+function ChartTooltip({
+  active,
+  payload,
+  label,
+}: {
+  active?: boolean;
+  payload?: Array<{ name?: string; value?: number; payload?: { label?: string } }>;
+  label?: string;
+}) {
+  if (!active || !payload || payload.length === 0) return null;
+  const heading = label ?? payload[0]?.payload?.label ?? payload[0]?.name;
+  return (
+    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-3">
+      {heading && (
+        <p className="font-medium text-gray-900 dark:text-gray-100">{heading}</p>
+      )}
+      {payload.map((entry, index) => (
+        <p
+          key={`tooltip-${index}`}
+          className="text-sm text-blue-600 dark:text-blue-400"
+        >
+          {formatCurrency(entry.value)}
+        </p>
+      ))}
+    </div>
+  );
+}
+
 export function ResultChart({ type, title, data }: ResultChartProps) {
   if (!data || data.length === 0) return null;
 
@@ -66,14 +94,14 @@ export function ResultChart({ type, title, data }: ResultChartProps) {
                   />
                 ))}
               </Pie>
-              <Tooltip formatter={formatCurrency} />
+              <Tooltip content={<ChartTooltip />} />
             </PieChart>
           ) : type === 'area' || type === 'line' ? (
             <AreaChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="label" tick={{ fontSize: 12 }} />
               <YAxis tick={{ fontSize: 12 }} />
-              <Tooltip formatter={formatCurrency} />
+              <Tooltip content={<ChartTooltip />} />
               <Area
                 type="monotone"
                 dataKey="value"
@@ -86,7 +114,7 @@ export function ResultChart({ type, title, data }: ResultChartProps) {
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="label" tick={{ fontSize: 12 }} />
               <YAxis tick={{ fontSize: 12 }} />
-              <Tooltip formatter={formatCurrency} />
+              <Tooltip content={<ChartTooltip />} />
               <Bar dataKey="value" radius={[4, 4, 0, 0]}>
                 {data.map((_, index) => (
                   <Cell
