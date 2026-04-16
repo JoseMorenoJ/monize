@@ -11,7 +11,11 @@ import { AiProviderConfig } from "./entities/ai-provider-config.entity";
 import { AiEncryptionService } from "./ai-encryption.service";
 import { AiProviderFactory } from "./ai-provider.factory";
 import { AiUsageService } from "./ai-usage.service";
-import { CreateAiConfigDto, UpdateAiConfigDto } from "./dto/ai-config.dto";
+import {
+  CreateAiConfigDto,
+  UpdateAiConfigDto,
+  TestAiConfigDto,
+} from "./dto/ai-config.dto";
 import {
   AiProviderConfigResponse,
   AiUsageSummary,
@@ -217,16 +221,67 @@ export class AiService {
     configId: string,
   ): Promise<AiConnectionTestResponse> {
     const config = await this.getConfig(userId, configId);
+    return this.probeProvider(config, `config ${configId}`);
+  }
 
+  /**
+   * Test an in-progress provider configuration without persisting it --
+   * powers the inline Test button in the New / Edit Provider form so
+   * users can validate model ids and credentials before saving.
+   *
+   * When `configId` is supplied and `apiKey` is omitted, we fall back
+   * to the stored (encrypted) API key for that config: the form never
+   * echoes the saved key back to the client, so editing an existing
+   * provider without changing the key should still be testable.
+   */
+  async testDraftConnection(
+    userId: string,
+    dto: TestAiConfigDto,
+  ): Promise<AiConnectionTestResponse> {
+    if (dto.baseUrl) {
+      await this.validateBaseUrl(dto.baseUrl, dto.provider);
+    }
+
+    // Build a transient, non-persisted config from the draft values.
+    const transient = new AiProviderConfig();
+    transient.userId = userId;
+    transient.provider = dto.provider;
+    transient.model = dto.model ?? null;
+    transient.baseUrl = dto.baseUrl ?? null;
+    transient.isActive = true;
+    transient.priority = 0;
+    transient.config = {};
+    transient.inputCostPer1M = null;
+    transient.outputCostPer1M = null;
+    transient.costCurrency = "USD";
+    transient.displayName = null;
+
+    if (dto.apiKey) {
+      transient.apiKeyEnc = this.encryptionService.encrypt(dto.apiKey);
+    } else if (dto.configId) {
+      // Load the stored key so the user doesn't have to retype it just
+      // to run a test. Still scoped to userId so one user can't probe
+      // another user's credentials.
+      const existing = await this.getConfig(userId, dto.configId);
+      transient.apiKeyEnc = existing.apiKeyEnc;
+    } else {
+      transient.apiKeyEnc = null;
+    }
+
+    return this.probeProvider(transient, `draft ${dto.provider}`);
+  }
+
+  private async probeProvider(
+    config: AiProviderConfig,
+    logLabel: string,
+  ): Promise<AiConnectionTestResponse> {
     let provider;
     try {
       provider = this.providerFactory.createProvider(config);
     } catch (error) {
       const rawMessage =
         error instanceof Error ? error.message : "Unknown error";
-      this.logger.warn(
-        `Test connection failed for config ${configId}: ${rawMessage}`,
-      );
+      this.logger.warn(`Test connection failed for ${logLabel}: ${rawMessage}`);
       return {
         available: false,
         error: "Connection test failed. Check your provider settings.",
@@ -239,9 +294,7 @@ export class AiService {
     } catch (error) {
       const rawMessage =
         error instanceof Error ? error.message : "Unknown error";
-      this.logger.warn(
-        `Test connection failed for config ${configId}: ${rawMessage}`,
-      );
+      this.logger.warn(`Test connection failed for ${logLabel}: ${rawMessage}`);
       return {
         available: false,
         error: "Connection test failed. Check your provider settings.",
@@ -278,7 +331,7 @@ export class AiService {
       const rawMessage =
         error instanceof Error ? error.message : "Unknown error";
       this.logger.warn(
-        `Model verification failed for config ${configId}: ${rawMessage}`,
+        `Model verification failed for ${logLabel}: ${rawMessage}`,
       );
       return {
         available: true,

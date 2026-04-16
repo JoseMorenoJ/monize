@@ -19,6 +19,7 @@ describe("AiController", () => {
       updateConfig: jest.fn().mockResolvedValue({ id: "config-1" }),
       deleteConfig: jest.fn().mockResolvedValue(undefined),
       testConnection: jest.fn().mockResolvedValue({ available: true }),
+      testDraftConnection: jest.fn().mockResolvedValue({ available: true }),
       getUsageSummary: jest.fn().mockResolvedValue({ totalRequests: 0 }),
     };
 
@@ -86,6 +87,33 @@ describe("AiController", () => {
       expect(mockAiService.testConnection).toHaveBeenCalledWith(
         "user-1",
         "config-1",
+      );
+    });
+  });
+
+  describe("testDraftConnection()", () => {
+    it("delegates to aiService.testDraftConnection with userId and the draft dto", async () => {
+      mockAiService.testDraftConnection!.mockResolvedValueOnce({
+        available: true,
+        modelAvailable: true,
+        model: "gpt-4o",
+      });
+
+      const dto = {
+        provider: "openai" as const,
+        model: "gpt-4o",
+        apiKey: "sk-test",
+      };
+      const result = await controller.testDraftConnection(mockReq, dto);
+
+      expect(result).toEqual({
+        available: true,
+        modelAvailable: true,
+        model: "gpt-4o",
+      });
+      expect(mockAiService.testDraftConnection).toHaveBeenCalledWith(
+        "user-1",
+        dto,
       );
     });
   });

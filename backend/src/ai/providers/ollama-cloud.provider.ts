@@ -103,5 +103,4 @@ export class OllamaCloudProvider extends OllamaProvider {
       clearTimeout(timeout);
     }
   }
-
 }

@@ -8,7 +8,11 @@ jest.mock("dns", () => ({
 
 import { validate } from "class-validator";
 import { plainToInstance } from "class-transformer";
-import { CreateAiConfigDto, UpdateAiConfigDto } from "./ai-config.dto";
+import {
+  CreateAiConfigDto,
+  UpdateAiConfigDto,
+  TestAiConfigDto,
+} from "./ai-config.dto";
 
 describe("CreateAiConfigDto", () => {
   function createDto(data: Record<string, unknown>): CreateAiConfigDto {
@@ -340,5 +344,85 @@ describe("UpdateAiConfigDto", () => {
     const dto = createDto({ displayName: "Test <script>xss</script>" });
     expect(dto.displayName).not.toContain("<");
     expect(dto.displayName).not.toContain(">");
+  });
+});
+
+describe("TestAiConfigDto", () => {
+  function createDto(data: Record<string, unknown>): TestAiConfigDto {
+    return plainToInstance(TestAiConfigDto, data, {
+      enableImplicitConversion: true,
+    });
+  }
+
+  it("accepts a minimal draft with only the provider", async () => {
+    const dto = createDto({ provider: "openai" });
+    const errors = await validate(dto);
+    expect(errors).toHaveLength(0);
+  });
+
+  it("accepts a full draft body", async () => {
+    const dto = createDto({
+      provider: "openai-compatible",
+      model: "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+      apiKey: "cf-token",
+      baseUrl: "https://api.cloudflare.com/client/v4/accounts/x/ai/v1",
+      configId: "11111111-1111-4111-8111-111111111111",
+    });
+    const errors = await validate(dto);
+    expect(errors).toHaveLength(0);
+  });
+
+  it("requires the provider field", async () => {
+    const dto = createDto({});
+    const errors = await validate(dto);
+    expect(errors.find((e) => e.property === "provider")).toBeDefined();
+  });
+
+  it("rejects unknown provider values", async () => {
+    const dto = createDto({ provider: "not-a-provider" });
+    const errors = await validate(dto);
+    const providerErrors = errors.find((e) => e.property === "provider");
+    expect(providerErrors).toBeDefined();
+    expect(providerErrors!.constraints).toHaveProperty("isIn");
+  });
+
+  it("rejects a non-UUID configId", async () => {
+    const dto = createDto({
+      provider: "anthropic",
+      configId: "not-a-uuid",
+    });
+    const errors = await validate(dto);
+    expect(errors.find((e) => e.property === "configId")).toBeDefined();
+  });
+
+  it("rejects model exceeding 100 characters", async () => {
+    const dto = createDto({ provider: "openai", model: "m".repeat(101) });
+    const errors = await validate(dto);
+    expect(errors.find((e) => e.property === "model")).toBeDefined();
+  });
+
+  it("rejects apiKey exceeding 2000 characters", async () => {
+    const dto = createDto({ provider: "openai", apiKey: "k".repeat(2001) });
+    const errors = await validate(dto);
+    expect(errors.find((e) => e.property === "apiKey")).toBeDefined();
+  });
+
+  it("rejects baseUrl exceeding 500 characters", async () => {
+    const dto = createDto({
+      provider: "ollama",
+      baseUrl: "http://x.com/" + "x".repeat(500),
+    });
+    const errors = await validate(dto);
+    expect(errors.find((e) => e.property === "baseUrl")).toBeDefined();
+  });
+
+  it("allows all ollama-cloud drafts (testing the new provider enum value)", async () => {
+    const dto = createDto({
+      provider: "ollama-cloud",
+      model: "gpt-oss:20b-cloud",
+      apiKey: "ollama-key",
+    });
+    const errors = await validate(dto);
+    expect(errors).toHaveLength(0);
   });
 });

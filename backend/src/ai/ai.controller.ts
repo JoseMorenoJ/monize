@@ -21,7 +21,11 @@ import {
   ApiQuery,
 } from "@nestjs/swagger";
 import { AiService } from "./ai.service";
-import { CreateAiConfigDto, UpdateAiConfigDto } from "./dto/ai-config.dto";
+import {
+  CreateAiConfigDto,
+  UpdateAiConfigDto,
+  TestAiConfigDto,
+} from "./dto/ai-config.dto";
 
 @ApiTags("AI")
 @Controller("ai")
@@ -82,6 +86,18 @@ export class AiController {
     @Param("id", ParseUUIDPipe) id: string,
   ) {
     return this.aiService.testConnection(req.user.id, id);
+  }
+
+  @Post("configs/test-draft")
+  @ApiOperation({
+    summary: "Test an in-progress AI provider configuration without saving it",
+  })
+  @Throttle({ default: { ttl: 60000, limit: 10 } })
+  testDraftConnection(
+    @Request() req: { user: { id: string } },
+    @Body() dto: TestAiConfigDto,
+  ) {
+    return this.aiService.testDraftConnection(req.user.id, dto);
   }
 
   @Get("usage")

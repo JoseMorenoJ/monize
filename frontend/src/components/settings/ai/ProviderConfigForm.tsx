@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
+import { toast } from 'react-hot-toast';
 import '@/lib/zodConfig';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -11,6 +12,8 @@ import { Select } from '@/components/ui/Select';
 import { Modal } from '@/components/ui/Modal';
 import type { AiProviderConfig, AiProviderType, CreateAiProviderConfig, UpdateAiProviderConfig } from '@/types/ai';
 import { AI_PROVIDER_LABELS, AI_PROVIDER_DEFAULT_MODELS } from '@/types/ai';
+import { aiApi } from '@/lib/ai';
+import { getErrorMessage } from '@/lib/errors';
 
 const AI_PROVIDER_TYPES = ['anthropic', 'openai', 'ollama', 'ollama-cloud', 'openai-compatible'] as const;
 
@@ -58,8 +61,11 @@ const PROVIDER_OPTIONS = (Object.entries(AI_PROVIDER_LABELS) as [AiProviderType,
   ([value, label]) => ({ value, label })
 );
 
+type TestStatus = 'idle' | 'testing' | 'success' | 'error';
+
 export function ProviderConfigForm({ isOpen, onClose, onSubmit, editConfig }: ProviderConfigFormProps) {
   const [error, setError] = useState('');
+  const [testStatus, setTestStatus] = useState<TestStatus>('idle');
 
   const {
     register,
@@ -82,7 +88,6 @@ export function ProviderConfigForm({ isOpen, onClose, onSubmit, editConfig }: Pr
     },
   });
 
-  // eslint-disable-next-line react-hooks/incompatible-library
   const provider = watch('provider');
   const needsBaseUrl =
     provider === 'ollama' ||
@@ -95,6 +100,49 @@ export function ProviderConfigForm({ isOpen, onClose, onSubmit, editConfig }: Pr
     if (value === undefined || value === '') return null;
     const parsed = parseFloat(value);
     return Number.isFinite(parsed) ? parsed : null;
+  };
+
+  const handleTestModel = async () => {
+    setTestStatus('testing');
+    setError('');
+    try {
+      // Probe against the in-progress form values without saving. When
+      // editing and the user hasn't typed a new API key, pass configId
+      // so the server falls back to the stored (encrypted) key.
+      // eslint-disable-next-line react-hooks/incompatible-library
+      const currentValues = watch();
+      const result = await aiApi.testDraft({
+        provider: currentValues.provider,
+        ...(currentValues.model && { model: currentValues.model }),
+        ...(currentValues.apiKey && { apiKey: currentValues.apiKey }),
+        ...(currentValues.baseUrl && { baseUrl: currentValues.baseUrl }),
+        ...(editConfig && !currentValues.apiKey && { configId: editConfig.id }),
+      });
+
+      if (!result.available) {
+        setTestStatus('error');
+        toast.error(result.error || 'Could not reach the provider.', { duration: 6000 });
+        return;
+      }
+      if (result.modelAvailable === false) {
+        setTestStatus('error');
+        toast.error(
+          result.modelError ||
+            `Model "${result.model ?? 'unknown'}" is not available on this provider.`,
+          { duration: 7000 },
+        );
+        return;
+      }
+      setTestStatus('success');
+      toast.success(
+        result.modelAvailable
+          ? `Model "${result.model}" is ready.`
+          : 'Connection successful.',
+      );
+    } catch (err) {
+      setTestStatus('error');
+      toast.error(getErrorMessage(err, 'Model test failed'));
+    }
   };
 
   const onFormSubmit = async (formData: ProviderConfigFormData) => {
@@ -161,12 +209,33 @@ export function ProviderConfigForm({ isOpen, onClose, onSubmit, editConfig }: Pr
           />
 
           <div>
-            <Input
-              label="Model"
-              {...register('model')}
-              error={errors.model?.message}
-              placeholder={modelSuggestions[0] || 'Enter model name'}
-            />
+            <div className="flex items-end gap-2">
+              <div className="flex-1">
+                <Input
+                  label="Model"
+                  {...register('model')}
+                  error={errors.model?.message}
+                  placeholder={modelSuggestions[0] || 'Enter model name'}
+                />
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleTestModel}
+                disabled={testStatus === 'testing' || isSubmitting}
+                aria-label="Test model"
+                className={
+                  testStatus === 'success'
+                    ? 'border-green-500 text-green-600 dark:border-green-400 dark:text-green-400'
+                    : testStatus === 'error'
+                      ? 'border-red-500 text-red-600 dark:border-red-400 dark:text-red-400'
+                      : ''
+                }
+              >
+                {testStatus === 'testing' ? 'Testing...' : 'Test'}
+              </Button>
+            </div>
             {modelSuggestions.length > 0 && (
               <div className="mt-1 flex flex-wrap gap-1">
                 {modelSuggestions.map((m) => (

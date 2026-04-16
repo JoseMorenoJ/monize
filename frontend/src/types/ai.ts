@@ -44,6 +44,19 @@ export interface UpdateAiProviderConfig {
 }
 
 /**
+ * Body for the "test this draft before saving" endpoint. When editing an
+ * existing provider and the user hasn't typed a new API key, pass
+ * `configId` so the server falls back to the stored (encrypted) key.
+ */
+export interface TestAiProviderConfigDraft {
+  provider: AiProviderType;
+  model?: string;
+  apiKey?: string;
+  baseUrl?: string;
+  configId?: string;
+}
+
+/**
  * Aggregated estimated cost keyed by ISO 4217 currency code.
  * Empty when no configured rates match any logs.
  */
@@ -123,7 +136,6 @@ export const AI_PROVIDER_DEFAULT_MODELS: Record<AiProviderType, string[]> = {
     'MFDoom/deepseek-r1-tool-calling:8b',
   ],
   'ollama-cloud': [
-    'qwen3:30b-cloud',
     'gpt-oss:120b-cloud',
     'gpt-oss:20b-cloud',
     'deepseek-v3.1:671b-cloud',
