@@ -209,10 +209,16 @@ export function ProviderConfigForm({ isOpen, onClose, onSubmit, editConfig }: Pr
           />
 
           <div>
-            <div className="flex items-end gap-2">
+            <label
+              htmlFor="input-model"
+              className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+            >
+              Model
+            </label>
+            <div className="flex items-center gap-2">
               <div className="flex-1 min-w-0">
                 <Input
-                  label="Model"
+                  id="input-model"
                   {...register('model')}
                   error={errors.model?.message}
                   placeholder={modelSuggestions[0] || 'Enter model name'}
