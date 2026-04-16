@@ -120,10 +120,12 @@ describe('ChatInterface', () => {
 
     fireEvent.click(screen.getByTitle('Send'));
 
-    expect(aiApi.queryStream).toHaveBeenCalledWith(
-      'How much did I spend?',
-      expect.any(Object),
-    );
+    expect(aiApi.queryStream).toHaveBeenCalledTimes(1);
+    const call = vi.mocked(aiApi.queryStream).mock.calls[0];
+    expect(call[0]).toBe('How much did I spend?');
+    expect(call[1]).toEqual(expect.objectContaining({
+      onEvent: expect.any(Function),
+    }));
   });
 
   it('adds user message to the list on submit', async () => {
@@ -242,10 +244,8 @@ describe('ChatInterface', () => {
     });
     fireEvent.keyDown(textarea, { key: 'Enter', shiftKey: false });
 
-    expect(aiApi.queryStream).toHaveBeenCalledWith(
-      'Balance?',
-      expect.any(Object),
-    );
+    expect(aiApi.queryStream).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(aiApi.queryStream).mock.calls[0][0]).toBe('Balance?');
   });
 
   it('does not submit on Shift+Enter', async () => {
@@ -269,9 +269,9 @@ describe('ChatInterface', () => {
 
     fireEvent.click(screen.getByText('Monthly spending'));
 
-    expect(aiApi.queryStream).toHaveBeenCalledWith(
+    expect(aiApi.queryStream).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(aiApi.queryStream).mock.calls[0][0]).toBe(
       'How much did I spend last month?',
-      expect.any(Object),
     );
   });
 
