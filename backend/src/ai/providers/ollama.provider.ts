@@ -8,9 +8,11 @@ import {
   AiToolResponse,
   AiToolStreamChunk,
   AiMessage,
+  ModelVerificationResult,
 } from "./ai-provider.interface";
 import { randomUUID } from "crypto";
 import { longRunningFetch } from "./long-running-fetch";
+import { validateUrlBasicSafety } from "../validators/safe-url.validator";
 
 /**
  * How often to emit a progress log line during a long-running stream so
@@ -62,17 +64,49 @@ interface OllamaChatResponse {
 }
 
 export class OllamaProvider implements AiProvider {
-  readonly name = "ollama";
+  readonly name: string = "ollama";
   readonly supportsStreaming = true;
   readonly supportsToolUse = true;
 
   private readonly logger = new Logger(OllamaProvider.name);
-  private readonly baseUrl: string;
-  private readonly modelId: string;
+  protected readonly baseUrl: string;
+  protected readonly modelId: string;
 
   constructor(baseUrl?: string, model?: string) {
-    this.baseUrl = (baseUrl || "http://localhost:11434").replace(/\/+$/, "");
+    const rawBaseUrl = (baseUrl || "http://localhost:11434").trim();
+    // Reject malformed URLs, non-http(s) protocols, and URLs carrying
+    // embedded credentials so downstream fetch() calls can only ever hit
+    // a user-provided origin whose shape we've already validated. This is
+    // the SSRF mitigation boundary for self-hosted Ollama; the full
+    // hostname/IP check happens in the service layer when the config is
+    // saved (we must still allow private/loopback hosts here for LAN
+    // Ollama deployments).
+    if (!validateUrlBasicSafety(rawBaseUrl)) {
+      throw new Error(
+        `Invalid Ollama baseUrl "${rawBaseUrl}": must be an http(s) URL without credentials.`,
+      );
+    }
+    this.baseUrl = new URL(rawBaseUrl).origin;
     this.modelId = model || "llama3";
+  }
+
+  /**
+   * Build a request URL against the validated base origin. Using the URL
+   * constructor (rather than string concatenation) keeps CodeQL's SSRF
+   * dataflow tracking happy: callers pass a fixed literal path, and the
+   * origin was already normalised to something safe in the constructor.
+   */
+  protected buildUrl(path: string): string {
+    return new URL(path, this.baseUrl).toString();
+  }
+
+  /**
+   * Hook for subclasses (e.g. Ollama Cloud) that need to inject auth headers
+   * on every request. Self-hosted Ollama requires no auth, so the default is
+   * an empty set.
+   */
+  protected getAuthHeaders(): Record<string, string> {
+    return {};
   }
 
   async complete(request: AiCompletionRequest): Promise<AiCompletionResponse> {
@@ -89,7 +123,7 @@ export class OllamaProvider implements AiProvider {
     const timeout = setTimeout(() => controller.abort(), 20 * 60 * 1000); // 20 minutes for CPU inference
 
     const requestStart = Date.now();
-    const url = `${this.baseUrl}/api/chat`;
+    const url = this.buildUrl("/api/chat");
     const requestBody = JSON.stringify({
       model: this.modelId,
       messages,
@@ -108,7 +142,10 @@ export class OllamaProvider implements AiProvider {
       try {
         response = await longRunningFetch(url, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            ...this.getAuthHeaders(),
+          },
           signal: controller.signal,
           body: requestBody,
         });
@@ -231,9 +268,12 @@ export class OllamaProvider implements AiProvider {
     const timeout = setTimeout(() => controller.abort(), 20 * 60 * 1000);
 
     try {
-      const response = await longRunningFetch(`${this.baseUrl}/api/chat`, {
+      const response = await longRunningFetch(this.buildUrl("/api/chat"), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...this.getAuthHeaders(),
+        },
         signal: controller.signal,
         body: JSON.stringify({
           model: this.modelId,
@@ -351,7 +391,7 @@ export class OllamaProvider implements AiProvider {
     const timeout = setTimeout(() => controller.abort(), 20 * 60 * 1000); // 20 minutes for CPU inference
 
     const requestStart = Date.now();
-    const url = `${this.baseUrl}/api/chat`;
+    const url = this.buildUrl("/api/chat");
     const requestBody = JSON.stringify({
       model: this.modelId,
       messages,
@@ -370,7 +410,10 @@ export class OllamaProvider implements AiProvider {
       try {
         response = await longRunningFetch(url, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            ...this.getAuthHeaders(),
+          },
           signal: controller.signal,
           body: requestBody,
         });
@@ -528,7 +571,7 @@ export class OllamaProvider implements AiProvider {
    * Defensive against responses that lack a usable .text() (e.g. test mocks)
    * or whose body has already been consumed.
    */
-  private async safeReadBody(response: Response): Promise<string> {
+  protected async safeReadBody(response: Response): Promise<string> {
     try {
       if (typeof response.text !== "function") return "<unreadable>";
       return await response.text();
@@ -587,8 +630,9 @@ export class OllamaProvider implements AiProvider {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 3000);
       try {
-        const response = await fetch(`${this.baseUrl}/api/tags`, {
+        const response = await fetch(this.buildUrl("/api/tags"), {
           signal: controller.signal,
+          headers: this.getAuthHeaders(),
         });
         return response.ok;
       } finally {
@@ -596,6 +640,67 @@ export class OllamaProvider implements AiProvider {
       }
     } catch {
       return false;
+    }
+  }
+
+  async verifyModel(): Promise<ModelVerificationResult> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    try {
+      const response = await fetch(this.buildUrl("/api/tags"), {
+        signal: controller.signal,
+        headers: this.getAuthHeaders(),
+      });
+      if (!response.ok) {
+        return {
+          ok: false,
+          model: this.modelId,
+          reason: `Provider /api/tags returned ${response.status}`,
+        };
+      }
+      const body = (await response.json()) as {
+        models?: Array<{ name?: string; model?: string }>;
+      };
+      const names = new Set<string>();
+      for (const m of body.models ?? []) {
+        if (typeof m.name === "string") names.add(m.name);
+        if (typeof m.model === "string") names.add(m.model);
+      }
+      // Ollama treats "llama3" and "llama3:latest" as the same tag; try
+      // both so a user who omits the tag suffix still validates.
+      if (
+        names.has(this.modelId) ||
+        names.has(`${this.modelId}:latest`) ||
+        (this.modelId.endsWith(":latest") &&
+          names.has(this.modelId.replace(/:latest$/, "")))
+      ) {
+        return { ok: true, model: this.modelId };
+      }
+      if (names.size === 0) {
+        return {
+          ok: false,
+          model: this.modelId,
+          reason: "No models are installed on this Ollama host.",
+        };
+      }
+      const shown = [...names].sort();
+      const cap = 20;
+      const preview = shown.slice(0, cap).join(", ");
+      const suffix = shown.length > cap ? ` (+${shown.length - cap} more)` : "";
+      return {
+        ok: false,
+        model: this.modelId,
+        reason: `Model "${this.modelId}" is not installed. Available: ${preview}${suffix}.`,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return {
+        ok: false,
+        model: this.modelId,
+        reason: `Could not reach provider to verify model: ${message}`,
+      };
+    } finally {
+      clearTimeout(timeout);
     }
   }
 }

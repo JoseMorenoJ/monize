@@ -212,7 +212,10 @@ export class ToolExecutorService {
     const accountIds = await this.resolveAccountIds(userId, accountNames);
     const categoryIds = await this.resolveCategoryIds(userId, categoryNames);
 
-    // Get summary totals
+    // Get summary totals. Exclude investment-linked cash transactions so
+    // BUY/SELL/DIVIDEND cash movements don't appear as "expenses" or
+    // "income" -- they're transfers between cash and securities, not
+    // spending.
     const summary = await this.analyticsService.getSummary(
       userId,
       accountIds,
@@ -221,6 +224,9 @@ export class ToolExecutorService {
       categoryIds,
       undefined,
       sanitizedSearchText,
+      undefined,
+      undefined,
+      true,
     );
 
     let breakdown: unknown = null;
@@ -286,12 +292,25 @@ export class ToolExecutorService {
 
     const qb = this.transactionRepo
       .createQueryBuilder("t")
+      .leftJoin("t.account", "breakdownAccount")
       .where("t.userId = :userId", { userId })
       .andWhere("t.transactionDate >= :startDate", { startDate })
       .andWhere("t.transactionDate <= :endDate", { endDate })
       .andWhere("t.status != 'VOID'")
       .andWhere("t.isTransfer = false")
-      .andWhere("t.parentTransactionId IS NULL");
+      .andWhere("t.parentTransactionId IS NULL")
+      // Mirror TransactionAnalyticsService.getSummary(): exclude
+      // INVESTMENT_BROKERAGE accounts and the cash-side transactions
+      // that investment BUY/SELL/DIVIDEND creates in the linked cash
+      // account. Without these filters, investment purchases appear as
+      // "Uncategorised" expenses even when the user's accountNames
+      // filter includes only non-investment accounts.
+      .andWhere(
+        "(breakdownAccount.accountSubType IS NULL OR breakdownAccount.accountSubType != 'INVESTMENT_BROKERAGE')",
+      )
+      .andWhere(
+        "NOT EXISTS (SELECT 1 FROM investment_transactions it WHERE it.transaction_id = t.id)",
+      );
 
     if (direction === "expenses") {
       qb.andWhere("t.amount < 0");
@@ -468,6 +487,7 @@ export class ToolExecutorService {
     const qb = this.transactionRepo
       .createQueryBuilder("t")
       .leftJoin("t.category", "cat")
+      .leftJoin("t.account", "spendingAccount")
       .select("COALESCE(cat.name, 'Uncategorized')", "category")
       .addSelect("SUM(ABS(t.amount))", "total")
       .addSelect("COUNT(*)", "count")
@@ -478,6 +498,15 @@ export class ToolExecutorService {
       .andWhere("t.status != 'VOID'")
       .andWhere("t.isTransfer = false")
       .andWhere("t.parentTransactionId IS NULL")
+      // Exclude INVESTMENT_BROKERAGE accounts and investment-linked cash
+      // transactions so BUY/SELL/DIVIDEND side-effects don't leak into
+      // "spending" breakdowns as uncategorised expenses.
+      .andWhere(
+        "(spendingAccount.accountSubType IS NULL OR spendingAccount.accountSubType != 'INVESTMENT_BROKERAGE')",
+      )
+      .andWhere(
+        "NOT EXISTS (SELECT 1 FROM investment_transactions it WHERE it.transaction_id = t.id)",
+      )
       .groupBy("cat.name")
       .orderBy("total", "DESC");
 
@@ -524,13 +553,23 @@ export class ToolExecutorService {
 
     const qb = this.transactionRepo
       .createQueryBuilder("t")
+      .leftJoin("t.account", "incomeAccount")
       .where("t.userId = :userId", { userId })
       .andWhere("t.transactionDate >= :startDate", { startDate })
       .andWhere("t.transactionDate <= :endDate", { endDate })
       .andWhere("t.amount > 0")
       .andWhere("t.status != 'VOID'")
       .andWhere("t.isTransfer = false")
-      .andWhere("t.parentTransactionId IS NULL");
+      .andWhere("t.parentTransactionId IS NULL")
+      // Exclude INVESTMENT_BROKERAGE accounts and investment-linked cash
+      // transactions so SELL/DIVIDEND side-effects don't leak into
+      // "income" summaries as uncategorised income.
+      .andWhere(
+        "(incomeAccount.accountSubType IS NULL OR incomeAccount.accountSubType != 'INVESTMENT_BROKERAGE')",
+      )
+      .andWhere(
+        "NOT EXISTS (SELECT 1 FROM investment_transactions it WHERE it.transaction_id = t.id)",
+      );
 
     let items: { label: string; amount: number; count: number }[];
 
@@ -711,12 +750,22 @@ export class ToolExecutorService {
   ): Promise<{ label: string; total: number }[]> {
     const qb = this.transactionRepo
       .createQueryBuilder("t")
+      .leftJoin("t.account", "periodAccount")
       .where("t.userId = :userId", { userId })
       .andWhere("t.transactionDate >= :startDate", { startDate })
       .andWhere("t.transactionDate <= :endDate", { endDate })
       .andWhere("t.status != 'VOID'")
       .andWhere("t.isTransfer = false")
-      .andWhere("t.parentTransactionId IS NULL");
+      .andWhere("t.parentTransactionId IS NULL")
+      // Exclude INVESTMENT_BROKERAGE accounts and investment-linked cash
+      // transactions so BUY/SELL/DIVIDEND movements don't skew
+      // period-over-period comparisons.
+      .andWhere(
+        "(periodAccount.accountSubType IS NULL OR periodAccount.accountSubType != 'INVESTMENT_BROKERAGE')",
+      )
+      .andWhere(
+        "NOT EXISTS (SELECT 1 FROM investment_transactions it WHERE it.transaction_id = t.id)",
+      );
 
     if (direction === "expenses") {
       qb.andWhere("t.amount < 0");

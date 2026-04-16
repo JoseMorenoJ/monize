@@ -4,6 +4,7 @@ import type {
   AiProviderConfig,
   CreateAiProviderConfig,
   UpdateAiProviderConfig,
+  TestAiProviderConfigDraft,
   AiUsageSummary,
   AiStatus,
   AiConnectionTestResult,
@@ -41,6 +42,16 @@ export const aiApi = {
 
   testConnection: async (id: string): Promise<AiConnectionTestResult> => {
     const response = await apiClient.post<AiConnectionTestResult>(`/ai/configs/${id}/test`);
+    return response.data;
+  },
+
+  testDraft: async (
+    draft: TestAiProviderConfigDraft,
+  ): Promise<AiConnectionTestResult> => {
+    const response = await apiClient.post<AiConnectionTestResult>(
+      '/ai/configs/test-draft',
+      draft,
+    );
     return response.data;
   },
 

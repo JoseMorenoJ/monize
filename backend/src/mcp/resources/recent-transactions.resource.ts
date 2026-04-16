@@ -57,11 +57,20 @@ export class McpRecentTransactionsResource {
               1,
               100,
             ),
+            // Exclude investment-linked cash transactions so BUY/SELL/
+            // DIVIDEND side-effects don't skew the MCP "recent activity"
+            // summary with uncategorised spending/income.
             this.analyticsService.getSummary(
               ctx.userId,
               undefined,
               startDateStr,
               endDate,
+              undefined,
+              undefined,
+              undefined,
+              undefined,
+              undefined,
+              true,
             ),
           ]);
 

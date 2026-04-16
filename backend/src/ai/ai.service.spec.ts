@@ -321,6 +321,165 @@ describe("AiService", () => {
         "Connection test failed. Check your provider settings.",
       );
     });
+
+    it("reports modelAvailable: true when verifyModel succeeds", async () => {
+      const config = makeConfig();
+      mockConfigRepository.findOne.mockResolvedValue(config);
+      mockProviderFactory.createProvider!.mockReturnValue({
+        isAvailable: jest.fn().mockResolvedValue(true),
+        verifyModel: jest
+          .fn()
+          .mockResolvedValue({ ok: true, model: "claude-sonnet-4-20250514" }),
+      });
+
+      const result = await service.testConnection(userId, "config-1");
+      expect(result.available).toBe(true);
+      expect(result.modelAvailable).toBe(true);
+      expect(result.model).toBe("claude-sonnet-4-20250514");
+    });
+
+    it("reports modelAvailable: false with the provider-supplied reason when the model is missing", async () => {
+      const config = makeConfig();
+      mockConfigRepository.findOne.mockResolvedValue(config);
+      mockProviderFactory.createProvider!.mockReturnValue({
+        isAvailable: jest.fn().mockResolvedValue(true),
+        verifyModel: jest.fn().mockResolvedValue({
+          ok: false,
+          model: "claude-sonnet-4-20250514",
+          reason: 'Model "claude-sonnet-4-20250514" was not found.',
+        }),
+      });
+
+      const result = await service.testConnection(userId, "config-1");
+      expect(result.available).toBe(true);
+      expect(result.modelAvailable).toBe(false);
+      expect(result.modelError).toBe(
+        'Model "claude-sonnet-4-20250514" was not found.',
+      );
+    });
+
+    it("skips model verification when the provider doesn't implement verifyModel", async () => {
+      const config = makeConfig();
+      mockConfigRepository.findOne.mockResolvedValue(config);
+      mockProviderFactory.createProvider!.mockReturnValue({
+        isAvailable: jest.fn().mockResolvedValue(true),
+        // no verifyModel method
+      });
+
+      const result = await service.testConnection(userId, "config-1");
+      expect(result.available).toBe(true);
+      expect(result.modelAvailable).toBeUndefined();
+    });
+  });
+
+  describe("testDraftConnection()", () => {
+    it("probes a transient provider built from the draft body without saving", async () => {
+      mockProviderFactory.createProvider!.mockReturnValue({
+        isAvailable: jest.fn().mockResolvedValue(true),
+        verifyModel: jest.fn().mockResolvedValue({ ok: true, model: "gpt-4o" }),
+      });
+      mockEncryptionService.encrypt!.mockReturnValue("enc-drafted-key");
+
+      const result = await service.testDraftConnection(userId, {
+        provider: "openai",
+        model: "gpt-4o",
+        apiKey: "sk-test-draft",
+      });
+
+      expect(result).toEqual({
+        available: true,
+        modelAvailable: true,
+        model: "gpt-4o",
+      });
+      // Nothing should be persisted -- the repository's save is never called.
+      expect(mockConfigRepository.save).not.toHaveBeenCalled();
+      // The draft's API key must be encrypted before handing it to the
+      // provider factory, just like a real saved config.
+      expect(mockEncryptionService.encrypt).toHaveBeenCalledWith(
+        "sk-test-draft",
+      );
+      const factoryArg = mockProviderFactory.createProvider!.mock.calls[0][0];
+      expect(factoryArg.provider).toBe("openai");
+      expect(factoryArg.model).toBe("gpt-4o");
+      expect(factoryArg.apiKeyEnc).toBe("enc-drafted-key");
+    });
+
+    it("falls back to the stored API key when apiKey is omitted and configId is provided", async () => {
+      const existing = makeConfig({
+        id: "existing-1",
+        apiKeyEnc: "stored-enc-key",
+      });
+      mockConfigRepository.findOne.mockResolvedValue(existing);
+      mockProviderFactory.createProvider!.mockReturnValue({
+        isAvailable: jest.fn().mockResolvedValue(true),
+        verifyModel: jest
+          .fn()
+          .mockResolvedValue({ ok: true, model: "claude-haiku-4-20250414" }),
+      });
+
+      await service.testDraftConnection(userId, {
+        provider: "anthropic",
+        model: "claude-haiku-4-20250414",
+        configId: "existing-1",
+      });
+
+      // No new encryption because we're reusing the stored key.
+      expect(mockEncryptionService.encrypt).not.toHaveBeenCalled();
+      const factoryArg = mockProviderFactory.createProvider!.mock.calls[0][0];
+      expect(factoryArg.apiKeyEnc).toBe("stored-enc-key");
+    });
+
+    it("surfaces model-level failures with the provider's reason", async () => {
+      mockProviderFactory.createProvider!.mockReturnValue({
+        isAvailable: jest.fn().mockResolvedValue(true),
+        verifyModel: jest.fn().mockResolvedValue({
+          ok: false,
+          model: "typo-4o",
+          reason: 'Model "typo-4o" was not found.',
+        }),
+      });
+      mockEncryptionService.encrypt!.mockReturnValue("enc");
+
+      const result = await service.testDraftConnection(userId, {
+        provider: "openai",
+        model: "typo-4o",
+        apiKey: "sk-test",
+      });
+
+      expect(result.available).toBe(true);
+      expect(result.modelAvailable).toBe(false);
+      expect(result.modelError).toBe('Model "typo-4o" was not found.');
+    });
+
+    it("reports available: false with a sanitised error when the factory rejects the draft", async () => {
+      mockProviderFactory.createProvider!.mockImplementation(() => {
+        throw new Error("baseUrl is required for openai-compatible provider");
+      });
+
+      const result = await service.testDraftConnection(userId, {
+        provider: "openai-compatible",
+        // no baseUrl
+      });
+
+      expect(result.available).toBe(false);
+      expect(result.error).toBe(
+        "Connection test failed. Check your provider settings.",
+      );
+    });
+
+    it("does not let a user probe another user's stored credentials", async () => {
+      // getConfig uses where { id, userId } -- a missing row for this
+      // userId throws NotFoundException, which must propagate so the
+      // test endpoint can't be used to harvest other users' keys.
+      mockConfigRepository.findOne.mockResolvedValue(null);
+
+      await expect(
+        service.testDraftConnection(userId, {
+          provider: "openai",
+          configId: "someone-elses-config",
+        }),
+      ).rejects.toThrow(NotFoundException);
+    });
   });
 
   describe("complete()", () => {

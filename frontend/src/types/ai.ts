@@ -1,4 +1,4 @@
-export type AiProviderType = 'anthropic' | 'openai' | 'ollama' | 'openai-compatible';
+export type AiProviderType = 'anthropic' | 'openai' | 'ollama' | 'ollama-cloud' | 'openai-compatible';
 
 export interface AiProviderConfig {
   id: string;
@@ -41,6 +41,19 @@ export interface UpdateAiProviderConfig {
   inputCostPer1M?: number | null;
   outputCostPer1M?: number | null;
   costCurrency?: string;
+}
+
+/**
+ * Body for the "test this draft before saving" endpoint. When editing an
+ * existing provider and the user hasn't typed a new API key, pass
+ * `configId` so the server falls back to the stored (encrypted) key.
+ */
+export interface TestAiProviderConfigDraft {
+  provider: AiProviderType;
+  model?: string;
+  apiKey?: string;
+  baseUrl?: string;
+  configId?: string;
 }
 
 /**
@@ -94,12 +107,22 @@ export interface AiStatus {
 export interface AiConnectionTestResult {
   available: boolean;
   error?: string;
+  /**
+   * True when the configured model responded to a probe. Absent when
+   * the provider doesn't verify models or the server wasn't reachable.
+   */
+  modelAvailable?: boolean;
+  /** The model id that was checked, for display. */
+  model?: string;
+  /** Specific model-level failure message for display to the user. */
+  modelError?: string;
 }
 
 export const AI_PROVIDER_LABELS: Record<AiProviderType, string> = {
   anthropic: 'Anthropic (Claude)',
   openai: 'OpenAI (GPT)',
   ollama: 'Ollama (Local)',
+  'ollama-cloud': 'Ollama Cloud',
   'openai-compatible': 'OpenAI-Compatible',
 };
 
@@ -111,6 +134,11 @@ export const AI_PROVIDER_DEFAULT_MODELS: Record<AiProviderType, string[]> = {
     'qwen3:30b',
     'gpt-oss:20b',
     'MFDoom/deepseek-r1-tool-calling:8b',
+  ],
+  'ollama-cloud': [
+    'gpt-oss:120b-cloud',
+    'gpt-oss:20b-cloud',
+    'deepseek-v3.1:671b-cloud',
   ],
   'openai-compatible': [],
 };

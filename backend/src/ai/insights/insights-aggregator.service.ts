@@ -268,6 +268,11 @@ export class InsightsAggregatorService {
       .andWhere("t.isTransfer = false")
       .andWhere("t.parentTransactionId IS NULL")
       .andWhere("t.payeeName IS NOT NULL")
+      // Exclude investment-linked cash debits so regular BUY activity
+      // isn't flagged as a subscription-like "recurring charge".
+      .andWhere(
+        "NOT EXISTS (SELECT 1 FROM investment_transactions it WHERE it.transaction_id = t.id)",
+      )
       .groupBy("t.payeeName")
       .addGroupBy("cat.name")
       .having("COUNT(*) >= 3")

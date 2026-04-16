@@ -6,6 +6,7 @@ import {
   IsIn,
   IsObject,
   IsNumber,
+  IsUUID,
   Matches,
   MaxLength,
   Min,
@@ -60,7 +61,7 @@ export class CreateAiConfigDto {
   @ApiPropertyOptional({
     example: "https://api.example.com",
     description:
-      "Base URL for the provider (required for Ollama and OpenAI-compatible). Self-hosted providers allow private/local URLs.",
+      "Base URL for the provider (required for Ollama and OpenAI-compatible; optional for Ollama Cloud, defaults to https://ollama.com). Self-hosted providers allow private/local URLs.",
   })
   @IsOptional()
   @IsString()
@@ -217,4 +218,62 @@ export class UpdateAiConfigDto {
     message: "costCurrency must be a 3-letter ISO 4217 currency code",
   })
   costCurrency?: string;
+}
+
+/**
+ * Body of the "test this draft before saving" endpoint. Users can hit the
+ * inline Test button in the provider form even when the config hasn't been
+ * persisted yet -- we accept the in-progress values here and probe the
+ * resulting provider without writing anything to the database.
+ *
+ * When editing an existing provider, `configId` may be supplied so the
+ * server falls back to the already-stored API key if the user hasn't
+ * typed a new one (the form doesn't echo the stored key back to the
+ * client for obvious reasons).
+ */
+export class TestAiConfigDto {
+  @ApiProperty({
+    example: "anthropic",
+    description: "AI provider type",
+    enum: AI_PROVIDERS,
+  })
+  @IsString()
+  @IsIn([...AI_PROVIDERS])
+  provider: AiProviderType;
+
+  @ApiPropertyOptional({
+    example: "claude-sonnet-4-20250514",
+    description: "Model identifier to verify",
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  model?: string;
+
+  @ApiPropertyOptional({
+    example: "sk-ant-...",
+    description:
+      "API key (omitted when falling back to a stored key via configId)",
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  apiKey?: string;
+
+  @ApiPropertyOptional({
+    example: "https://api.example.com",
+    description: "Base URL override",
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  baseUrl?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "Existing configuration id to inherit the stored API key from when apiKey is omitted",
+  })
+  @IsOptional()
+  @IsUUID()
+  configId?: string;
 }

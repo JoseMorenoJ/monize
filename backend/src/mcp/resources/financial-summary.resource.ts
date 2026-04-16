@@ -52,11 +52,21 @@ export class McpFinancialSummaryResource {
 
           const [accountSummary, monthSummary] = await Promise.all([
             this.accountsService.getSummary(ctx.userId),
+            // Exclude investment-linked cash transactions so the MCP
+            // financial snapshot's income/expense totals reflect real
+            // spending -- not BUY/SELL/DIVIDEND cash movements that
+            // live in the linked cash account.
             this.analyticsService.getSummary(
               ctx.userId,
               undefined,
               startOfMonth,
               endDate,
+              undefined,
+              undefined,
+              undefined,
+              undefined,
+              undefined,
+              true,
             ),
           ]);
 
