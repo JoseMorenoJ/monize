@@ -855,4 +855,73 @@ describe("AiQueryService", () => {
       expect(result.usage.outputTokens).toBe(3);
     });
   });
+
+  describe("conversation history", () => {
+    it("includes conversation history messages before the current query", async () => {
+      const history = [
+        { role: "user" as const, content: "What is my net worth?" },
+        { role: "assistant" as const, content: "Your net worth is $50,000." },
+      ];
+
+      const events: StreamEvent[] = [];
+      for await (const event of service.executeQueryStream(
+        userId,
+        "Tell me more about that",
+        history,
+      )) {
+        events.push(event);
+      }
+
+      // Provider should have been called with messages that include history
+      const call = (mockProvider.completeWithTools as jest.Mock).mock.calls[0];
+      const messages = call[0].messages;
+      // history (2) + current query (1) + safety reminder (1) = 4 messages
+      expect(messages.length).toBe(4);
+      expect(messages[0].role).toBe("user");
+      expect(messages[0].content).toBe("What is my net worth?");
+      expect(messages[1].role).toBe("assistant");
+      expect(messages[1].content).toBe("Your net worth is $50,000.");
+      expect(messages[2].role).toBe("user");
+      expect(messages[2].content).toBe("Tell me more about that");
+    });
+
+    it("works without conversation history (backwards compatible)", async () => {
+      const events: StreamEvent[] = [];
+      for await (const event of service.executeQueryStream(
+        userId,
+        "What is my balance?",
+      )) {
+        events.push(event);
+      }
+
+      const call = (mockProvider.completeWithTools as jest.Mock).mock.calls[0];
+      const messages = call[0].messages;
+      // No history: current query (1) + safety reminder (1) = 2 messages
+      expect(messages.length).toBe(2);
+      expect(messages[0].content).toBe("What is my balance?");
+    });
+
+    it("truncates history to MAX_HISTORY_MESSAGES keeping most recent", async () => {
+      const longHistory = Array.from({ length: 30 }, (_, i) => ({
+        role: (i % 2 === 0 ? "user" : "assistant") as "user" | "assistant",
+        content: `Message ${i}`,
+      }));
+
+      const events: StreamEvent[] = [];
+      for await (const event of service.executeQueryStream(
+        userId,
+        "Continue",
+        longHistory,
+      )) {
+        events.push(event);
+      }
+
+      const call = (mockProvider.completeWithTools as jest.Mock).mock.calls[0];
+      const messages = call[0].messages;
+      // MAX_HISTORY_MESSAGES (20) + current query (1) + safety reminder (1) = 22
+      expect(messages.length).toBe(22);
+      // Should contain the most recent 20 from history (indices 10-29)
+      expect(messages[0].content).toBe("Message 10");
+    });
+  });
 });

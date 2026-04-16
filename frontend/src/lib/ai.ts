@@ -50,12 +50,23 @@ export const aiApi = {
     return response.data;
   },
 
-  query: async (query: string): Promise<QueryResult> => {
-    const response = await apiClient.post<QueryResult>('/ai/query', { query }, { timeout: 120000 });
+  query: async (
+    query: string,
+    conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>,
+  ): Promise<QueryResult> => {
+    const response = await apiClient.post<QueryResult>(
+      '/ai/query',
+      { query, conversationHistory },
+      { timeout: 120000 },
+    );
     return response.data;
   },
 
-  queryStream: (query: string, callbacks: StreamCallbacks): AbortController => {
+  queryStream: (
+    query: string,
+    callbacks: StreamCallbacks,
+    conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>,
+  ): AbortController => {
     const controller = new AbortController();
 
     // Get CSRF token from cookie. Use js-cookie (not raw document.cookie) so
@@ -71,7 +82,7 @@ export const aiApi = {
         'Content-Type': 'application/json',
         'X-CSRF-Token': csrfToken,
       },
-      body: JSON.stringify({ query }),
+      body: JSON.stringify({ query, conversationHistory }),
       credentials: 'include',
       signal: controller.signal,
     })

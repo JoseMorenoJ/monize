@@ -13,6 +13,7 @@ import { OllamaModelDoesNotSupportToolsError } from "../providers/ollama.provide
 import { assessInjectionRisk } from "../context/prompt-injection-detector";
 import { QUERY_SAFETY_REMINDER } from "../context/prompt-templates";
 import { sanitizeToolResultStrings } from "../context/prompt-sanitize";
+import { MAX_HISTORY_MESSAGES } from "./dto/ai-query.dto";
 
 const MAX_ITERATIONS = 5;
 
@@ -68,9 +69,20 @@ export class AiQueryService {
     private readonly toolExecutor: ToolExecutorService,
   ) {}
 
-  async executeQuery(userId: string, query: string): Promise<QueryResult> {
+  async executeQuery(
+    userId: string,
+    query: string,
+    conversationHistory?: Array<{
+      role: "user" | "assistant";
+      content: string;
+    }>,
+  ): Promise<QueryResult> {
     const events: StreamEvent[] = [];
-    for await (const event of this.executeQueryStream(userId, query)) {
+    for await (const event of this.executeQueryStream(
+      userId,
+      query,
+      conversationHistory,
+    )) {
       events.push(event);
     }
 
@@ -116,6 +128,10 @@ export class AiQueryService {
   async *executeQueryStream(
     userId: string,
     query: string,
+    conversationHistory?: Array<{
+      role: "user" | "assistant";
+      content: string;
+    }>,
   ): AsyncGenerator<StreamEvent> {
     yield { type: "thinking", message: "Analyzing your question..." };
 
@@ -171,8 +187,13 @@ export class AiQueryService {
       return;
     }
 
-    // Build messages with sandwich defense: user query + safety reminder
+    // Build messages: optional history + current query + safety reminder.
+    // Conversation history allows the AI to reference prior turns
+    // (e.g., "tell me more about that").
+    const historyMessages: AiMessage[] =
+      this.buildHistoryMessages(conversationHistory);
     const messages: AiMessage[] = [
+      ...historyMessages,
       { role: "user", content: query },
       { role: "user", content: QUERY_SAFETY_REMINDER },
     ];
@@ -465,6 +486,26 @@ export class AiQueryService {
         toolCalls: totalToolCalls,
       },
     };
+  }
+
+  /**
+   * Convert client-supplied conversation history into AiMessage format.
+   * Enforces MAX_HISTORY_MESSAGES limit and strips tool-related messages
+   * (those are internal to a single query's agentic loop, not meaningful
+   * across turns).
+   */
+  private buildHistoryMessages(
+    history?: Array<{ role: "user" | "assistant"; content: string }>,
+  ): AiMessage[] {
+    if (!history || history.length === 0) return [];
+
+    // Truncate to limit — take the most recent messages
+    const truncated = history.slice(-MAX_HISTORY_MESSAGES);
+
+    return truncated.map((msg) => ({
+      role: msg.role,
+      content: msg.content,
+    }));
   }
 
   private getToolDescription(name: string): string {
