@@ -24,6 +24,7 @@ export class TransactionAnalyticsService {
     search?: string,
     amountFrom?: number,
     amountTo?: number,
+    excludeInvestmentLinked?: boolean,
   ): Promise<{
     totalIncome: number;
     totalExpenses: number;
@@ -51,6 +52,17 @@ export class TransactionAnalyticsService {
     queryBuilder.andWhere(
       "(summaryAccount.accountSubType IS NULL OR summaryAccount.accountSubType != 'INVESTMENT_BROKERAGE')",
     );
+
+    // Optionally exclude cash-side transactions created as a side-effect
+    // of an investment BUY/SELL/DIVIDEND. Those transactions live in the
+    // linked cash account (so the account-subtype filter above can't see
+    // them), carry no category, and have no transfer flag -- so they
+    // leak into expense/income totals as "uncategorised" spending.
+    if (excludeInvestmentLinked) {
+      queryBuilder.andWhere(
+        "NOT EXISTS (SELECT 1 FROM investment_transactions it WHERE it.transaction_id = transaction.id)",
+      );
+    }
 
     if (accountIds && accountIds.length > 0) {
       queryBuilder.andWhere("transaction.accountId IN (:...accountIds)", {

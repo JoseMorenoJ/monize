@@ -140,6 +140,12 @@ export class ForecastAggregatorService {
       .andWhere("t.status != 'VOID'")
       .andWhere("t.isTransfer = false")
       .andWhere("t.parentTransactionId IS NULL")
+      // Exclude investment-linked cash transactions so BUY/SELL/DIVIDEND
+      // side-effects don't skew the historical income/expense baseline
+      // used to train the forecast.
+      .andWhere(
+        "NOT EXISTS (SELECT 1 FROM investment_transactions it WHERE it.transaction_id = t.id)",
+      )
       .groupBy("TO_CHAR(t.transactionDate, 'YYYY-MM')")
       .addGroupBy("cat.name")
       .addGroupBy("cat.isIncome")
@@ -253,6 +259,11 @@ export class ForecastAggregatorService {
       .andWhere("t.status != 'VOID'")
       .andWhere("t.isTransfer = false")
       .andWhere("t.parentTransactionId IS NULL")
+      // Exclude investment-linked cash credits (SELL / DIVIDEND) so
+      // they don't inflate the income baseline.
+      .andWhere(
+        "NOT EXISTS (SELECT 1 FROM investment_transactions it WHERE it.transaction_id = t.id)",
+      )
       .groupBy("TO_CHAR(t.transactionDate, 'YYYY-MM')")
       .orderBy("month", "ASC")
       .getRawMany();
@@ -309,6 +320,11 @@ export class ForecastAggregatorService {
       .andWhere("t.isTransfer = false")
       .andWhere("t.parentTransactionId IS NULL")
       .andWhere("t.payeeName IS NOT NULL")
+      // Exclude investment-linked cash debits so regular BUY activity
+      // isn't picked up as a "recurring charge".
+      .andWhere(
+        "NOT EXISTS (SELECT 1 FROM investment_transactions it WHERE it.transaction_id = t.id)",
+      )
       .groupBy("t.payeeName")
       .addGroupBy("cat.name")
       .having("COUNT(*) >= 3")
