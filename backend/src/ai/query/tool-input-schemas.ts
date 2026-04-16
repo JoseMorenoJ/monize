@@ -102,6 +102,12 @@ export const getBudgetStatusSchema = z.object({
   budgetName: z.string().max(100).optional(),
 });
 
+export const calculateSchema = z.object({
+  operation: z.enum(["percentage", "difference", "ratio", "sum", "average"]),
+  values: z.array(z.number()).min(1).max(100),
+  label: z.string().max(200).optional(),
+});
+
 export const toolInputSchemas: Record<string, z.ZodSchema> = {
   query_transactions: queryTransactionsSchema,
   get_account_balances: getAccountBalancesSchema,
@@ -110,6 +116,7 @@ export const toolInputSchemas: Record<string, z.ZodSchema> = {
   get_net_worth_history: getNetWorthHistorySchema,
   compare_periods: comparePeriodsSchema,
   get_budget_status: getBudgetStatusSchema,
+  calculate: calculateSchema,
 };
 
 /**

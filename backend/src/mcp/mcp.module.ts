@@ -20,6 +20,7 @@ import { McpReportsTools } from "./tools/reports.tool";
 import { McpInvestmentsTools } from "./tools/investments.tool";
 import { McpNetWorthTools } from "./tools/net-worth.tool";
 import { McpScheduledTools } from "./tools/scheduled.tool";
+import { McpCalculateTools } from "./tools/calculate.tool";
 
 import { McpAccountListResource } from "./resources/account-list.resource";
 import { McpCategoryTreeResource } from "./resources/category-tree.resource";
@@ -53,6 +54,7 @@ import { McpSpendingAnalysisPrompt } from "./prompts/spending-analysis.prompt";
     McpInvestmentsTools,
     McpNetWorthTools,
     McpScheduledTools,
+    McpCalculateTools,
     McpAccountListResource,
     McpCategoryTreeResource,
     McpRecentTransactionsResource,

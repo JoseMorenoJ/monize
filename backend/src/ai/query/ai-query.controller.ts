@@ -30,7 +30,11 @@ export class AiQueryController {
     @Request() req: { user: { id: string } },
     @Body() dto: AiQueryDto,
   ) {
-    return this.queryService.executeQuery(req.user.id, dto.query);
+    return this.queryService.executeQuery(
+      req.user.id,
+      dto.query,
+      dto.conversationHistory,
+    );
   }
 
   @Post("query/stream")
@@ -82,6 +86,7 @@ export class AiQueryController {
       for await (const event of this.queryService.executeQueryStream(
         userId,
         dto.query,
+        dto.conversationHistory,
       )) {
         if (abortController.signal.aborted) break;
         if (event) {

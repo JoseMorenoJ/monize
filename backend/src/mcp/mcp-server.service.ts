@@ -9,6 +9,7 @@ import { McpReportsTools } from "./tools/reports.tool";
 import { McpInvestmentsTools } from "./tools/investments.tool";
 import { McpNetWorthTools } from "./tools/net-worth.tool";
 import { McpScheduledTools } from "./tools/scheduled.tool";
+import { McpCalculateTools } from "./tools/calculate.tool";
 import { McpAccountListResource } from "./resources/account-list.resource";
 import { McpCategoryTreeResource } from "./resources/category-tree.resource";
 import { McpRecentTransactionsResource } from "./resources/recent-transactions.resource";
@@ -29,6 +30,7 @@ export class McpServerService {
     private readonly investmentsTools: McpInvestmentsTools,
     private readonly netWorthTools: McpNetWorthTools,
     private readonly scheduledTools: McpScheduledTools,
+    private readonly calculateTools: McpCalculateTools,
     private readonly accountListResource: McpAccountListResource,
     private readonly categoryTreeResource: McpCategoryTreeResource,
     private readonly recentTransactionsResource: McpRecentTransactionsResource,
@@ -66,6 +68,11 @@ export class McpServerService {
           "- monize://accounts and monize://categories are useful for resolving names to IDs.",
           "- monize://recent-transactions is a summarized view of the last 30 days.",
           "",
+          "## Math accuracy",
+          "- Never perform arithmetic yourself (addition, subtraction, multiplication, division, percentages). Use the calculate tool instead.",
+          "- When tool results already include a computed value (e.g., percentage, netCashFlow), present it as-is rather than recomputing it.",
+          "- If you need to derive a value not in the tool results (e.g., 'What percentage of income goes to rent?'), call the calculate tool with the relevant numbers.",
+          "",
           "## Tips",
           "- Combine get_account_summary + monthly_comparison for a comprehensive financial overview in fewer calls.",
           "- When the user asks about trends, prefer generate_report with type monthly_trend over fetching transactions for each month.",
@@ -89,6 +96,7 @@ export class McpServerService {
     this.investmentsTools.register(server, resolve);
     this.netWorthTools.register(server, resolve);
     this.scheduledTools.register(server, resolve);
+    this.calculateTools.register(server);
 
     this.accountListResource.register(server, resolve);
     this.categoryTreeResource.register(server, resolve);

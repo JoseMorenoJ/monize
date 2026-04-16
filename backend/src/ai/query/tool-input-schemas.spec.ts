@@ -7,6 +7,7 @@ import {
   getNetWorthHistorySchema,
   comparePeriodsSchema,
   getBudgetStatusSchema,
+  calculateSchema,
 } from "./tool-input-schemas";
 
 describe("tool-input-schemas", () => {
@@ -320,6 +321,86 @@ describe("tool-input-schemas", () => {
         budgetName: "a".repeat(101),
       });
       expect(result.success).toBe(false);
+    });
+  });
+
+  describe("calculateSchema", () => {
+    it("accepts valid percentage input", () => {
+      const result = calculateSchema.safeParse({
+        operation: "percentage",
+        values: [300, 5000],
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("accepts all operation types", () => {
+      for (const op of ["percentage", "difference", "ratio", "sum", "average"]) {
+        const result = calculateSchema.safeParse({
+          operation: op,
+          values: [1, 2],
+        });
+        expect(result.success).toBe(true);
+      }
+    });
+
+    it("accepts optional label", () => {
+      const result = calculateSchema.safeParse({
+        operation: "sum",
+        values: [100, 200],
+        label: "total spending",
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.label).toBe("total spending");
+      }
+    });
+
+    it("rejects empty values array", () => {
+      const result = calculateSchema.safeParse({
+        operation: "sum",
+        values: [],
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("rejects unknown operation", () => {
+      const result = calculateSchema.safeParse({
+        operation: "modulo",
+        values: [10, 3],
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("rejects non-numeric values", () => {
+      const result = calculateSchema.safeParse({
+        operation: "sum",
+        values: ["abc", "def"],
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("rejects missing operation", () => {
+      const result = calculateSchema.safeParse({
+        values: [1, 2],
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("rejects label over 200 chars", () => {
+      const result = calculateSchema.safeParse({
+        operation: "sum",
+        values: [1, 2],
+        label: "a".repeat(201),
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("validates via validateToolInput", () => {
+      const result = validateToolInput("calculate", {
+        operation: "percentage",
+        values: [500, 5000],
+      });
+      expect(result.success).toBe(true);
     });
   });
 });

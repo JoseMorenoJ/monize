@@ -103,6 +103,18 @@ export const useAiChatStore = create<AiChatState>()(
         let contentBuffer = '';
         let hasStartedContent = false;
 
+        // Build conversation history from existing messages for context.
+        // Only include completed (non-streaming, non-error) messages with
+        // actual content so the AI can reference prior turns.
+        const history = get()
+          .messages.filter(
+            (m) =>
+              !m.isStreaming &&
+              !m.error &&
+              m.content.length > 0,
+          )
+          .map((m) => ({ role: m.role, content: m.content }));
+
         const controller = aiApi.queryStream(trimmed, {
           onEvent: (event: StreamEvent) => {
             switch (event.type) {
@@ -309,7 +321,7 @@ export const useAiChatStore = create<AiChatState>()(
               };
             });
           },
-        });
+        }, history);
 
         set({ _abortController: controller });
       },

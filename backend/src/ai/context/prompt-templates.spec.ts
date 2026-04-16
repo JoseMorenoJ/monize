@@ -61,6 +61,17 @@ describe("prompt-templates", () => {
       expect(QUERY_SYSTEM_PROMPT).toMatch(/chart/i);
     });
 
+    it("includes math accuracy rules", () => {
+      expect(QUERY_SYSTEM_PROMPT).toMatch(/MATH ACCURACY RULES/);
+      expect(QUERY_SYSTEM_PROMPT).toMatch(/never perform arithmetic/i);
+      expect(QUERY_SYSTEM_PROMPT).toMatch(/calculate tool/i);
+    });
+
+    it("instructs to use pre-computed values", () => {
+      expect(QUERY_SYSTEM_PROMPT).toMatch(/pre-computed/i);
+      expect(QUERY_SYSTEM_PROMPT).toMatch(/as-is/i);
+    });
+
     it("explains the sign convention for amounts", () => {
       expect(QUERY_SYSTEM_PROMPT).toMatch(/positive.*income/i);
       expect(QUERY_SYSTEM_PROMPT).toMatch(/negative.*expense/i);

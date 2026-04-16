@@ -17,6 +17,21 @@ import {
 import { Transaction } from "../../transactions/entities/transaction.entity";
 import { Category } from "../../categories/entities/category.entity";
 import { validateToolInput } from "./tool-input-schemas";
+import { executeCalculation, CalculateInput } from "./calculate-tool";
+
+/**
+ * Safe money summation using integer arithmetic (4 decimal places)
+ * to avoid floating-point accumulation drift. See CLAUDE.md Financial Math.
+ */
+function sumMoney(values: number[]): number {
+  const total = values.reduce((sum, v) => sum + Math.round(v * 10000), 0);
+  return total / 10000;
+}
+
+/** Round a monetary value to 2 decimal places. */
+function roundMoney(value: number): number {
+  return Math.round(value * 100) / 100;
+}
 
 /**
  * LLM06-F2: Minimum number of transactions required per group
@@ -105,6 +120,9 @@ export class ToolExecutorService {
           break;
         case "get_budget_status":
           result = await this.getBudgetStatus(userId, validatedInput);
+          break;
+        case "calculate":
+          result = this.calculate(validatedInput);
           break;
         default:
           this.logger.warn(`execute unknown tool=${toolName} user=${userId}`);
@@ -304,7 +322,7 @@ export class ToolExecutorService {
         return rows
           .map((r) => ({
             category: r.label,
-            total: Number(r.total),
+            total: roundMoney(Number(r.total)),
             count: Number(r.count),
           }))
           .sort((a, b) => b.total - a.total);
@@ -320,7 +338,7 @@ export class ToolExecutorService {
         return this.enforceAggregationThreshold(
           rows.map((r) => ({
             payee: r.label,
-            total: Number(r.total),
+            total: roundMoney(Number(r.total)),
             count: Number(r.count),
           })),
         );
@@ -336,7 +354,7 @@ export class ToolExecutorService {
         const rows = await qb.getRawMany();
         return rows.map((r) => ({
           month: r.month,
-          total: Number(r.total),
+          total: roundMoney(Number(r.total)),
           count: Number(r.count),
         }));
       }
@@ -354,7 +372,7 @@ export class ToolExecutorService {
         const rows = await qb.getRawMany();
         return rows.map((r) => ({
           week: r.week,
-          total: Number(r.total),
+          total: roundMoney(Number(r.total)),
           count: Number(r.count),
         }));
       }
@@ -394,7 +412,7 @@ export class ToolExecutorService {
       return {
         name: a.name,
         type: a.accountType,
-        balance: cashBalance + marketValue,
+        balance: roundMoney(cashBalance + marketValue),
         currency: a.currencyCode,
       };
     });
@@ -410,8 +428,8 @@ export class ToolExecutorService {
       const marketValue = marketValues.get(account.id);
       if (marketValue) extraInvestmentAssets += marketValue;
     }
-    const totalAssets = summary.totalAssets + extraInvestmentAssets;
-    const netWorth = totalAssets - summary.totalLiabilities;
+    const totalAssets = roundMoney(summary.totalAssets + extraInvestmentAssets);
+    const netWorth = roundMoney(totalAssets - summary.totalLiabilities);
 
     const data = {
       accounts: accountList,
@@ -460,17 +478,20 @@ export class ToolExecutorService {
       .orderBy("total", "DESC");
 
     const rows = await qb.getRawMany();
-    const totalSpending = rows.reduce((sum, r) => sum + Number(r.total), 0);
+    const totalSpending = sumMoney(rows.map((r) => Number(r.total)));
 
-    let categories = rows.map((r) => ({
-      category: r.category,
-      amount: Number(r.total),
-      percentage:
-        totalSpending > 0
-          ? Math.round((Number(r.total) / totalSpending) * 10000) / 100
-          : 0,
-      transactionCount: Number(r.count),
-    }));
+    let categories = rows.map((r) => {
+      const amount = roundMoney(Number(r.total));
+      return {
+        category: r.category,
+        amount,
+        percentage:
+          totalSpending > 0
+            ? Math.round((amount / totalSpending) * 10000) / 100
+            : 0,
+        transactionCount: Number(r.count),
+      };
+    });
 
     if (topN && topN > 0) {
       categories = categories.slice(0, topN);
@@ -519,7 +540,7 @@ export class ToolExecutorService {
         const rows = await qb.getRawMany();
         const payeeItems = rows.map((r) => ({
           label: r.label,
-          amount: Number(r.total),
+          amount: roundMoney(Number(r.total)),
           count: Number(r.count),
         }));
         // Enforce aggregation threshold for payee-level data
@@ -535,7 +556,7 @@ export class ToolExecutorService {
         const rows = await qb.getRawMany();
         items = rows.map((r) => ({
           label: r.label,
-          amount: Number(r.total),
+          amount: roundMoney(Number(r.total)),
           count: Number(r.count),
         }));
         break;
@@ -551,14 +572,14 @@ export class ToolExecutorService {
         const rows = await qb.getRawMany();
         items = rows.map((r) => ({
           label: r.label,
-          amount: Number(r.total),
+          amount: roundMoney(Number(r.total)),
           count: Number(r.count),
         }));
         break;
       }
     }
 
-    const totalIncome = items.reduce((sum, i) => sum + i.amount, 0);
+    const totalIncome = sumMoney(items.map((i) => i.amount));
 
     return {
       data: { items, totalIncome, groupedBy: groupBy },
@@ -631,9 +652,9 @@ export class ToolExecutorService {
     const p2Map = new Map(period2.map((i) => [i.label, i.total]));
 
     const comparison = Array.from(allLabels).map((label) => {
-      const p1Amount = p1Map.get(label) || 0;
-      const p2Amount = p2Map.get(label) || 0;
-      const change = p2Amount - p1Amount;
+      const p1Amount = roundMoney(p1Map.get(label) || 0);
+      const p2Amount = roundMoney(p2Map.get(label) || 0);
+      const change = roundMoney(p2Amount - p1Amount);
       const changePercent =
         p1Amount !== 0
           ? Math.round((change / p1Amount) * 10000) / 100
@@ -652,9 +673,9 @@ export class ToolExecutorService {
 
     comparison.sort((a, b) => Math.abs(b.change) - Math.abs(a.change));
 
-    const p1Total = period1.reduce((sum, i) => sum + i.total, 0);
-    const p2Total = period2.reduce((sum, i) => sum + i.total, 0);
-    const totalChange = p2Total - p1Total;
+    const p1Total = sumMoney(period1.map((i) => i.total));
+    const p2Total = sumMoney(period2.map((i) => i.total));
+    const totalChange = roundMoney(p2Total - p1Total);
     const totalChangePercent =
       p1Total !== 0 ? Math.round((totalChange / p1Total) * 10000) / 100 : 0;
 
@@ -717,7 +738,7 @@ export class ToolExecutorService {
     const rows = await qb.getRawMany();
     const items = rows.map((r) => ({
       label: r.label,
-      total: Number(r.total),
+      total: roundMoney(Number(r.total)),
       count: Number(r.count),
     }));
 
@@ -730,7 +751,7 @@ export class ToolExecutorService {
         (i) => i.count < MIN_AGGREGATION_COUNT,
       );
       if (belowThreshold.length > 0) {
-        const otherTotal = belowThreshold.reduce((s, i) => s + i.total, 0);
+        const otherTotal = sumMoney(belowThreshold.map((i) => i.total));
         const otherCount = belowThreshold.reduce((s, i) => s + i.count, 0);
         aboveThreshold.push({
           label: "Other (aggregated)",
@@ -896,6 +917,30 @@ export class ToolExecutorService {
     };
   }
 
+  private calculate(input: Record<string, unknown>): ToolResult {
+    const calcResult = executeCalculation(input as unknown as CalculateInput);
+
+    if ("error" in calcResult) {
+      return {
+        data: { error: calcResult.error },
+        summary: calcResult.error,
+        sources: [],
+        isError: true,
+      };
+    }
+
+    return {
+      data: calcResult,
+      summary: `Calculated ${calcResult.operation}: ${calcResult.formattedResult}${calcResult.label ? ` (${calcResult.label})` : ""}`,
+      sources: [
+        {
+          type: "calculation",
+          description: `${calcResult.operation} calculation`,
+        },
+      ],
+    };
+  }
+
   private resolvePeriodDates(period: string): {
     periodStart: string;
     periodEnd: string;
@@ -926,7 +971,7 @@ export class ToolExecutorService {
     const belowThreshold = rows.filter((r) => r.count < MIN_AGGREGATION_COUNT);
 
     if (belowThreshold.length > 0) {
-      const otherTotal = belowThreshold.reduce((sum, r) => sum + r.total, 0);
+      const otherTotal = sumMoney(belowThreshold.map((r) => r.total));
       const otherCount = belowThreshold.reduce((sum, r) => sum + r.count, 0);
       aboveThreshold.push({
         payee: "Other (aggregated)",
@@ -951,7 +996,7 @@ export class ToolExecutorService {
     const belowThreshold = items.filter((i) => i.count < MIN_AGGREGATION_COUNT);
 
     if (belowThreshold.length > 0) {
-      const otherAmount = belowThreshold.reduce((s, i) => s + i.amount, 0);
+      const otherAmount = sumMoney(belowThreshold.map((i) => i.amount));
       const otherCount = belowThreshold.reduce((s, i) => s + i.count, 0);
       aboveThreshold.push({
         label: "Other (aggregated)",
