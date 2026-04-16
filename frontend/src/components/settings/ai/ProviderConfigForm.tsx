@@ -210,7 +210,7 @@ export function ProviderConfigForm({ isOpen, onClose, onSubmit, editConfig }: Pr
 
           <div>
             <div className="flex items-end gap-2">
-              <div className="flex-1">
+              <div className="flex-1 min-w-0">
                 <Input
                   label="Model"
                   {...register('model')}
@@ -225,13 +225,13 @@ export function ProviderConfigForm({ isOpen, onClose, onSubmit, editConfig }: Pr
                 onClick={handleTestModel}
                 disabled={testStatus === 'testing' || isSubmitting}
                 aria-label="Test model"
-                className={
+                className={`shrink-0 w-24 justify-center ${
                   testStatus === 'success'
                     ? 'border-green-500 text-green-600 dark:border-green-400 dark:text-green-400'
                     : testStatus === 'error'
                       ? 'border-red-500 text-red-600 dark:border-red-400 dark:text-red-400'
                       : ''
-                }
+                }`}
               >
                 {testStatus === 'testing' ? 'Testing...' : 'Test'}
               </Button>
