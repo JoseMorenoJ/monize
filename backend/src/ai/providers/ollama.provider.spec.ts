@@ -634,4 +634,116 @@ describe("OllamaProvider", () => {
       expect(p.name).toBe("ollama");
     });
   });
+
+  describe("verifyModel()", () => {
+    const mockTagsResponse = (
+      models: Array<{ name?: string; model?: string }>,
+    ) => ({
+      ok: true,
+      json: () => Promise.resolve({ models }),
+    });
+
+    it("returns ok when the exact model tag is in /api/tags", async () => {
+      global.fetch = jest
+        .fn()
+        .mockResolvedValue(mockTagsResponse([{ name: "llama3" }]));
+      const result = await provider.verifyModel();
+      expect(result).toEqual({ ok: true, model: "llama3" });
+    });
+
+    it("returns ok for `foo` when only `foo:latest` is installed", async () => {
+      global.fetch = jest
+        .fn()
+        .mockResolvedValue(mockTagsResponse([{ name: "llama3:latest" }]));
+      const result = await provider.verifyModel();
+      expect(result).toEqual({ ok: true, model: "llama3" });
+    });
+
+    it("returns ok for `foo:latest` when only `foo` is installed", async () => {
+      const p = new OllamaProvider("http://localhost:11434", "llama3:latest");
+      global.fetch = jest
+        .fn()
+        .mockResolvedValue(mockTagsResponse([{ name: "llama3" }]));
+      const result = await p.verifyModel();
+      expect(result).toEqual({ ok: true, model: "llama3:latest" });
+    });
+
+    it("reports a helpful reason listing available models when the configured model is missing", async () => {
+      global.fetch = jest
+        .fn()
+        .mockResolvedValue(
+          mockTagsResponse([{ name: "mistral" }, { name: "qwen3:30b" }]),
+        );
+      const result = await provider.verifyModel();
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.model).toBe("llama3");
+        expect(result.reason).toMatch(/not installed/i);
+        expect(result.reason).toContain("mistral");
+        expect(result.reason).toContain("qwen3:30b");
+      }
+    });
+
+    it("appends '+N more' when the available-models list exceeds the display cap", async () => {
+      // 25 models -- above the 20-item display cap.
+      const models = Array.from({ length: 25 }, (_, i) => ({
+        name: `model-${String(i).padStart(2, "0")}`,
+      }));
+      global.fetch = jest.fn().mockResolvedValue(mockTagsResponse(models));
+
+      const result = await provider.verifyModel();
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.reason).toContain("+5 more");
+        expect(result.reason).toContain("model-00");
+        // The 25th model (sorted) should be excluded from the preview.
+        expect(result.reason).not.toContain("model-24");
+      }
+    });
+
+    it("does not add a '+N more' suffix when all available models fit the cap", async () => {
+      const models = [
+        { name: "llama3-8b" },
+        { name: "mistral" },
+        { name: "qwen3:30b" },
+      ];
+      global.fetch = jest.fn().mockResolvedValue(mockTagsResponse(models));
+
+      const result = await provider.verifyModel();
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.reason).not.toMatch(/\+\d+ more/);
+      }
+    });
+
+    it("reports that no models are installed when the host has an empty catalogue", async () => {
+      global.fetch = jest.fn().mockResolvedValue(mockTagsResponse([]));
+      const result = await provider.verifyModel();
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.reason).toMatch(/no models are installed/i);
+      }
+    });
+
+    it("reports a not-ok HTTP status with the server's status code", async () => {
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: false,
+        status: 503,
+      });
+      const result = await provider.verifyModel();
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.reason).toContain("503");
+      }
+    });
+
+    it("wraps fetch errors (unreachable host, timeout) as the reason", async () => {
+      global.fetch = jest.fn().mockRejectedValue(new Error("ECONNREFUSED"));
+      const result = await provider.verifyModel();
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.reason).toContain("ECONNREFUSED");
+      }
+    });
+  });
 });

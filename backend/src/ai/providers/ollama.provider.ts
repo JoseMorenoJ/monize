@@ -68,8 +68,8 @@ export class OllamaProvider implements AiProvider {
   readonly supportsToolUse = true;
 
   private readonly logger = new Logger(OllamaProvider.name);
-  private readonly baseUrl: string;
-  private readonly modelId: string;
+  protected readonly baseUrl: string;
+  protected readonly modelId: string;
 
   constructor(baseUrl?: string, model?: string) {
     this.baseUrl = (baseUrl || "http://localhost:11434").replace(/\/+$/, "");
@@ -547,7 +547,7 @@ export class OllamaProvider implements AiProvider {
    * Defensive against responses that lack a usable .text() (e.g. test mocks)
    * or whose body has already been consumed.
    */
-  private async safeReadBody(response: Response): Promise<string> {
+  protected async safeReadBody(response: Response): Promise<string> {
     try {
       if (typeof response.text !== "function") return "<unreadable>";
       return await response.text();
@@ -652,13 +652,21 @@ export class OllamaProvider implements AiProvider {
       ) {
         return { ok: true, model: this.modelId };
       }
+      if (names.size === 0) {
+        return {
+          ok: false,
+          model: this.modelId,
+          reason: "No models are installed on this Ollama host.",
+        };
+      }
+      const shown = [...names].sort();
+      const cap = 20;
+      const preview = shown.slice(0, cap).join(", ");
+      const suffix = shown.length > cap ? ` (+${shown.length - cap} more)` : "";
       return {
         ok: false,
         model: this.modelId,
-        reason:
-          names.size === 0
-            ? "No models are installed on this Ollama host."
-            : `Model "${this.modelId}" is not installed. Available: ${[...names].slice(0, 5).join(", ")}${names.size > 5 ? ", ..." : ""}.`,
+        reason: `Model "${this.modelId}" is not installed. Available: ${preview}${suffix}.`,
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

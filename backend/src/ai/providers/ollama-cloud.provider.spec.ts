@@ -177,33 +177,108 @@ describe("OllamaCloudProvider", () => {
   });
 
   describe("verifyModel()", () => {
-    it("returns ok when the configured model is in /api/tags", async () => {
+    // Ollama Cloud probes via /api/chat instead of /api/tags because
+    // /api/tags only reflects the user's locally-pulled models, not the
+    // cloud catalogue. Valid cloud models like "gpt-oss:20b-cloud"
+    // routinely succeed on /api/chat while being absent from /api/tags.
+
+    it("returns ok when the /api/chat probe succeeds", async () => {
       global.fetch = jest.fn().mockResolvedValue({
         ok: true,
-        json: () =>
-          Promise.resolve({
-            models: [{ name: "qwen3:30b-cloud" }, { name: "other:cloud" }],
-          }),
+        text: () => Promise.resolve(""),
       });
 
       const result = await provider.verifyModel();
       expect(result).toEqual({ ok: true, model: "qwen3:30b-cloud" });
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        "https://ollama.com/api/chat",
+        expect.objectContaining({
+          method: "POST",
+          headers: expect.objectContaining({
+            Authorization: "Bearer ollama-test-key",
+            "Content-Type": "application/json",
+          }),
+        }),
+      );
+      const body = JSON.parse(
+        (global.fetch as jest.Mock).mock.calls[0][1].body as string,
+      );
+      expect(body).toMatchObject({
+        model: "qwen3:30b-cloud",
+        stream: false,
+        options: { num_predict: 1 },
+      });
     });
 
-    it("returns a helpful reason when the model is not in the catalogue", async () => {
+    it("does not false-negative on models that work but are absent from /api/tags", async () => {
+      // Regression: "gpt-oss:20b-cloud" is a real, working model that
+      // /api/tags did not list. The completion probe must not classify
+      // it as "not installed" just because the catalogue endpoint is
+      // missing it.
+      const p = new OllamaCloudProvider("k", undefined, "gpt-oss:20b-cloud");
       global.fetch = jest.fn().mockResolvedValue({
         ok: true,
-        json: () =>
-          Promise.resolve({
-            models: [{ name: "qwen3:8b-cloud" }, { name: "other:cloud" }],
-          }),
+        text: () => Promise.resolve(""),
+      });
+
+      const result = await p.verifyModel();
+      expect(result).toEqual({ ok: true, model: "gpt-oss:20b-cloud" });
+    });
+
+    it("reports a not-found reason when the probe returns 404", async () => {
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: false,
+        status: 404,
+        statusText: "Not Found",
+        text: () => Promise.resolve('{"error":"model not found"}'),
       });
 
       const result = await provider.verifyModel();
       expect(result.ok).toBe(false);
       if (!result.ok) {
-        expect(result.model).toBe("qwen3:30b-cloud");
-        expect(result.reason).toMatch(/not installed/i);
+        expect(result.reason).toMatch(/not found/i);
+        expect(result.reason).toContain("-cloud");
+      }
+    });
+
+    it("reports a not-found reason when a 400 body mentions 'does not exist'", async () => {
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: false,
+        status: 400,
+        statusText: "Bad Request",
+        text: () =>
+          Promise.resolve('{"error":"model \\"foo\\" does not exist"}'),
+      });
+
+      const result = await provider.verifyModel();
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.reason).toMatch(/not found/i);
+      }
+    });
+
+    it("reports an auth-failure reason on 401", async () => {
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: false,
+        status: 401,
+        statusText: "Unauthorized",
+        text: () => Promise.resolve(""),
+      });
+
+      const result = await provider.verifyModel();
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.reason).toMatch(/authentication/i);
+      }
+    });
+
+    it("wraps fetch errors as the reason", async () => {
+      global.fetch = jest.fn().mockRejectedValue(new Error("ECONNREFUSED"));
+      const result = await provider.verifyModel();
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.reason).toContain("ECONNREFUSED");
       }
     });
   });
