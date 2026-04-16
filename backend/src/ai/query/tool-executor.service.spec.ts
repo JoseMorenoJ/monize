@@ -801,4 +801,74 @@ describe("ToolExecutorService", () => {
       expect(result.sources[0].dateRange).toContain("2026-01-31");
     });
   });
+
+  describe("calculate", () => {
+    it("routes to calculate tool and returns result", async () => {
+      const result = await service.execute(userId, "calculate", {
+        operation: "percentage",
+        values: [300, 5000],
+        label: "rent percentage",
+      });
+
+      const data = result.data as Record<string, unknown>;
+      expect(data.result).toBe(6);
+      expect(data.formattedResult).toBe("6%");
+      expect(data.operation).toBe("percentage");
+      expect(data.label).toBe("rent percentage");
+      expect(result.summary).toContain("percentage");
+      expect(result.sources[0].type).toBe("calculation");
+    });
+
+    it("returns error for division by zero", async () => {
+      const result = await service.execute(userId, "calculate", {
+        operation: "ratio",
+        values: [100, 0],
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.summary).toContain("zero");
+    });
+  });
+
+  describe("floating-point precision", () => {
+    it("rounds category totals to avoid float noise", async () => {
+      // Simulate PostgreSQL returning values that could cause float drift
+      // SQL ORDER BY ensures descending order in the mock
+      mockQueryBuilder.getRawMany.mockResolvedValueOnce([
+        { category: "Dining", total: "200.20", count: "5" },
+        { category: "Groceries", total: "100.10", count: "5" },
+        { category: "Gas", total: "50.05", count: "3" },
+      ]);
+
+      const result = await service.execute(userId, "get_spending_by_category", {
+        startDate: "2026-01-01",
+        endDate: "2026-01-31",
+      });
+
+      const data = result.data as Record<string, unknown>;
+      // 200.20 + 100.10 + 50.05 = 350.35 (must be exact, not 350.35000000000002)
+      expect(data.totalSpending).toBe(350.35);
+
+      const categories = data.categories as Array<Record<string, unknown>>;
+      expect(categories[0].amount).toBe(200.2);
+      expect(categories[1].amount).toBe(100.1);
+      expect(categories[2].amount).toBe(50.05);
+    });
+
+    it("rounds income totals using safe arithmetic", async () => {
+      mockQueryBuilder.getRawMany.mockResolvedValueOnce([
+        { label: "Salary", total: "3333.33", count: "1" },
+        { label: "Freelance", total: "3333.33", count: "1" },
+        { label: "Bonus", total: "3333.34", count: "1" },
+      ]);
+
+      const result = await service.execute(userId, "get_income_summary", {
+        startDate: "2026-01-01",
+        endDate: "2026-01-31",
+      });
+
+      const data = result.data as Record<string, unknown>;
+      expect(data.totalIncome).toBe(10000);
+    });
+  });
 });

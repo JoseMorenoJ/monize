@@ -188,4 +188,33 @@ export const FINANCIAL_TOOLS: AiToolDefinition[] = [
       },
     },
   },
+  {
+    name: "calculate",
+    description:
+      "Perform accurate server-side arithmetic on numbers from previous tool results. Use this instead of doing math yourself. Supports: percentage (part/whole*100), difference (a-b), ratio (a/b), sum, and average. Always use this tool for any calculation rather than computing values yourself.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        operation: {
+          type: "string",
+          enum: ["percentage", "difference", "ratio", "sum", "average"],
+          description:
+            "The arithmetic operation to perform. 'percentage' computes (values[0] / values[1]) * 100. 'difference' computes values[0] - values[1]. 'ratio' computes values[0] / values[1]. 'sum' adds all values. 'average' computes the arithmetic mean.",
+        },
+        values: {
+          type: "array",
+          items: { type: "number" },
+          minItems: 1,
+          description:
+            "The numbers to calculate with. For percentage, difference, and ratio: [a, b]. For sum and average: any number of values.",
+        },
+        label: {
+          type: "string",
+          description:
+            "Optional label describing what this calculation represents (e.g., 'savings rate', 'monthly average spending').",
+        },
+      },
+      required: ["operation", "values"],
+    },
+  },
 ];

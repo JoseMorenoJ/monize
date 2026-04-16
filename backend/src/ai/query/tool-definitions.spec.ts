@@ -1,8 +1,8 @@
 import { FINANCIAL_TOOLS } from "./tool-definitions";
 
 describe("FINANCIAL_TOOLS", () => {
-  it("defines exactly 7 tools", () => {
-    expect(FINANCIAL_TOOLS).toHaveLength(7);
+  it("defines exactly 8 tools", () => {
+    expect(FINANCIAL_TOOLS).toHaveLength(8);
   });
 
   it("has unique tool names", () => {
@@ -18,6 +18,7 @@ describe("FINANCIAL_TOOLS", () => {
     "get_net_worth_history",
     "compare_periods",
     "get_budget_status",
+    "calculate",
   ];
 
   it.each(expectedTools)("includes the %s tool", (toolName) => {
@@ -150,6 +151,38 @@ describe("FINANCIAL_TOOLS", () => {
       >;
       expect(props.period).toBeDefined();
       expect(props.budgetName).toBeDefined();
+    });
+  });
+
+  describe("calculate", () => {
+    it("requires operation and values", () => {
+      const tool = FINANCIAL_TOOLS.find((t) => t.name === "calculate")!;
+      expect(tool.inputSchema.required).toEqual(["operation", "values"]);
+    });
+
+    it("supports all arithmetic operations", () => {
+      const tool = FINANCIAL_TOOLS.find((t) => t.name === "calculate")!;
+      const props = tool.inputSchema.properties as Record<
+        string,
+        Record<string, unknown>
+      >;
+      expect(props.operation.enum).toEqual([
+        "percentage",
+        "difference",
+        "ratio",
+        "sum",
+        "average",
+      ]);
+    });
+
+    it("has optional label parameter", () => {
+      const tool = FINANCIAL_TOOLS.find((t) => t.name === "calculate")!;
+      const props = tool.inputSchema.properties as Record<
+        string,
+        Record<string, unknown>
+      >;
+      expect(props.label).toBeDefined();
+      expect(props.label.type).toBe("string");
     });
   });
 
