@@ -25,6 +25,7 @@ export class TransactionAnalyticsService {
     amountFrom?: number,
     amountTo?: number,
     excludeInvestmentLinked?: boolean,
+    excludeTransfers?: boolean,
   ): Promise<{
     totalIncome: number;
     totalExpenses: number;
@@ -53,6 +54,17 @@ export class TransactionAnalyticsService {
       "(summaryAccount.accountSubType IS NULL OR summaryAccount.accountSubType != 'INVESTMENT_BROKERAGE')",
     );
 
+    // Always expand split transactions so mixed-sign splits are bucketed
+    // into income/expense per split. A split parent carries `amount =
+    // SUM(splits)`, so summing the parent row nets opposite-sign splits
+    // together and under-counts both totalIncome and totalExpenses.
+    // Filter out transfer splits -- they're movements between own
+    // accounts, not spending or income.
+    queryBuilder.leftJoin("transaction.splits", "splits");
+    queryBuilder.andWhere(
+      "(splits.transferAccountId IS NULL OR splits.id IS NULL)",
+    );
+
     // Optionally exclude cash-side transactions created as a side-effect
     // of an investment BUY/SELL/DIVIDEND. Those transactions live in the
     // linked cash account (so the account-subtype filter above can't see
@@ -62,6 +74,15 @@ export class TransactionAnalyticsService {
       queryBuilder.andWhere(
         "NOT EXISTS (SELECT 1 FROM investment_transactions it WHERE it.transaction_id = transaction.id)",
       );
+    }
+
+    // Optionally exclude transfers between own accounts. These net to
+    // zero across both sides but inflate per-side income/expense totals,
+    // so AI and analytics callers asking "how much did I spend" want
+    // them out. Callers that include "transfer" as a pseudo-category
+    // below must not set this flag, or the OR clause will match nothing.
+    if (excludeTransfers) {
+      queryBuilder.andWhere("transaction.isTransfer = false");
     }
 
     if (accountIds && accountIds.length > 0) {
@@ -82,8 +103,6 @@ export class TransactionAnalyticsService {
       });
     }
 
-    let splitsCategoryJoin = false;
-
     if (categoryIds && categoryIds.length > 0) {
       const hasUncategorized = categoryIds.includes("uncategorized");
       const hasTransfer = categoryIds.includes("transfer");
@@ -102,11 +121,6 @@ export class TransactionAnalyticsService {
                 regularCategoryIds,
               )
             : [];
-
-        if (uniqueCategoryIds.length > 0) {
-          queryBuilder.leftJoin("transaction.splits", "splits");
-          splitsCategoryJoin = true;
-        }
 
         queryBuilder.andWhere(
           new Brackets((qb) => {
@@ -151,9 +165,6 @@ export class TransactionAnalyticsService {
 
     if (search && search.trim()) {
       const searchPattern = `%${search.trim()}%`;
-      if (!categoryIds || categoryIds.length === 0) {
-        queryBuilder.leftJoin("transaction.splits", "splits");
-      }
       queryBuilder.andWhere(
         "(transaction.description ILIKE :search OR transaction.payeeName ILIKE :search OR splits.memo ILIKE :search)",
         { search: searchPattern },
@@ -170,11 +181,11 @@ export class TransactionAnalyticsService {
       queryBuilder.andWhere("transaction.amount <= :amountTo", { amountTo });
     }
 
-    // When category filter joins splits, use the split amount for split
-    // transactions so we only count the matching split, not the full parent.
-    const amountExpr = splitsCategoryJoin
-      ? "COALESCE(splits.amount, transaction.amount)"
-      : "transaction.amount";
+    // Use the split amount when the row came from the splits join;
+    // otherwise the transaction's own amount. A split parent's `amount`
+    // equals the sum of its splits, so only one of the two contributes
+    // per row.
+    const amountExpr = "COALESCE(splits.amount, transaction.amount)";
 
     queryBuilder
       .select("transaction.currencyCode", "currencyCode")
@@ -186,10 +197,7 @@ export class TransactionAnalyticsService {
         `SUM(CASE WHEN ${amountExpr} < 0 THEN ABS(${amountExpr}) ELSE 0 END)`,
         "totalExpenses",
       )
-      .addSelect(
-        splitsCategoryJoin ? "COUNT(DISTINCT transaction.id)" : "COUNT(*)",
-        "transactionCount",
-      )
+      .addSelect("COUNT(DISTINCT transaction.id)", "transactionCount")
       .groupBy("transaction.currencyCode");
 
     const rows = await queryBuilder.getRawMany();

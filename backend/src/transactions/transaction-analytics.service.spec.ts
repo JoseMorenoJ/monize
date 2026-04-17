@@ -227,11 +227,63 @@ describe("TransactionAnalyticsService", () => {
         );
       });
 
-      it("does not exclude transfers", async () => {
+      it("does not exclude transfers by default", async () => {
         await service.getSummary(userId);
 
         expect(mockQueryBuilder.andWhere).not.toHaveBeenCalledWith(
           "transaction.isTransfer = false",
+        );
+      });
+    });
+
+    describe("excludeTransfers flag", () => {
+      const TRANSFER_EXCLUSION = "transaction.isTransfer = false";
+
+      it("does not apply the transfer exclusion by default", async () => {
+        await service.getSummary(userId);
+
+        expect(mockQueryBuilder.andWhere).not.toHaveBeenCalledWith(
+          TRANSFER_EXCLUSION,
+        );
+      });
+
+      it("applies the transfer exclusion when the flag is true", async () => {
+        await service.getSummary(
+          userId,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          true,
+        );
+
+        expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
+          TRANSFER_EXCLUSION,
+        );
+      });
+
+      it("does not apply the exclusion when the flag is explicitly false", async () => {
+        await service.getSummary(
+          userId,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          false,
+        );
+
+        expect(mockQueryBuilder.andWhere).not.toHaveBeenCalledWith(
+          TRANSFER_EXCLUSION,
         );
       });
     });
@@ -504,31 +556,64 @@ describe("TransactionAnalyticsService", () => {
         );
       });
 
-      it("uses transaction.amount when no category filter is active", async () => {
+      it("always uses split-aware amounts even with no category filter", async () => {
         await service.getSummary(userId);
 
-        // Should NOT use COALESCE
-        const addSelectCalls = mockQueryBuilder.addSelect.mock.calls;
-        const coalesceUsed = addSelectCalls.some(
-          (call: unknown[]) =>
-            typeof call[0] === "string" && call[0].includes("COALESCE"),
+        // Summary must expand split parents so mixed-sign splits are
+        // bucketed into the correct income/expense direction per split.
+        expect(mockQueryBuilder.addSelect).toHaveBeenCalledWith(
+          expect.stringContaining(
+            "COALESCE(splits.amount, transaction.amount)",
+          ),
+          "totalIncome",
         );
-        expect(coalesceUsed).toBe(false);
+        expect(mockQueryBuilder.addSelect).toHaveBeenCalledWith(
+          expect.stringContaining(
+            "COALESCE(splits.amount, transaction.amount)",
+          ),
+          "totalExpenses",
+        );
+        expect(mockQueryBuilder.addSelect).toHaveBeenCalledWith(
+          "COUNT(DISTINCT transaction.id)",
+          "transactionCount",
+        );
       });
 
-      it("uses transaction.amount when only uncategorized/transfer filters are active", async () => {
+      it("uses split-aware amounts with uncategorized/transfer filters", async () => {
         await service.getSummary(userId, undefined, undefined, undefined, [
           "uncategorized",
           "transfer",
         ]);
 
-        // No splits join for category filtering, so should NOT use COALESCE
-        const addSelectCalls = mockQueryBuilder.addSelect.mock.calls;
-        const coalesceUsed = addSelectCalls.some(
-          (call: unknown[]) =>
-            typeof call[0] === "string" && call[0].includes("COALESCE"),
+        expect(mockQueryBuilder.addSelect).toHaveBeenCalledWith(
+          expect.stringContaining(
+            "COALESCE(splits.amount, transaction.amount)",
+          ),
+          "totalIncome",
         );
-        expect(coalesceUsed).toBe(false);
+        expect(mockQueryBuilder.addSelect).toHaveBeenCalledWith(
+          expect.stringContaining(
+            "COALESCE(splits.amount, transaction.amount)",
+          ),
+          "totalExpenses",
+        );
+      });
+
+      it("always joins splits table for split-aware aggregation", async () => {
+        await service.getSummary(userId);
+
+        expect(mockQueryBuilder.leftJoin).toHaveBeenCalledWith(
+          "transaction.splits",
+          "splits",
+        );
+      });
+
+      it("filters out transfer splits to exclude them from totals", async () => {
+        await service.getSummary(userId);
+
+        expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
+          "(splits.transferAccountId IS NULL OR splits.id IS NULL)",
+        );
       });
 
       it("deduplicates category IDs including children", async () => {
