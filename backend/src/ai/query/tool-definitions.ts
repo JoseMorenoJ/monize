@@ -169,6 +169,22 @@ export const FINANCIAL_TOOLS: AiToolDefinition[] = [
     },
   },
   {
+    name: "get_portfolio_summary",
+    description:
+      "Get the user's investment holdings and portfolio performance. Returns each held security (symbol, name, security type, quantity, cost basis, current market value, unrealized gain/loss, and percent return) plus portfolio-wide totals (total holdings value, total cost basis, total portfolio value, total unrealized gain/loss, time-weighted return, CAGR) and asset allocation percentages. Holdings are sorted by market value descending. Use this for questions like 'what stocks do I own', 'how is my portfolio performing', 'what's my asset allocation', or 'how much have I made on <symbol>'. Market values come from the latest stored security prices -- they may be a day or two stale if price updates haven't run.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        accountNames: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Optional: filter to specific investment account names. Use exact names from the user's account list. Omit to cover all investment accounts.",
+        },
+      },
+    },
+  },
+  {
     name: "get_transfers",
     description:
       "Get transfer activity between the user's own accounts for a date range. Returns per-account inbound (money received from another account), outbound (money sent to another account), net movement, and transfer count. Transfers are deliberately excluded from spending and income tools because they net to zero across accounts; use this tool for questions like 'how much did I move into my savings', 'what went out of chequing to other accounts', or 'what are my transfers between accounts'.",

@@ -6,6 +6,7 @@ import {
   getIncomeSummarySchema,
   getNetWorthHistorySchema,
   comparePeriodsSchema,
+  getPortfolioSummarySchema,
   getTransfersSchema,
   getBudgetStatusSchema,
   calculateSchema,
@@ -301,6 +302,27 @@ describe("tool-input-schemas", () => {
         direction: "income",
       });
       expect(result.success).toBe(true);
+    });
+  });
+
+  describe("getPortfolioSummarySchema", () => {
+    it("accepts empty input", () => {
+      const result = getPortfolioSummarySchema.safeParse({});
+      expect(result.success).toBe(true);
+    });
+
+    it("accepts accountNames filter", () => {
+      const result = getPortfolioSummarySchema.safeParse({
+        accountNames: ["Brokerage", "TFSA"],
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("rejects account names over 100 chars", () => {
+      const result = getPortfolioSummarySchema.safeParse({
+        accountNames: ["a".repeat(101)],
+      });
+      expect(result.success).toBe(false);
     });
   });
 
