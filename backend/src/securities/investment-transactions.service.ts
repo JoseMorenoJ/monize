@@ -862,8 +862,8 @@ export class InvestmentTransactionsService {
       // Apply the new transaction effects. Allow intermediate negative
       // holdings so editing a past transaction is not blocked by the
       // current (possibly zero) balance. Correctness is enforced by the
-      // history check below, which replays all transactions in
-      // chronological order.
+      // history check below, which replays the affected accounts'
+      // transactions in chronological order.
       await this.processTransactionEffectsInTransaction(
         queryRunner,
         userId,
@@ -871,9 +871,17 @@ export class InvestmentTransactionsService {
         true,
       );
 
+      // Scope validation to the accounts this edit could have affected
+      // (old account + new account if it changed). Validating every
+      // account would falsely blame this edit for pre-existing oversold
+      // states elsewhere in the user's data.
+      const affectedAccountIds = Array.from(
+        new Set([accountId, saved.accountId].filter(Boolean) as string[]),
+      );
       await this.holdingsService.validateNoNegativeHoldingsHistory(
         userId,
         queryRunner,
+        affectedAccountIds,
       );
 
       await queryRunner.commitTransaction();
@@ -1097,6 +1105,7 @@ export class InvestmentTransactionsService {
       await this.holdingsService.validateNoNegativeHoldingsHistory(
         userId,
         queryRunner,
+        [accountId],
       );
 
       await queryRunner.commitTransaction();

@@ -1497,6 +1497,43 @@ describe("HoldingsService", () => {
       ).resolves.toBeUndefined();
     });
 
+    it("limits validation to the supplied accountIds", async () => {
+      // A pre-existing oversold state in an unrelated account should not
+      // block an edit scoped to a specific account.
+      accountsRepository.find.mockResolvedValue([mockAccount, mockAccount2]);
+      investmentTransactionsRepository.find.mockResolvedValue([
+        // Only the transactions for acc-1 are returned because we query
+        // with accountId IN (...) filtered to the scoped list.
+        {
+          accountId: "acc-1",
+          securityId: "sec-1",
+          action: InvestmentAction.BUY,
+          quantity: 10,
+          transactionDate: "2024-01-01",
+          security: { symbol: "AAPL" },
+        },
+      ]);
+
+      await expect(
+        service.validateNoNegativeHoldingsHistory(
+          "user-1",
+          undefined,
+          ["acc-1"],
+        ),
+      ).resolves.toBeUndefined();
+
+      // The scoped list must be passed through to the query, not the
+      // broader account lookup.
+      expect(accountsRepository.find).not.toHaveBeenCalled();
+      expect(investmentTransactionsRepository.find).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            userId: "user-1",
+          }),
+        }),
+      );
+    });
+
     it("ignores DIVIDEND/INTEREST/CAPITAL_GAIN transactions", async () => {
       accountsRepository.find.mockResolvedValue([mockAccount]);
       investmentTransactionsRepository.find.mockResolvedValue([

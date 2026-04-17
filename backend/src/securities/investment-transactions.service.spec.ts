@@ -1622,7 +1622,7 @@ describe("InvestmentTransactionsService", () => {
 
       expect(
         holdingsService.validateNoNegativeHoldingsHistory,
-      ).toHaveBeenCalledWith(userId, expect.anything());
+      ).toHaveBeenCalledWith(userId, expect.anything(), [accountId]);
       expect(mockQueryRunner.commitTransaction).toHaveBeenCalled();
       expect(mockQueryRunner.rollbackTransaction).not.toHaveBeenCalled();
     });

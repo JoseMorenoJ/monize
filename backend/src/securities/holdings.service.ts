@@ -264,9 +264,22 @@ export class HoldingsService {
    * past investment transaction to ensure the change does not retroactively
    * cause an oversell on any historical date.
    */
+  /**
+   * Replay a user's investment transactions in chronological order and
+   * throw BadRequestException if any (account, security) pair would have a
+   * negative running quantity at any date. Used after editing or deleting a
+   * past investment transaction to ensure the change does not retroactively
+   * cause an oversell on any historical date.
+   *
+   * When `accountIds` is provided, only those accounts are validated. The
+   * caller should pass the accounts touched by the edit so pre-existing
+   * inconsistencies in unrelated accounts (for example, from historical
+   * imports) don't get blamed on this change.
+   */
   async validateNoNegativeHoldingsHistory(
     userId: string,
     queryRunner?: QueryRunner,
+    accountIds?: string[],
   ): Promise<void> {
     const accountsRepo = queryRunner
       ? queryRunner.manager.getRepository(Account)
@@ -275,20 +288,25 @@ export class HoldingsService {
       ? queryRunner.manager.getRepository(InvestmentTransaction)
       : this.investmentTransactionsRepository;
 
-    const investmentAccounts = await accountsRepo.find({
-      where: {
-        userId,
-        accountType: AccountType.INVESTMENT,
-      },
-    });
+    let eligibleAccountIds: string[];
+    if (accountIds && accountIds.length > 0) {
+      eligibleAccountIds = accountIds;
+    } else {
+      const investmentAccounts = await accountsRepo.find({
+        where: {
+          userId,
+          accountType: AccountType.INVESTMENT,
+        },
+      });
 
-    const eligibleAccountIds = investmentAccounts
-      .filter(
-        (a) =>
-          a.accountSubType === AccountSubType.INVESTMENT_BROKERAGE ||
-          !a.accountSubType,
-      )
-      .map((a) => a.id);
+      eligibleAccountIds = investmentAccounts
+        .filter(
+          (a) =>
+            a.accountSubType === AccountSubType.INVESTMENT_BROKERAGE ||
+            !a.accountSubType,
+        )
+        .map((a) => a.id);
+    }
 
     if (eligibleAccountIds.length === 0) {
       return;
