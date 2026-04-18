@@ -478,15 +478,34 @@ function TransactionsContent() {
   }, [dailyBalances, accounts, defaultCurrency, convertToDefault]);
 
   // Label appended to the Monthly Totals download filename so it reflects
-  // which category/payee/tag/search the chart is scoped to.
+  // which category/payee/tag/search the chart is scoped to. When a full list
+  // of names would push the filename past MAX_FILENAME_LENGTH we collapse
+  // any multi-selection into a "multiple X" descriptor while keeping single
+  // selections as-is, so a user with one specific category plus many payees
+  // still sees the category name in the filename.
   const monthlyTotalsFilterLabel = useMemo(() => {
-    const parts: string[] = [
-      ...filters.selectedCategories.map((c) => c.name),
-      ...filters.selectedPayees.map((p) => p.name),
-      ...filters.selectedTags.map((t) => t.name),
-    ];
-    if (filters.filterSearch) parts.push(`"${filters.filterSearch}"`);
-    return parts.length > 0 ? parts.join(', ') : undefined;
+    const MAX_FILENAME_LENGTH = 100;
+    const FILENAME_PREFIX = 'Monthly Totals - ';
+
+    const cats = filters.selectedCategories.map((c) => c.name);
+    const pays = filters.selectedPayees.map((p) => p.name);
+    const tgs = filters.selectedTags.map((t) => t.name);
+    const search = filters.filterSearch ? [`"${filters.filterSearch}"`] : [];
+
+    if (cats.length + pays.length + tgs.length + search.length === 0) return undefined;
+
+    const preferred = [...cats, ...pays, ...tgs, ...search].join(', ');
+    if ((FILENAME_PREFIX + preferred).length <= MAX_FILENAME_LENGTH) return preferred;
+
+    const compactParts: string[] = [];
+    if (cats.length === 1) compactParts.push(cats[0]);
+    else if (cats.length > 1) compactParts.push('multiple categories');
+    if (pays.length === 1) compactParts.push(pays[0]);
+    else if (pays.length > 1) compactParts.push('multiple payees');
+    if (tgs.length === 1) compactParts.push(tgs[0]);
+    else if (tgs.length > 1) compactParts.push('multiple tags');
+    if (search.length) compactParts.push(search[0]);
+    return compactParts.join(', ');
   }, [filters.selectedCategories, filters.selectedPayees, filters.selectedTags, filters.filterSearch]);
 
   // Name of the single account behind the Balance History chart, used as the

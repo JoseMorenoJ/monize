@@ -241,6 +241,13 @@ vi.mock('@/components/transactions/TransactionFilterPanel', () => ({
       <button data-testid="set-payee-filter" onClick={() => {
         props.handleArrayFilterChange(props.setFilterPayeeIds, ['payee-1']);
       }}>Set Payee Filter</button>
+      <button data-testid="set-many-long-categories" onClick={() => {
+        props.handleArrayFilterChange(props.setFilterCategoryIds, ['long-cat-1', 'long-cat-2', 'long-cat-3']);
+      }}>Set Many Long Categories</button>
+      <button data-testid="set-single-cat-and-many-long-payees" onClick={() => {
+        props.handleArrayFilterChange(props.setFilterCategoryIds, ['long-cat-1']);
+        props.handleArrayFilterChange(props.setFilterPayeeIds, ['long-pay-1', 'long-pay-2', 'long-pay-3']);
+      }}>Single Cat + Many Payees</button>
       <button data-testid="set-date-filter" onClick={() => {
         props.handleFilterChange(props.setFilterStartDate, '2026-01-01');
         props.handleFilterChange(props.setFilterEndDate, '2026-01-31');
@@ -401,6 +408,21 @@ const mockCategories = [
 const mockPayees = [
   { id: 'payee-1', name: 'Store', defaultCategoryId: null },
   { id: 'payee-2', name: 'Employer', defaultCategoryId: 'cat-1' },
+];
+
+// Long-named fixtures used to exercise the filename-length fallback in the
+// Monthly Totals filter label (page.tsx `monthlyTotalsFilterLabel`). Three
+// ~30-char names joined with ", " plus the "Monthly Totals - " prefix easily
+// exceeds the 100-character threshold.
+const mockLongCategories = [
+  { id: 'long-cat-1', name: 'Food and Groceries and Restaurants', parentId: null },
+  { id: 'long-cat-2', name: 'Transportation Expenses and Fuel', parentId: null },
+  { id: 'long-cat-3', name: 'Health Insurance and Medical Costs', parentId: null },
+];
+const mockLongPayees = [
+  { id: 'long-pay-1', name: 'Grocery Chain Supermarket Location One', defaultCategoryId: null },
+  { id: 'long-pay-2', name: 'Grocery Chain Supermarket Location Two', defaultCategoryId: null },
+  { id: 'long-pay-3', name: 'Grocery Chain Supermarket Location Three', defaultCategoryId: null },
 ];
 
 describe('TransactionsPage', () => {
@@ -940,6 +962,98 @@ describe('TransactionsPage', () => {
       // The mock's set-category-filter picks cat-1 (Salary), so the filter label
       // should surface that name so the download filename describes the chart.
       expect(screen.getByTestId('chart-monthly-totals-filter-label')).toHaveTextContent('Salary');
+    });
+
+    it('collapses multi-selections to "multiple X" when the filename would exceed 100 chars', async () => {
+      mockGetAllAccounts.mockResolvedValue(mockAccounts);
+      mockGetAllCategories.mockResolvedValue(mockLongCategories);
+      mockGetAllPayees.mockResolvedValue(mockPayees);
+      mockGetMonthlyTotals.mockResolvedValue([
+        { month: '2026-02', total: -300, count: 5 },
+      ]);
+
+      render(<TransactionsPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('filter-panel')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByTestId('set-many-long-categories'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('chart-monthly-totals')).toBeInTheDocument();
+      });
+
+      await waitFor(() => {
+        expect(
+          screen.getByTestId('chart-monthly-totals-filter-label'),
+        ).toHaveTextContent('multiple categories');
+      });
+      // The specific names must not leak through once we fall back.
+      expect(
+        screen.getByTestId('chart-monthly-totals-filter-label'),
+      ).not.toHaveTextContent('Food and Groceries');
+    });
+
+    it('keeps single selections alongside "multiple X" fallbacks in the label', async () => {
+      mockGetAllAccounts.mockResolvedValue(mockAccounts);
+      mockGetAllCategories.mockResolvedValue(mockLongCategories);
+      mockGetAllPayees.mockResolvedValue(mockLongPayees);
+      mockGetMonthlyTotals.mockResolvedValue([
+        { month: '2026-02', total: -300, count: 5 },
+      ]);
+
+      render(<TransactionsPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('filter-panel')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByTestId('set-single-cat-and-many-long-payees'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('chart-monthly-totals')).toBeInTheDocument();
+      });
+
+      await waitFor(() => {
+        const label = screen.getByTestId('chart-monthly-totals-filter-label');
+        // Single category name is preserved, but the 3 long payees collapse.
+        expect(label).toHaveTextContent('Food and Groceries and Restaurants');
+        expect(label).toHaveTextContent('multiple payees');
+        expect(label).not.toHaveTextContent('Grocery Chain Supermarket Location');
+      });
+    });
+
+    it('keeps all specific names when the combined label fits within 100 chars', async () => {
+      mockGetAllAccounts.mockResolvedValue(mockAccounts);
+      mockGetAllCategories.mockResolvedValue(mockCategories);
+      mockGetAllPayees.mockResolvedValue(mockPayees);
+      mockGetMonthlyTotals.mockResolvedValue([
+        { month: '2026-02', total: -300, count: 5 },
+      ]);
+
+      render(<TransactionsPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('filter-panel')).toBeInTheDocument();
+      });
+
+      // set-category-filter picks cat-1 (Salary), set-payee-filter picks payee-1
+      // (Store). Combined with the "Monthly Totals - " prefix this is ~30
+      // chars, well under the 100-char threshold.
+      fireEvent.click(screen.getByTestId('set-category-filter'));
+      fireEvent.click(screen.getByTestId('set-payee-filter'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('chart-monthly-totals')).toBeInTheDocument();
+      });
+
+      await waitFor(() => {
+        const label = screen.getByTestId('chart-monthly-totals-filter-label');
+        expect(label).toHaveTextContent('Salary');
+        expect(label).toHaveTextContent('Store');
+        expect(label).not.toHaveTextContent('multiple');
+      });
     });
 
     it('includes the search term in the Monthly Totals filter label', async () => {
