@@ -205,6 +205,7 @@ export function CategoryPayeeBarChart({
                   fill: '#6b7280',
                   fontSize: isMobile ? 10 : 11,
                   fontWeight: 500,
+                  ...(isMobile && { dominantBaseline: 'central' as const }),
                 }}
               />
             </Bar>
