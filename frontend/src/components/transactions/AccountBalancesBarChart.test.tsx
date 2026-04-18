@@ -1,10 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@/test/render';
+import { render, screen, fireEvent } from '@/test/render';
 import { AccountBalancesBarChart } from './AccountBalancesBarChart';
 
 // Capture the BarChart onClick handler so we can simulate account bar clicks
 // without relying on the real recharts rendering pipeline.
 let capturedBarChartOnClick: ((state: any) => void) | undefined;
+// Capture the YAxis props so we can assert which scale the chart picked.
+let capturedYAxisProps: any;
 
 vi.mock('recharts', () => ({
   ResponsiveContainer: ({ children }: any) => <div data-testid="responsive-container">{children}</div>,
@@ -14,7 +16,10 @@ vi.mock('recharts', () => ({
   },
   Bar: ({ children }: any) => <div data-testid="bar">{children}</div>,
   XAxis: () => <div data-testid="x-axis" />,
-  YAxis: () => <div data-testid="y-axis" />,
+  YAxis: (props: any) => {
+    capturedYAxisProps = props;
+    return <div data-testid="y-axis" />;
+  },
   CartesianGrid: () => <div data-testid="cartesian-grid" />,
   Tooltip: () => <div data-testid="tooltip" />,
   LabelList: () => <div data-testid="label-list" />,
@@ -34,6 +39,7 @@ vi.mock('@/hooks/useNumberFormat', () => ({
 describe('AccountBalancesBarChart', () => {
   beforeEach(() => {
     capturedBarChartOnClick = undefined;
+    capturedYAxisProps = undefined;
     mockFormatCurrency.mockImplementation((n: number) => `$${n.toFixed(2)}`);
     mockFormatCurrency.mockClear();
     mockFormatCurrencyAxis.mockClear();
@@ -92,6 +98,88 @@ describe('AccountBalancesBarChart', () => {
 
     rerender(<AccountBalancesBarChart data={[]} isLoading={false} />);
     expect(screen.queryByRole('button', { name: /download/i })).not.toBeInTheDocument();
+  });
+
+  describe('Y-axis scale toggle', () => {
+    const similarData = [
+      { accountId: 'a1', accountName: 'A', balance: 1000 },
+      { accountId: 'a2', accountName: 'B', balance: 3000 },
+      { accountId: 'a3', accountName: 'C', balance: 8000 },
+    ];
+    const skewedData = [
+      { accountId: 'a1', accountName: 'Chequing', balance: 1000 },
+      { accountId: 'a2', accountName: 'Savings', balance: 3000 },
+      { accountId: 'a3', accountName: 'Mortgage', balance: 250000 },
+    ];
+
+    it('renders Auto, Linear, Log buttons with Auto active by default', () => {
+      render(<AccountBalancesBarChart data={similarData} isLoading={false} />);
+
+      const auto = screen.getByRole('button', { name: 'Auto' });
+      const linear = screen.getByRole('button', { name: 'Linear' });
+      const log = screen.getByRole('button', { name: 'Log' });
+      expect(auto).toHaveAttribute('aria-pressed', 'true');
+      expect(linear).toHaveAttribute('aria-pressed', 'false');
+      expect(log).toHaveAttribute('aria-pressed', 'false');
+    });
+
+    it('Auto mode uses linear scale when balances are similar in magnitude', () => {
+      render(<AccountBalancesBarChart data={similarData} isLoading={false} />);
+      expect(capturedYAxisProps.scale).toBe('linear');
+      expect(capturedYAxisProps.domain).toBeUndefined();
+    });
+
+    it('Auto mode switches to log scale when one account dwarfs the others', () => {
+      render(<AccountBalancesBarChart data={skewedData} isLoading={false} />);
+      expect(capturedYAxisProps.scale).toBe('log');
+      expect(capturedYAxisProps.domain).toEqual(['auto', 'auto']);
+    });
+
+    it('Auto tooltip exposes the effective scale for discoverability', () => {
+      render(<AccountBalancesBarChart data={skewedData} isLoading={false} />);
+      expect(screen.getByRole('button', { name: 'Auto' })).toHaveAttribute('title', 'Auto (log)');
+    });
+
+    it('clicking Log forces log scale even when the dataset is not skewed', () => {
+      render(<AccountBalancesBarChart data={similarData} isLoading={false} />);
+      expect(capturedYAxisProps.scale).toBe('linear');
+
+      fireEvent.click(screen.getByRole('button', { name: 'Log' }));
+
+      expect(screen.getByRole('button', { name: 'Log' })).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByRole('button', { name: 'Auto' })).toHaveAttribute('aria-pressed', 'false');
+      expect(capturedYAxisProps.scale).toBe('log');
+    });
+
+    it('clicking Linear forces linear scale even when the dataset is skewed', () => {
+      render(<AccountBalancesBarChart data={skewedData} isLoading={false} />);
+      expect(capturedYAxisProps.scale).toBe('log');
+
+      fireEvent.click(screen.getByRole('button', { name: 'Linear' }));
+
+      expect(screen.getByRole('button', { name: 'Linear' })).toHaveAttribute('aria-pressed', 'true');
+      expect(capturedYAxisProps.scale).toBe('linear');
+      expect(capturedYAxisProps.domain).toBeUndefined();
+    });
+
+    it('clicking Auto after a manual override restores ratio-driven selection', () => {
+      render(<AccountBalancesBarChart data={skewedData} isLoading={false} />);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Linear' }));
+      expect(capturedYAxisProps.scale).toBe('linear');
+
+      fireEvent.click(screen.getByRole('button', { name: 'Auto' }));
+      expect(screen.getByRole('button', { name: 'Auto' })).toHaveAttribute('aria-pressed', 'true');
+      expect(capturedYAxisProps.scale).toBe('log');
+    });
+
+    it('hides the scale toggle in loading and empty states', () => {
+      const { rerender } = render(<AccountBalancesBarChart data={[]} isLoading={true} />);
+      expect(screen.queryByRole('button', { name: 'Auto' })).not.toBeInTheDocument();
+
+      rerender(<AccountBalancesBarChart data={[]} isLoading={false} />);
+      expect(screen.queryByRole('button', { name: 'Auto' })).not.toBeInTheDocument();
+    });
   });
 
   it('shows correct summary values for positive and negative balances', () => {

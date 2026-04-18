@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   BarChart,
   Bar,
@@ -16,6 +16,13 @@ import { useNumberFormat } from '@/hooks/useNumberFormat';
 import { ChartDownloadButton } from '@/components/ui/ChartDownloadButton';
 
 const CHART_TITLE = 'Account Balances';
+
+// When the largest bar is at least this many times taller than the smallest,
+// the "auto" mode switches to a log scale so small bars remain visible.
+const AUTO_LOG_RATIO = 50;
+
+type ScaleMode = 'auto' | 'linear' | 'log';
+type EffectiveScale = 'linear' | 'log';
 
 interface AccountBalancesBarChartProps {
   data: Array<{ accountId: string; accountName: string; balance: number }>;
@@ -70,6 +77,7 @@ export function AccountBalancesBarChart({
 }: AccountBalancesBarChartProps) {
   const { formatCurrency: formatCurrencyFull, formatCurrencyAxis } = useNumberFormat();
   const chartRef = useRef<HTMLDivElement>(null);
+  const [scaleMode, setScaleMode] = useState<ScaleMode>('auto');
 
   const formatCurrency = useCallback(
     (value: number) => formatCurrencyFull(value, currencyCode),
@@ -89,6 +97,25 @@ export function AccountBalancesBarChart({
       absBalance: Math.abs(d.balance),
     }));
   }, [data]);
+
+  // A log scale is preferred whenever the largest bar dwarfs the smallest,
+  // otherwise the small bars collapse to zero-height. The threshold is chosen
+  // to leave similar-magnitude datasets alone.
+  const autoPrefersLog = useMemo(() => {
+    if (chartData.length < 2) return false;
+    let max = 0;
+    let min = Infinity;
+    for (const d of chartData) {
+      if (d.absBalance <= 0) continue;
+      if (d.absBalance > max) max = d.absBalance;
+      if (d.absBalance < min) min = d.absBalance;
+    }
+    if (min === Infinity || min <= 0) return false;
+    return max / min >= AUTO_LOG_RATIO;
+  }, [chartData]);
+
+  const effectiveScale: EffectiveScale =
+    scaleMode === 'auto' ? (autoPrefersLog ? 'log' : 'linear') : scaleMode;
 
   const summary = useMemo(() => {
     if (chartData.length === 0) return null;
@@ -129,11 +156,36 @@ export function AccountBalancesBarChart({
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-3 sm:p-6 mb-6">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 gap-2">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
           {CHART_TITLE}
         </h3>
-        <ChartDownloadButton chartRef={chartRef} filename={CHART_TITLE} />
+        <div className="flex items-center gap-2">
+          <div className="flex gap-1" role="group" aria-label="Y-axis scale">
+            {(['auto', 'linear', 'log'] as const).map((mode) => {
+              const isActive = scaleMode === mode;
+              const label = mode[0].toUpperCase() + mode.slice(1);
+              const title = mode === 'auto' ? `Auto (${effectiveScale})` : `${label} scale`;
+              return (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setScaleMode(mode)}
+                  aria-pressed={isActive}
+                  title={title}
+                  className={
+                    isActive
+                      ? 'px-2 py-1 text-xs rounded-md bg-blue-600 text-white transition-colors'
+                      : 'px-2 py-1 text-xs rounded-md bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors'
+                  }
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+          <ChartDownloadButton chartRef={chartRef} filename={CHART_TITLE} />
+        </div>
       </div>
 
       <div ref={chartRef} className="h-72" style={{ minHeight: 288 }}>
@@ -166,6 +218,9 @@ export function AccountBalancesBarChart({
               axisLine={false}
               tickFormatter={formatAxis}
               width={45}
+              scale={effectiveScale}
+              domain={effectiveScale === 'log' ? ['auto', 'auto'] : undefined}
+              allowDataOverflow={false}
             />
             <Tooltip content={<AccountBalanceTooltip formatCurrency={formatCurrency} />} />
             <Bar
