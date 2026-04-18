@@ -77,6 +77,17 @@ export class BulkUpdateDto {
   @Type(() => BulkUpdateFilterDto)
   filters?: BulkUpdateFilterDto;
 
+  @ApiPropertyOptional({
+    description:
+      'Transaction IDs to exclude (used when mode is "filter" to deselect specific items)',
+    type: [String],
+  })
+  @ValidateIf((o) => o.mode === "filter")
+  @IsOptional()
+  @IsArray()
+  @IsUUID("4", { each: true })
+  excludedIds?: string[];
+
   @ApiPropertyOptional({ description: "Set payee ID (null to clear)" })
   @IsOptional()
   @IsUUID("4")
@@ -145,4 +156,15 @@ export class BulkDeleteDto {
   @ValidateNested()
   @Type(() => BulkUpdateFilterDto)
   filters?: BulkUpdateFilterDto;
+
+  @ApiPropertyOptional({
+    description:
+      'Transaction IDs to exclude (used when mode is "filter" to deselect specific items)',
+    type: [String],
+  })
+  @ValidateIf((o) => o.mode === "filter")
+  @IsOptional()
+  @IsArray()
+  @IsUUID("4", { each: true })
+  excludedIds?: string[];
 }

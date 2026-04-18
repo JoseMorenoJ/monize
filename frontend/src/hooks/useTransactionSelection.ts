@@ -5,15 +5,17 @@ import { Transaction, BulkUpdateData, BulkUpdateFilters } from '@/types/transact
 
 interface UseTransactionSelectionReturn {
   selectedIds: Set<string>;
+  excludedIds: Set<string>;
   selectAllMatching: boolean;
   isAllOnPageSelected: boolean;
   selectionCount: number;
+  isTransactionSelected: (id: string) => boolean;
   toggleTransaction: (id: string) => void;
   toggleAllOnPage: () => void;
   selectAllMatchingTransactions: () => void;
   clearSelection: () => void;
   hasSelection: boolean;
-  buildSelectionPayload: () => Pick<BulkUpdateData, 'mode' | 'transactionIds' | 'filters'>;
+  buildSelectionPayload: () => Pick<BulkUpdateData, 'mode' | 'transactionIds' | 'filters' | 'excludedIds'>;
 }
 
 export function useTransactionSelection(
@@ -22,6 +24,7 @@ export function useTransactionSelection(
   currentFilters: BulkUpdateFilters,
 ): UseTransactionSelectionReturn {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [excludedIds, setExcludedIds] = useState<Set<string>>(new Set());
   const [selectAllMatching, setSelectAllMatching] = useState(false);
 
   // Track filter changes to clear selection
@@ -33,13 +36,15 @@ export function useTransactionSelection(
       JSON.stringify(prev) !== JSON.stringify(currentFilters);
     if (changed) {
       setSelectedIds(new Set());
+      setExcludedIds(new Set());
       setSelectAllMatching(false);
       filtersRef.current = currentFilters;
     }
   }, [currentFilters]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
-  // Clear individual selections on page change (but not selectAllMatching)
+  // Clear individual selections on page change (but not selectAllMatching/excludedIds,
+  // which span all pages).
   const transactionIdsKey = transactions.map(t => t.id).join(',');
   const prevTransactionIdsKey = useRef(transactionIdsKey);
   /* eslint-disable react-hooks/set-state-in-effect -- clearing selection on page change */
@@ -51,24 +56,38 @@ export function useTransactionSelection(
   }, [transactionIdsKey, selectAllMatching]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
+  const isTransactionSelected = useCallback((id: string): boolean => {
+    if (selectAllMatching) return !excludedIds.has(id);
+    return selectedIds.has(id);
+  }, [selectAllMatching, excludedIds, selectedIds]);
+
   const isAllOnPageSelected = useMemo(() => {
     if (transactions.length === 0) return false;
+    if (selectAllMatching) {
+      return transactions.every(t => !excludedIds.has(t.id));
+    }
     return transactions.every(t => selectedIds.has(t.id));
-  }, [transactions, selectedIds]);
+  }, [transactions, selectedIds, selectAllMatching, excludedIds]);
 
   const selectionCount = selectAllMatching
-    ? totalMatching
+    ? Math.max(0, totalMatching - excludedIds.size)
     : selectedIds.size;
 
   const hasSelection = selectionCount > 0;
 
   const toggleTransaction = useCallback((id: string) => {
     if (selectAllMatching) {
-      // Switching out of selectAllMatching mode - select all on current page minus this one
-      const newIds = new Set(transactions.map(t => t.id));
-      newIds.delete(id);
-      setSelectedIds(newIds);
-      setSelectAllMatching(false);
+      // In all-matching mode, toggling moves the id in/out of the exclusion set
+      // while preserving the all-matching scope across pages.
+      setExcludedIds(prev => {
+        const next = new Set(prev);
+        if (next.has(id)) {
+          next.delete(id);
+        } else {
+          next.add(id);
+        }
+        return next;
+      });
       return;
     }
 
@@ -81,9 +100,29 @@ export function useTransactionSelection(
       }
       return next;
     });
-  }, [selectAllMatching, transactions]);
+  }, [selectAllMatching]);
 
   const toggleAllOnPage = useCallback(() => {
+    if (selectAllMatching) {
+      const anyExcludedOnPage = transactions.some(t => excludedIds.has(t.id));
+      setExcludedIds(prev => {
+        const next = new Set(prev);
+        if (anyExcludedOnPage) {
+          // Re-include all on page
+          for (const t of transactions) {
+            next.delete(t.id);
+          }
+        } else {
+          // Exclude all on page
+          for (const t of transactions) {
+            next.add(t.id);
+          }
+        }
+        return next;
+      });
+      return;
+    }
+
     if (isAllOnPageSelected) {
       // Deselect all on page
       setSelectedIds(prev => {
@@ -93,7 +132,6 @@ export function useTransactionSelection(
         }
         return next;
       });
-      setSelectAllMatching(false);
     } else {
       // Select all on page
       setSelectedIds(prev => {
@@ -104,37 +142,41 @@ export function useTransactionSelection(
         return next;
       });
     }
-  }, [isAllOnPageSelected, transactions]);
+  }, [isAllOnPageSelected, selectAllMatching, transactions, excludedIds]);
 
   const selectAllMatchingTransactions = useCallback(() => {
     setSelectAllMatching(true);
-    // Also select all on current page for visual consistency
+    setExcludedIds(new Set());
     setSelectedIds(new Set(transactions.map(t => t.id)));
   }, [transactions]);
 
   const clearSelection = useCallback(() => {
     setSelectedIds(new Set());
+    setExcludedIds(new Set());
     setSelectAllMatching(false);
   }, []);
 
-  const buildSelectionPayload = useCallback((): Pick<BulkUpdateData, 'mode' | 'transactionIds' | 'filters'> => {
+  const buildSelectionPayload = useCallback((): Pick<BulkUpdateData, 'mode' | 'transactionIds' | 'filters' | 'excludedIds'> => {
     if (selectAllMatching) {
       return {
         mode: 'filter',
         filters: currentFilters,
+        ...(excludedIds.size > 0 ? { excludedIds: Array.from(excludedIds) } : {}),
       };
     }
     return {
       mode: 'ids',
       transactionIds: Array.from(selectedIds),
     };
-  }, [selectAllMatching, selectedIds, currentFilters]);
+  }, [selectAllMatching, selectedIds, excludedIds, currentFilters]);
 
   return {
     selectedIds,
+    excludedIds,
     selectAllMatching,
     isAllOnPageSelected,
     selectionCount,
+    isTransactionSelected,
     toggleTransaction,
     toggleAllOnPage,
     selectAllMatchingTransactions,
