@@ -13,6 +13,7 @@ import {
   Cell,
 } from 'recharts';
 import { useNumberFormat } from '@/hooks/useNumberFormat';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import { ChartDownloadButton } from '@/components/ui/ChartDownloadButton';
 
 const CHART_TITLE = 'Account Balances';
@@ -78,6 +79,7 @@ export function AccountBalancesBarChart({
   const { formatCurrency: formatCurrencyFull, formatCurrencyAxis } = useNumberFormat();
   const chartRef = useRef<HTMLDivElement>(null);
   const [scaleMode, setScaleMode] = useState<ScaleMode>('auto');
+  const isMobile = useIsMobile();
 
   const formatCurrency = useCallback(
     (value: number) => formatCurrencyFull(value, currencyCode),
@@ -188,11 +190,15 @@ export function AccountBalancesBarChart({
         </div>
       </div>
 
-      <div ref={chartRef} className="h-72" style={{ minHeight: 288 }}>
+      <div
+        ref={chartRef}
+        className="h-80 sm:h-72"
+        style={{ minHeight: isMobile ? 320 : 288 }}
+      >
         <ResponsiveContainer width="100%" height="100%" minWidth={0}>
           <BarChart
             data={chartData}
-            margin={{ top: 20, right: 5, left: -10, bottom: 0 }}
+            margin={{ top: 20, right: 5, left: -10, bottom: isMobile ? 20 : 0 }}
             onClick={onAccountClick ? (state: any) => {
               const accountId = state?.activePayload?.[0]?.payload?.accountId;
               if (!accountId) return;
@@ -207,10 +213,13 @@ export function AccountBalancesBarChart({
             />
             <XAxis
               dataKey="accountName"
-              tick={{ fill: '#6b7280', fontSize: 12 }}
+              tick={{ fill: '#6b7280', fontSize: isMobile ? 10 : 12 }}
               tickLine={false}
               axisLine={{ stroke: '#e5e7eb' }}
-              interval={0}
+              interval={isMobile ? 'preserveStartEnd' : 0}
+              angle={isMobile ? -35 : 0}
+              textAnchor={isMobile ? 'end' : 'middle'}
+              height={isMobile ? 60 : 30}
             />
             <YAxis
               tick={{ fill: '#6b7280', fontSize: 11 }}
@@ -234,12 +243,14 @@ export function AccountBalancesBarChart({
                   fill={entry.balance >= 0 ? '#22c55e' : '#ef4444'}
                 />
               ))}
-              <LabelList
-                dataKey="balance"
-                position="top"
-                formatter={(value: unknown) => formatCurrency(Number(value))}
-                style={{ fill: '#6b7280', fontSize: 11, fontWeight: 500 }}
-              />
+              {!isMobile && (
+                <LabelList
+                  dataKey="balance"
+                  position="top"
+                  formatter={(value: unknown) => formatCurrency(Number(value))}
+                  style={{ fill: '#6b7280', fontSize: 11, fontWeight: 500 }}
+                />
+              )}
             </Bar>
           </BarChart>
         </ResponsiveContainer>
