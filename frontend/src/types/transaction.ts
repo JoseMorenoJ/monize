@@ -182,6 +182,7 @@ export interface BulkUpdateData {
   mode: 'ids' | 'filter';
   transactionIds?: string[];
   filters?: BulkUpdateFilters;
+  excludedIds?: string[];
   payeeId?: string | null;
   payeeName?: string | null;
   categoryId?: string | null;
@@ -200,6 +201,7 @@ export interface BulkDeleteData {
   mode: 'ids' | 'filter';
   transactionIds?: string[];
   filters?: BulkUpdateFilters;
+  excludedIds?: string[];
 }
 
 export interface BulkDeleteResult {

@@ -333,7 +333,7 @@ export class TransactionBulkUpdateService {
 
   private async resolveTransactionIds(
     userId: string,
-    dto: BulkUpdateDto,
+    dto: BulkUpdateDto | BulkDeleteDto,
   ): Promise<string[]> {
     if (dto.mode === "ids") {
       if (!dto.transactionIds || dto.transactionIds.length === 0) {
@@ -357,6 +357,12 @@ export class TransactionBulkUpdateService {
       .where("transaction.userId = :userId", { userId });
 
     await this.applyFilters(queryBuilder, userId, dto.filters || {});
+
+    if (dto.excludedIds && dto.excludedIds.length > 0) {
+      queryBuilder.andWhere("transaction.id NOT IN (:...excludedIds)", {
+        excludedIds: dto.excludedIds,
+      });
+    }
 
     const transactions = await queryBuilder.getMany();
     return transactions.map((t) => t.id);

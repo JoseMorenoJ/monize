@@ -1987,5 +1987,74 @@ describe("TransactionBulkUpdateService", () => {
       // updateBalance should NOT be called when amount is 0
       expect(accountsService.updateBalance).not.toHaveBeenCalled();
     });
+
+    it("excludes ids in filter mode via excludedIds", async () => {
+      const tx = makeTransaction({ id: "tx-2" });
+
+      const resolveQb = createMockQueryBuilder({
+        getMany: jest.fn().mockResolvedValue([{ id: "tx-2" }]),
+      });
+      const exclusionsQb = createMockQueryBuilder({
+        getMany: jest.fn().mockResolvedValue([tx]),
+      });
+
+      transactionsRepository.createQueryBuilder
+        .mockReturnValueOnce(resolveQb)
+        .mockReturnValueOnce(exclusionsQb);
+
+      const updateQb = createMockQueryBuilder({
+        execute: jest.fn().mockResolvedValue({ affected: 1 }),
+      });
+      mockManagerCreateQueryBuilder.mockReturnValueOnce(updateQb);
+
+      const dto: BulkUpdateDto = {
+        mode: "filter",
+        filters: { payeeIds: ["payee-1"] },
+        excludedIds: ["tx-1", "tx-3"],
+        description: "test",
+      };
+
+      const result = await service.bulkUpdate(userId, dto);
+
+      expect(result.updated).toBe(1);
+      expect(resolveQb.andWhere).toHaveBeenCalledWith(
+        "transaction.id NOT IN (:...excludedIds)",
+        { excludedIds: ["tx-1", "tx-3"] },
+      );
+    });
+
+    it("does not add NOT IN clause when excludedIds is empty", async () => {
+      const tx = makeTransaction({ id: "tx-1" });
+
+      const resolveQb = createMockQueryBuilder({
+        getMany: jest.fn().mockResolvedValue([{ id: "tx-1" }]),
+      });
+      const exclusionsQb = createMockQueryBuilder({
+        getMany: jest.fn().mockResolvedValue([tx]),
+      });
+
+      transactionsRepository.createQueryBuilder
+        .mockReturnValueOnce(resolveQb)
+        .mockReturnValueOnce(exclusionsQb);
+
+      const updateQb = createMockQueryBuilder({
+        execute: jest.fn().mockResolvedValue({ affected: 1 }),
+      });
+      mockManagerCreateQueryBuilder.mockReturnValueOnce(updateQb);
+
+      const dto: BulkUpdateDto = {
+        mode: "filter",
+        filters: { payeeIds: ["payee-1"] },
+        excludedIds: [],
+        description: "test",
+      };
+
+      await service.bulkUpdate(userId, dto);
+
+      expect(resolveQb.andWhere).not.toHaveBeenCalledWith(
+        "transaction.id NOT IN (:...excludedIds)",
+        expect.anything(),
+      );
+    });
   });
 });
