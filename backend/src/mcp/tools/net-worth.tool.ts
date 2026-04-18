@@ -44,15 +44,27 @@ export class McpNetWorthTools {
     server.registerTool(
       "get_net_worth_history",
       {
-        description: "Get net worth over time (monthly snapshots)",
+        description:
+          "Get net worth over time (monthly snapshots). Returns the same shape as the AI Assistant's get_net_worth_history tool. Default range is the last 12 months when both dates are omitted.",
         inputSchema: {
+          startDate: z
+            .string()
+            .max(10)
+            .optional()
+            .describe("Start date (YYYY-MM-DD). Defaults to 12 months ago."),
+          endDate: z
+            .string()
+            .max(10)
+            .optional()
+            .describe("End date (YYYY-MM-DD). Defaults to today."),
           months: z
             .number()
             .min(1)
             .max(120)
             .optional()
-            .default(12)
-            .describe("Number of months of history (default 12)"),
+            .describe(
+              "Number of months of history. Only applied when startDate/endDate are omitted.",
+            ),
         },
       },
       async (args, extra) => {
@@ -62,15 +74,20 @@ export class McpNetWorthTools {
         if (check.error) return check.result;
 
         try {
-          const months = args.months || 12;
-          const endDate = new Date();
-          const startDate = new Date();
-          startDate.setMonth(startDate.getMonth() - months);
+          let startDate = args.startDate;
+          let endDate = args.endDate;
+          if (!startDate && !endDate && args.months) {
+            const end = new Date();
+            const start = new Date();
+            start.setMonth(start.getMonth() - args.months);
+            startDate = formatDateYMD(start);
+            endDate = formatDateYMD(end);
+          }
 
-          const history = await this.netWorthService.getMonthlyNetWorth(
+          const history = await this.netWorthService.getLlmHistory(
             ctx.userId,
-            formatDateYMD(startDate),
-            formatDateYMD(endDate),
+            startDate,
+            endDate,
           );
           return toolResult(history);
         } catch (err: unknown) {

@@ -2327,4 +2327,142 @@ describe("BudgetReportsService", () => {
       ).rejects.toThrow();
     });
   });
+
+  describe("getLlmBudgetStatus", () => {
+    const activeBudget = {
+      id: "b1",
+      userId: "user-1",
+      name: "Monthly Household",
+      strategy: BudgetStrategy.FIXED,
+      isActive: true,
+    } as unknown as Budget;
+
+    const summary = {
+      budget: activeBudget,
+      totalBudgeted: 3000,
+      totalSpent: 1500,
+      totalIncome: 5000,
+      remaining: 1500,
+      percentUsed: 50,
+      categoryBreakdown: [
+        {
+          budgetCategoryId: "bc-1",
+          categoryId: "cat-1",
+          categoryName: "Groceries",
+          budgeted: 500,
+          spent: 650,
+          remaining: -150,
+          percentUsed: 130,
+          isIncome: false,
+        },
+        {
+          budgetCategoryId: "bc-2",
+          categoryId: "cat-2",
+          categoryName: "Rent",
+          budgeted: 1500,
+          spent: 1300,
+          remaining: 200,
+          percentUsed: 86.67,
+          isIncome: false,
+        },
+        {
+          budgetCategoryId: "bc-3",
+          categoryId: "cat-3",
+          categoryName: "Misc",
+          budgeted: 1000,
+          spent: 100,
+          remaining: 900,
+          percentUsed: 10,
+          isIncome: false,
+        },
+      ],
+    };
+
+    const velocity = {
+      dailyBurnRate: 50,
+      safeDailySpend: 75,
+      projectedTotal: 3100,
+      projectedVariance: 100,
+      daysRemaining: 10,
+      paceStatus: "on_track" as const,
+    };
+
+    const healthScore = {
+      score: 82,
+      label: "Good",
+      breakdown: {
+        baseScore: 100,
+        overBudgetDeductions: 18,
+        underBudgetBonus: 0,
+        trendBonus: 0,
+        essentialWeightPenalty: 0,
+      },
+      categoryScores: [],
+    };
+
+    beforeEach(() => {
+      budgetsService.findAll = jest
+        .fn()
+        .mockResolvedValue([
+          activeBudget,
+          { ...activeBudget, id: "b2", name: "Inactive", isActive: false },
+        ]);
+      budgetsService.getSummary.mockResolvedValue(summary);
+      budgetsService.getVelocity = jest.fn().mockResolvedValue(velocity);
+      // Mock the delegate that getHealthScore proxies to.
+      (
+        service as unknown as { healthReports: { getHealthScore: jest.Mock } }
+      ).healthReports.getHealthScore = jest.fn().mockResolvedValue(healthScore);
+    });
+
+    it("returns a full status payload for the first active budget when no name given", async () => {
+      const result = await service.getLlmBudgetStatus("user-1");
+
+      if ("error" in result) throw new Error("unexpected error payload");
+      expect(result.budgetName).toBe("Monthly Household");
+      expect(result.totalBudgeted).toBe(3000);
+      expect(result.overBudgetCategories).toHaveLength(1);
+      expect(result.overBudgetCategories[0].category).toBe("Groceries");
+      expect(result.nearLimitCategories).toHaveLength(1);
+      expect(result.nearLimitCategories[0].category).toBe("Rent");
+      expect(result.velocity?.safeDailySpend).toBe(75);
+      expect(result.healthScore?.score).toBe(82);
+    });
+
+    it("returns error when no active budgets exist", async () => {
+      budgetsService.findAll = jest.fn().mockResolvedValue([]);
+
+      const result = await service.getLlmBudgetStatus("user-1");
+      expect("error" in result).toBe(true);
+      if ("error" in result) {
+        expect(result.error).toBe("No active budgets found");
+      }
+    });
+
+    it("returns an error payload with available budgets when budgetName is not found", async () => {
+      const result = await service.getLlmBudgetStatus(
+        "user-1",
+        "CURRENT",
+        "Nonexistent",
+      );
+      expect("error" in result).toBe(true);
+      if ("error" in result) {
+        expect(result.availableBudgets).toEqual(["Monthly Household"]);
+      }
+    });
+
+    it("tolerates velocity/health score failures and still returns summary", async () => {
+      budgetsService.getVelocity = jest.fn().mockRejectedValue(new Error());
+      (
+        service as unknown as { healthReports: { getHealthScore: jest.Mock } }
+      ).healthReports.getHealthScore = jest.fn().mockRejectedValue(new Error());
+
+      const result = await service.getLlmBudgetStatus("user-1");
+
+      if ("error" in result) throw new Error("unexpected error payload");
+      expect(result.velocity).toBeUndefined();
+      expect(result.healthScore).toBeUndefined();
+      expect(result.totalBudgeted).toBe(3000);
+    });
+  });
 });

@@ -144,6 +144,193 @@ export class McpTransactionsTools {
     );
 
     server.registerTool(
+      "query_transactions",
+      {
+        description:
+          "Search and aggregate transaction data. Returns totals, counts, and optional grouped breakdowns (category, payee, year, month, week) - never individual transaction details. Returns the same shape as the AI Assistant's query_transactions tool.",
+        inputSchema: {
+          startDate: z.string().max(10).describe("Start date (YYYY-MM-DD)"),
+          endDate: z.string().max(10).describe("End date (YYYY-MM-DD)"),
+          accountIds: z
+            .array(z.string().uuid())
+            .max(50)
+            .optional()
+            .describe("Optional account IDs to filter to"),
+          categoryIds: z
+            .array(z.string().uuid())
+            .max(100)
+            .optional()
+            .describe("Optional category IDs to filter to"),
+          searchText: z
+            .string()
+            .max(200)
+            .optional()
+            .describe("Search payee names or transaction descriptions"),
+          groupBy: z
+            .enum(["category", "payee", "year", "month", "week"])
+            .optional()
+            .describe("How to group results for breakdown"),
+          direction: z
+            .enum(["expenses", "income", "both"])
+            .optional()
+            .describe("Filter by direction"),
+        },
+      },
+      async (args, extra) => {
+        const ctx = resolve(extra.sessionId);
+        if (!ctx) return toolError("No user context");
+        const check = requireScope(ctx.scopes, "read");
+        if (check.error) return check.result;
+
+        try {
+          const data = await this.analyticsService.getLlmQueryTransactions(
+            ctx.userId,
+            {
+              startDate: args.startDate,
+              endDate: args.endDate,
+              accountIds: args.accountIds,
+              categoryIds: args.categoryIds,
+              searchText: args.searchText,
+              groupBy: args.groupBy,
+              direction: args.direction,
+            },
+          );
+          return toolResult(data);
+        } catch (err: unknown) {
+          return safeToolError(err);
+        }
+      },
+    );
+
+    server.registerTool(
+      "get_spending_by_category",
+      {
+        description:
+          "Spending breakdown by category for a date range. Returns each category with total amount, percentage of total spending, and transaction count. Sorted by amount descending. Returns the same shape as the AI Assistant's get_spending_by_category tool.",
+        inputSchema: {
+          startDate: z.string().max(10).describe("Start date (YYYY-MM-DD)"),
+          endDate: z.string().max(10).describe("End date (YYYY-MM-DD)"),
+          topN: z
+            .number()
+            .int()
+            .min(1)
+            .max(50)
+            .optional()
+            .describe("Limit to top N categories by amount"),
+        },
+      },
+      async (args, extra) => {
+        const ctx = resolve(extra.sessionId);
+        if (!ctx) return toolError("No user context");
+        const check = requireScope(ctx.scopes, "read");
+        if (check.error) return check.result;
+
+        try {
+          const data = await this.analyticsService.getLlmSpendingByCategory(
+            ctx.userId,
+            args.startDate,
+            args.endDate,
+            args.topN,
+          );
+          return toolResult(data);
+        } catch (err: unknown) {
+          return safeToolError(err);
+        }
+      },
+    );
+
+    server.registerTool(
+      "get_income_summary",
+      {
+        description:
+          "Income summary for a date range, grouped by category, payee, or month. Returns the same shape as the AI Assistant's get_income_summary tool.",
+        inputSchema: {
+          startDate: z.string().max(10).describe("Start date (YYYY-MM-DD)"),
+          endDate: z.string().max(10).describe("End date (YYYY-MM-DD)"),
+          groupBy: z
+            .enum(["category", "payee", "month"])
+            .optional()
+            .describe("How to group income (default: category)"),
+        },
+      },
+      async (args, extra) => {
+        const ctx = resolve(extra.sessionId);
+        if (!ctx) return toolError("No user context");
+        const check = requireScope(ctx.scopes, "read");
+        if (check.error) return check.result;
+
+        try {
+          const data = await this.analyticsService.getLlmIncomeSummary(
+            ctx.userId,
+            args.startDate,
+            args.endDate,
+            args.groupBy ?? "category",
+          );
+          return toolResult(data);
+        } catch (err: unknown) {
+          return safeToolError(err);
+        }
+      },
+    );
+
+    server.registerTool(
+      "compare_periods",
+      {
+        description:
+          "Compare spending or income between two time periods. Returns side-by-side comparison showing absolute and percentage changes per group. Returns the same shape as the AI Assistant's compare_periods tool.",
+        inputSchema: {
+          period1Start: z
+            .string()
+            .max(10)
+            .describe("First period start (YYYY-MM-DD)"),
+          period1End: z
+            .string()
+            .max(10)
+            .describe("First period end (YYYY-MM-DD)"),
+          period2Start: z
+            .string()
+            .max(10)
+            .describe("Second period start (YYYY-MM-DD)"),
+          period2End: z
+            .string()
+            .max(10)
+            .describe("Second period end (YYYY-MM-DD)"),
+          groupBy: z
+            .enum(["category", "payee"])
+            .optional()
+            .describe("How to group comparison (default: category)"),
+          direction: z
+            .enum(["expenses", "income", "both"])
+            .optional()
+            .describe("Filter by direction (default: expenses)"),
+        },
+      },
+      async (args, extra) => {
+        const ctx = resolve(extra.sessionId);
+        if (!ctx) return toolError("No user context");
+        const check = requireScope(ctx.scopes, "read");
+        if (check.error) return check.result;
+
+        try {
+          const data = await this.analyticsService.getLlmPeriodComparison(
+            ctx.userId,
+            {
+              period1Start: args.period1Start,
+              period1End: args.period1End,
+              period2Start: args.period2Start,
+              period2End: args.period2End,
+              groupBy: args.groupBy,
+              direction: args.direction,
+            },
+          );
+          return toolResult(data);
+        } catch (err: unknown) {
+          return safeToolError(err);
+        }
+      },
+    );
+
+    server.registerTool(
       "get_transfers",
       {
         description:

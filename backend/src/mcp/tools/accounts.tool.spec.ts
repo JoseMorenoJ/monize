@@ -13,6 +13,7 @@ describe("McpAccountsTools", () => {
       findAll: jest.fn(),
       findOne: jest.fn(),
       getSummary: jest.fn(),
+      getLlmBalances: jest.fn(),
     };
 
     tool = new McpAccountsTools(accountsService as any);
@@ -27,8 +28,32 @@ describe("McpAccountsTools", () => {
     tool.register(server as any, resolve);
   });
 
-  it("should register 3 tools", () => {
-    expect(server.registerTool).toHaveBeenCalledTimes(3);
+  it("should register 4 tools", () => {
+    expect(server.registerTool).toHaveBeenCalledTimes(4);
+  });
+
+  describe("get_account_balances", () => {
+    it("delegates to accountsService.getLlmBalances", async () => {
+      resolve.mockReturnValue({ userId: "u1", scopes: "read" });
+      accountsService.getLlmBalances.mockResolvedValue({
+        accounts: [],
+        totalAssets: 1000,
+        totalLiabilities: 0,
+        netWorth: 1000,
+        totalAccounts: 1,
+      });
+
+      const result = await handlers["get_account_balances"](
+        { accountNames: ["Checking"] },
+        { sessionId: "s1" },
+      );
+
+      expect(accountsService.getLlmBalances).toHaveBeenCalledWith("u1", [
+        "Checking",
+      ]);
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.netWorth).toBe(1000);
+    });
   });
 
   describe("get_accounts", () => {

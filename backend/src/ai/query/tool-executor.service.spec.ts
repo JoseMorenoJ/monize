@@ -1,95 +1,51 @@
 import { Test, TestingModule } from "@nestjs/testing";
-import { getRepositoryToken } from "@nestjs/typeorm";
 import { ToolExecutorService } from "./tool-executor.service";
 import { AccountsService } from "../../accounts/accounts.service";
-import { CategoriesService } from "../../categories/categories.service";
 import { TransactionAnalyticsService } from "../../transactions/transaction-analytics.service";
 import { NetWorthService } from "../../net-worth/net-worth.service";
-import { BudgetsService } from "../../budgets/budgets.service";
 import { BudgetReportsService } from "../../budgets/budget-reports.service";
 import { PortfolioService } from "../../securities/portfolio.service";
-import { Transaction } from "../../transactions/entities/transaction.entity";
-import { Category } from "../../categories/entities/category.entity";
 
 describe("ToolExecutorService", () => {
   let service: ToolExecutorService;
-  let mockAccountsService: Record<string, jest.Mock>;
-  let mockCategoriesService: Record<string, jest.Mock>;
-  let mockAnalyticsService: Record<string, jest.Mock>;
-  let mockNetWorthService: Record<string, jest.Mock>;
-  let mockBudgetsService: Record<string, jest.Mock>;
-  let mockBudgetReportsService: Record<string, jest.Mock>;
-  let mockPortfolioService: Record<string, jest.Mock>;
-  let mockTransactionRepo: Record<string, jest.Mock>;
-  let mockCategoryRepo: Record<string, jest.Mock>;
-  let mockQueryBuilder: Record<string, jest.Mock>;
+  let analytics: Record<string, jest.Mock>;
+  let accounts: Record<string, jest.Mock>;
+  let netWorth: Record<string, jest.Mock>;
+  let budgetReports: Record<string, jest.Mock>;
+  let portfolio: Record<string, jest.Mock>;
 
   const userId = "user-1";
 
-  const mockAccounts = [
-    {
-      id: "acc-1",
-      name: "Checking",
-      accountType: "checking",
-      currencyCode: "USD",
-      currentBalance: "5000.00",
-    },
-    {
-      id: "acc-2",
-      name: "Savings",
-      accountType: "savings",
-      currencyCode: "USD",
-      currentBalance: "15000.00",
-    },
-    {
-      id: "acc-3",
-      name: "Credit Card",
-      accountType: "credit_card",
-      currencyCode: "USD",
-      currentBalance: "-1200.00",
-    },
-  ];
-
-  const mockCategories = [
-    { id: "cat-1", name: "Groceries" },
-    { id: "cat-2", name: "Dining Out" },
-    { id: "cat-3", name: "Salary" },
-  ];
-
   beforeEach(async () => {
-    mockQueryBuilder = {
-      where: jest.fn().mockReturnThis(),
-      andWhere: jest.fn().mockReturnThis(),
-      leftJoin: jest.fn().mockReturnThis(),
-      select: jest.fn().mockReturnThis(),
-      addSelect: jest.fn().mockReturnThis(),
-      groupBy: jest.fn().mockReturnThis(),
-      addGroupBy: jest.fn().mockReturnThis(),
-      orderBy: jest.fn().mockReturnThis(),
-      getRawMany: jest.fn().mockResolvedValue([]),
-    };
-
-    mockAccountsService = {
-      findAll: jest.fn().mockResolvedValue(mockAccounts),
-      getSummary: jest.fn().mockResolvedValue({
-        totalAssets: 20000,
-        totalLiabilities: 1200,
-        netWorth: 18800,
-        totalAccounts: 3,
-      }),
-    };
-
-    mockCategoriesService = {
-      getTree: jest.fn().mockResolvedValue([]),
-    };
-
-    mockAnalyticsService = {
-      getSummary: jest.fn().mockResolvedValue({
+    analytics = {
+      getLlmQueryTransactions: jest.fn().mockResolvedValue({
         totalIncome: 5000,
-        totalExpenses: -3000,
+        totalExpenses: 3000,
         netCashFlow: 2000,
         transactionCount: 45,
-        byCurrency: { USD: { income: 5000, expenses: -3000 } },
+      }),
+      getLlmSpendingByCategory: jest.fn().mockResolvedValue({
+        categories: [
+          {
+            category: "Groceries",
+            amount: 500,
+            percentage: 50,
+            transactionCount: 10,
+          },
+        ],
+        totalSpending: 1000,
+      }),
+      getLlmIncomeSummary: jest.fn().mockResolvedValue({
+        items: [{ label: "Salary", amount: 5000, count: 1 }],
+        totalIncome: 5000,
+        groupedBy: "category",
+      }),
+      getLlmPeriodComparison: jest.fn().mockResolvedValue({
+        period1: { start: "2025-12-01", end: "2025-12-31", total: 3000 },
+        period2: { start: "2026-01-01", end: "2026-01-31", total: 3500 },
+        totalChange: 500,
+        totalChangePercent: 16.67,
+        comparison: [],
       }),
       getTransfersByAccount: jest.fn().mockResolvedValue({
         accounts: [],
@@ -97,27 +53,58 @@ describe("ToolExecutorService", () => {
         totalOutbound: 0,
         transferCount: 0,
       }),
+      resolveLlmCategoryIds: jest.fn().mockResolvedValue(["cat-1"]),
     };
 
-    mockNetWorthService = {
-      getMonthlyNetWorth: jest.fn().mockResolvedValue([
-        { month: "2026-01", assets: 19000, liabilities: 1300, netWorth: 17700 },
-        { month: "2026-02", assets: 20000, liabilities: 1200, netWorth: 18800 },
+    accounts = {
+      findAll: jest.fn().mockResolvedValue([
+        { id: "acc-1", name: "Checking" },
+        { id: "acc-2", name: "Savings" },
+      ]),
+      getLlmBalances: jest.fn().mockResolvedValue({
+        accounts: [
+          {
+            name: "Checking",
+            type: "CHECKING",
+            balance: 5000,
+            currency: "USD",
+          },
+        ],
+        totalAssets: 20000,
+        totalLiabilities: 1200,
+        netWorth: 18800,
+        totalAccounts: 3,
+      }),
+    };
+
+    netWorth = {
+      getLlmHistory: jest.fn().mockResolvedValue([
+        {
+          month: "2026-01",
+          assets: 19000,
+          liabilities: 1300,
+          netWorth: 17700,
+        },
       ]),
     };
 
-    mockBudgetsService = {
-      findAll: jest.fn().mockResolvedValue([]),
-      getSummary: jest.fn().mockResolvedValue({}),
-      getVelocity: jest.fn().mockResolvedValue(null),
+    budgetReports = {
+      getLlmBudgetStatus: jest.fn().mockResolvedValue({
+        budgetName: "Default",
+        strategy: "zero_based",
+        period: { start: "2026-04-01", end: "2026-04-30" },
+        totalBudgeted: 3000,
+        totalSpent: 1200,
+        totalIncome: 5000,
+        remaining: 1800,
+        percentUsed: 40,
+        overBudgetCategories: [],
+        nearLimitCategories: [],
+        categoryCount: 5,
+      }),
     };
 
-    mockBudgetReportsService = {
-      getHealthScore: jest.fn().mockResolvedValue(null),
-    };
-
-    mockPortfolioService = {
-      getAccountMarketValues: jest.fn().mockResolvedValue(new Map()),
+    portfolio = {
       getLlmSummary: jest.fn().mockResolvedValue({
         holdingCount: 0,
         totalCashValue: 0,
@@ -133,111 +120,136 @@ describe("ToolExecutorService", () => {
       }),
     };
 
-    mockTransactionRepo = {
-      createQueryBuilder: jest.fn().mockReturnValue(mockQueryBuilder),
-    };
-
-    mockCategoryRepo = {
-      find: jest.fn().mockResolvedValue(mockCategories),
-    };
-
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ToolExecutorService,
-        { provide: AccountsService, useValue: mockAccountsService },
-        { provide: CategoriesService, useValue: mockCategoriesService },
-        {
-          provide: TransactionAnalyticsService,
-          useValue: mockAnalyticsService,
-        },
-        { provide: NetWorthService, useValue: mockNetWorthService },
-        { provide: BudgetsService, useValue: mockBudgetsService },
-        { provide: BudgetReportsService, useValue: mockBudgetReportsService },
-        { provide: PortfolioService, useValue: mockPortfolioService },
-        {
-          provide: getRepositoryToken(Transaction),
-          useValue: mockTransactionRepo,
-        },
-        { provide: getRepositoryToken(Category), useValue: mockCategoryRepo },
+        { provide: AccountsService, useValue: accounts },
+        { provide: TransactionAnalyticsService, useValue: analytics },
+        { provide: NetWorthService, useValue: netWorth },
+        { provide: BudgetReportsService, useValue: budgetReports },
+        { provide: PortfolioService, useValue: portfolio },
       ],
     }).compile();
 
     service = module.get<ToolExecutorService>(ToolExecutorService);
   });
 
-  describe("execute()", () => {
-    it("routes to query_transactions tool", async () => {
+  describe("tool routing", () => {
+    it("query_transactions delegates to analytics.getLlmQueryTransactions", async () => {
       const result = await service.execute(userId, "query_transactions", {
         startDate: "2026-01-01",
         endDate: "2026-01-31",
       });
 
-      expect(result.data).toBeDefined();
-      expect(result.summary).toContain("transactions");
-      expect(result.sources).toHaveLength(1);
+      expect(analytics.getLlmQueryTransactions).toHaveBeenCalledWith(userId, {
+        startDate: "2026-01-01",
+        endDate: "2026-01-31",
+        accountIds: undefined,
+        categoryIds: undefined,
+        searchText: undefined,
+        groupBy: undefined,
+        direction: undefined,
+      });
       expect(result.sources[0].type).toBe("transactions");
+      expect(result.summary).toContain("transactions");
     });
 
-    it("routes to get_account_balances tool", async () => {
+    it("query_transactions resolves account names to IDs", async () => {
+      await service.execute(userId, "query_transactions", {
+        startDate: "2026-01-01",
+        endDate: "2026-01-31",
+        accountNames: ["Checking"],
+      });
+
+      expect(accounts.findAll).toHaveBeenCalledWith(userId, false);
+      expect(analytics.getLlmQueryTransactions).toHaveBeenCalledWith(
+        userId,
+        expect.objectContaining({ accountIds: ["acc-1"] }),
+      );
+    });
+
+    it("query_transactions resolves category names via analytics helper", async () => {
+      await service.execute(userId, "query_transactions", {
+        startDate: "2026-01-01",
+        endDate: "2026-01-31",
+        categoryNames: ["Groceries"],
+      });
+
+      expect(analytics.resolveLlmCategoryIds).toHaveBeenCalledWith(userId, [
+        "Groceries",
+      ]);
+      expect(analytics.getLlmQueryTransactions).toHaveBeenCalledWith(
+        userId,
+        expect.objectContaining({ categoryIds: ["cat-1"] }),
+      );
+    });
+
+    it("get_account_balances delegates to accounts.getLlmBalances", async () => {
       const result = await service.execute(userId, "get_account_balances", {});
 
-      expect(result.data).toBeDefined();
-      expect(result.summary).toContain("Net worth");
+      expect(accounts.getLlmBalances).toHaveBeenCalledWith(userId, undefined);
       expect(result.sources[0].type).toBe("accounts");
+      expect(result.summary).toContain("Net worth");
     });
 
-    it("routes to get_spending_by_category tool", async () => {
+    it("get_spending_by_category delegates to analytics.getLlmSpendingByCategory", async () => {
       const result = await service.execute(userId, "get_spending_by_category", {
         startDate: "2026-01-01",
         endDate: "2026-01-31",
+        topN: 10,
       });
 
-      expect(result.data).toBeDefined();
-      expect(result.summary).toContain("spending");
+      expect(analytics.getLlmSpendingByCategory).toHaveBeenCalledWith(
+        userId,
+        "2026-01-01",
+        "2026-01-31",
+        10,
+      );
       expect(result.sources[0].type).toBe("spending");
     });
 
-    it("routes to get_income_summary tool", async () => {
-      mockQueryBuilder.getRawMany.mockResolvedValueOnce([
-        { label: "Salary", total: "5000", count: "1" },
-      ]);
-
+    it("get_income_summary delegates to analytics.getLlmIncomeSummary", async () => {
       const result = await service.execute(userId, "get_income_summary", {
         startDate: "2026-01-01",
         endDate: "2026-01-31",
+        groupBy: "payee",
       });
 
-      expect(result.data).toBeDefined();
-      expect(result.summary).toContain("income");
+      expect(analytics.getLlmIncomeSummary).toHaveBeenCalledWith(
+        userId,
+        "2026-01-01",
+        "2026-01-31",
+        "payee",
+      );
       expect(result.sources[0].type).toBe("income");
     });
 
-    it("routes to get_net_worth_history tool", async () => {
-      const result = await service.execute(userId, "get_net_worth_history", {});
-
-      expect(result.data).toBeDefined();
-      expect(result.summary).toContain("Net worth history");
-      expect(result.sources[0].type).toBe("net_worth");
-    });
-
-    it("routes to get_transfers tool", async () => {
-      const result = await service.execute(userId, "get_transfers", {
+    it("get_income_summary defaults groupBy to category", async () => {
+      await service.execute(userId, "get_income_summary", {
         startDate: "2026-01-01",
         endDate: "2026-01-31",
       });
 
-      expect(result.data).toBeDefined();
-      expect(result.sources[0].type).toBe("transfers");
+      expect(analytics.getLlmIncomeSummary).toHaveBeenCalledWith(
+        userId,
+        "2026-01-01",
+        "2026-01-31",
+        "category",
+      );
     });
 
-    it("routes to get_portfolio_summary tool", async () => {
-      const result = await service.execute(userId, "get_portfolio_summary", {});
+    it("get_net_worth_history delegates to netWorthService.getLlmHistory", async () => {
+      const result = await service.execute(userId, "get_net_worth_history", {});
 
-      expect(result.data).toBeDefined();
-      expect(result.sources[0].type).toBe("portfolio");
+      expect(netWorth.getLlmHistory).toHaveBeenCalledWith(
+        userId,
+        undefined,
+        undefined,
+      );
+      expect(result.sources[0].type).toBe("net_worth");
     });
 
-    it("routes to compare_periods tool", async () => {
+    it("compare_periods delegates to analytics.getLlmPeriodComparison", async () => {
       const result = await service.execute(userId, "compare_periods", {
         period1Start: "2025-12-01",
         period1End: "2025-12-31",
@@ -245,22 +257,119 @@ describe("ToolExecutorService", () => {
         period2End: "2026-01-31",
       });
 
-      expect(result.data).toBeDefined();
-      expect(result.summary).toContain("Period 1");
+      expect(analytics.getLlmPeriodComparison).toHaveBeenCalledWith(userId, {
+        period1Start: "2025-12-01",
+        period1End: "2025-12-31",
+        period2Start: "2026-01-01",
+        period2End: "2026-01-31",
+        groupBy: "category",
+        direction: "expenses",
+      });
       expect(result.sources[0].type).toBe("comparison");
     });
 
-    it("returns error for unknown tool", async () => {
+    it("get_portfolio_summary delegates to portfolioService.getLlmSummary", async () => {
+      const result = await service.execute(userId, "get_portfolio_summary", {});
+
+      expect(portfolio.getLlmSummary).toHaveBeenCalledWith(userId, undefined);
+      expect(result.sources[0].type).toBe("portfolio");
+    });
+
+    it("get_transfers delegates to analytics.getTransfersByAccount", async () => {
+      const result = await service.execute(userId, "get_transfers", {
+        startDate: "2026-01-01",
+        endDate: "2026-01-31",
+      });
+
+      expect(analytics.getTransfersByAccount).toHaveBeenCalledWith(
+        userId,
+        "2026-01-01",
+        "2026-01-31",
+        undefined,
+      );
+      expect(result.sources[0].type).toBe("transfers");
+    });
+
+    it("get_budget_status delegates to budgetReports.getLlmBudgetStatus", async () => {
+      const result = await service.execute(userId, "get_budget_status", {});
+
+      expect(budgetReports.getLlmBudgetStatus).toHaveBeenCalledWith(
+        userId,
+        "CURRENT",
+        undefined,
+      );
+      expect(result.sources[0].type).toBe("budget");
+    });
+
+    it("calculate runs locally without hitting any service", async () => {
+      const result = await service.execute(userId, "calculate", {
+        operation: "sum",
+        values: [1, 2, 3],
+      });
+
+      expect(analytics.getLlmQueryTransactions).not.toHaveBeenCalled();
+      expect(accounts.getLlmBalances).not.toHaveBeenCalled();
+      expect(result.sources[0].type).toBe("calculation");
+    });
+
+    it("render_chart echoes input as sanitized chart data", async () => {
+      const result = await service.execute(userId, "render_chart", {
+        type: "bar",
+        title: "Spending",
+        data: [{ label: "Food", value: 100 }],
+      });
+
+      expect(result.data).toEqual({
+        type: "bar",
+        title: "Spending",
+        data: [{ label: "Food", value: 100 }],
+      });
+      expect(result.sources).toEqual([]);
+    });
+
+    it("returns error for unknown tools", async () => {
       const result = await service.execute(userId, "unknown_tool", {});
 
       expect(result.data).toBeNull();
       expect(result.summary).toContain("Unknown tool: unknown_tool");
       expect(result.sources).toEqual([]);
     });
+  });
 
-    it("catches errors and returns error result", async () => {
-      mockAnalyticsService.getSummary.mockRejectedValueOnce(
-        new Error("Database connection failed"),
+  describe("input validation (LLM07-F1)", () => {
+    it("rejects invalid dates", async () => {
+      const result = await service.execute(userId, "query_transactions", {
+        startDate: "not-a-date",
+        endDate: "2026-01-31",
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.summary).toContain("Invalid input");
+      expect(analytics.getLlmQueryTransactions).not.toHaveBeenCalled();
+    });
+
+    it("rejects missing required fields", async () => {
+      const result = await service.execute(userId, "query_transactions", {});
+
+      expect(result.isError).toBe(true);
+      expect(result.summary).toContain("Invalid input");
+    });
+
+    it("allows valid input and delegates to the analytics service", async () => {
+      const result = await service.execute(userId, "query_transactions", {
+        startDate: "2026-01-01",
+        endDate: "2026-01-31",
+      });
+
+      expect(result.isError).toBeUndefined();
+      expect(analytics.getLlmQueryTransactions).toHaveBeenCalled();
+    });
+  });
+
+  describe("error handling", () => {
+    it("wraps thrown errors in a safe error result", async () => {
+      analytics.getLlmQueryTransactions.mockRejectedValueOnce(
+        new Error("boom"),
       );
 
       const result = await service.execute(userId, "query_transactions", {
@@ -272,995 +381,7 @@ describe("ToolExecutorService", () => {
         error: "An error occurred while retrieving data.",
       });
       expect(result.summary).toContain("Error executing query_transactions");
-      expect(result.sources).toEqual([]);
-    });
-
-    it("rejects invalid tool input with validation error (LLM07-F1)", async () => {
-      const result = await service.execute(userId, "query_transactions", {
-        startDate: "not-a-date",
-        endDate: "2026-01-31",
-      });
-
-      expect(result.data).toEqual(
-        expect.objectContaining({
-          error: expect.stringContaining("Invalid input"),
-        }),
-      );
-      expect(result.summary).toContain("Invalid input");
-      expect(result.sources).toEqual([]);
       expect(result.isError).toBe(true);
-    });
-
-    it("rejects missing required fields in tool input (LLM07-F1)", async () => {
-      const result = await service.execute(userId, "query_transactions", {});
-
-      expect(result.data).toEqual(
-        expect.objectContaining({
-          error: expect.stringContaining("Invalid input"),
-        }),
-      );
-      expect(result.sources).toEqual([]);
-    });
-
-    it("allows valid input and proceeds to tool execution (LLM07-F1)", async () => {
-      const result = await service.execute(userId, "query_transactions", {
-        startDate: "2026-01-01",
-        endDate: "2026-01-31",
-      });
-
-      expect(result.data).toBeDefined();
-      expect(result.summary).toContain("transactions");
-      expect(mockAnalyticsService.getSummary).toHaveBeenCalled();
-    });
-
-    it("passes through unknown tools without validation (LLM07-F1)", async () => {
-      const result = await service.execute(userId, "unknown_tool", {
-        anyField: "anyValue",
-      });
-
-      expect(result.data).toBeNull();
-      expect(result.summary).toContain("Unknown tool");
-    });
-  });
-
-  describe("query_transactions", () => {
-    it("passes dates to analytics service", async () => {
-      await service.execute(userId, "query_transactions", {
-        startDate: "2026-01-01",
-        endDate: "2026-01-31",
-      });
-
-      expect(mockAnalyticsService.getSummary).toHaveBeenCalledWith(
-        userId,
-        undefined, // accountIds
-        "2026-01-01",
-        "2026-01-31",
-        undefined, // categoryIds
-        undefined, // payeeId
-        undefined, // searchText
-        undefined, // amountFrom
-        undefined, // amountTo
-        true, // excludeInvestmentLinked
-        true, // excludeTransfers
-      );
-    });
-
-    it("resolves account names to IDs", async () => {
-      await service.execute(userId, "query_transactions", {
-        startDate: "2026-01-01",
-        endDate: "2026-01-31",
-        accountNames: ["Checking", "Savings"],
-      });
-
-      expect(mockAccountsService.findAll).toHaveBeenCalledWith(userId, false);
-      expect(mockAnalyticsService.getSummary).toHaveBeenCalledWith(
-        userId,
-        ["acc-1", "acc-2"],
-        "2026-01-01",
-        "2026-01-31",
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        true,
-        true,
-      );
-    });
-
-    it("resolves category names to IDs (case-insensitive)", async () => {
-      await service.execute(userId, "query_transactions", {
-        startDate: "2026-01-01",
-        endDate: "2026-01-31",
-        categoryNames: ["groceries", "DINING OUT"],
-      });
-
-      expect(mockCategoryRepo.find).toHaveBeenCalledWith({
-        where: { userId },
-        select: ["id", "name"],
-      });
-      expect(mockAnalyticsService.getSummary).toHaveBeenCalledWith(
-        userId,
-        undefined,
-        "2026-01-01",
-        "2026-01-31",
-        ["cat-1", "cat-2"],
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        true,
-        true,
-      );
-    });
-
-    it("passes searchText to analytics service", async () => {
-      await service.execute(userId, "query_transactions", {
-        startDate: "2026-01-01",
-        endDate: "2026-01-31",
-        searchText: "Walmart",
-      });
-
-      expect(mockAnalyticsService.getSummary).toHaveBeenCalledWith(
-        userId,
-        undefined,
-        "2026-01-01",
-        "2026-01-31",
-        undefined,
-        undefined,
-        "Walmart",
-        undefined,
-        undefined,
-        true,
-        true,
-      );
-    });
-
-    it("includes byCurrency when multiple currencies present", async () => {
-      mockAnalyticsService.getSummary.mockResolvedValueOnce({
-        totalIncome: 5000,
-        totalExpenses: -3000,
-        netCashFlow: 2000,
-        transactionCount: 45,
-        byCurrency: {
-          USD: { income: 3000, expenses: -2000 },
-          CAD: { income: 2000, expenses: -1000 },
-        },
-      });
-
-      const result = await service.execute(userId, "query_transactions", {
-        startDate: "2026-01-01",
-        endDate: "2026-01-31",
-      });
-
-      expect((result.data as Record<string, unknown>).byCurrency).toBeDefined();
-    });
-
-    it("omits byCurrency when single currency", async () => {
-      const result = await service.execute(userId, "query_transactions", {
-        startDate: "2026-01-01",
-        endDate: "2026-01-31",
-      });
-
-      expect(
-        (result.data as Record<string, unknown>).byCurrency,
-      ).toBeUndefined();
-    });
-
-    it("includes breakdown when groupBy is specified", async () => {
-      mockQueryBuilder.getRawMany.mockResolvedValueOnce([
-        { label: "Groceries", total: "1500", count: "20" },
-        { label: "Dining Out", total: "800", count: "10" },
-      ]);
-
-      const result = await service.execute(userId, "query_transactions", {
-        startDate: "2026-01-01",
-        endDate: "2026-01-31",
-        groupBy: "category",
-      });
-
-      const data = result.data as Record<string, unknown>;
-      expect(data.breakdown).toBeDefined();
-      const breakdown = data.breakdown as Array<Record<string, unknown>>;
-      expect(breakdown[0].category).toBe("Groceries");
-      expect(breakdown[0].total).toBe(1500);
-    });
-
-    it("excludes INVESTMENT_BROKERAGE accounts and investment-linked cash transactions from the breakdown", async () => {
-      mockQueryBuilder.getRawMany.mockResolvedValueOnce([]);
-
-      await service.execute(userId, "query_transactions", {
-        startDate: "2026-01-01",
-        endDate: "2026-01-31",
-        groupBy: "category",
-      });
-
-      // The breakdown QueryBuilder must apply both the account-subtype
-      // exclusion and the NOT EXISTS (investment_transactions ...) clause,
-      // otherwise BUY/SELL cash debits in the linked cash account leak
-      // into the uncategorised-expense totals.
-      expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
-        "(breakdownAccount.accountSubType IS NULL OR breakdownAccount.accountSubType != 'INVESTMENT_BROKERAGE')",
-      );
-      expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
-        "NOT EXISTS (SELECT 1 FROM investment_transactions it WHERE it.transaction_id = t.id)",
-      );
-    });
-
-    it("formats summary with date range and amounts", async () => {
-      const result = await service.execute(userId, "query_transactions", {
-        startDate: "2026-01-01",
-        endDate: "2026-01-31",
-      });
-
-      expect(result.summary).toContain("45 transactions");
-      expect(result.summary).toContain("2026-01-01");
-      expect(result.summary).toContain("2026-01-31");
-      expect(result.summary).toContain("5000.00");
-    });
-
-    it("includes filter names in source description", async () => {
-      await service.execute(userId, "query_transactions", {
-        startDate: "2026-01-01",
-        endDate: "2026-01-31",
-        categoryNames: ["Groceries"],
-        accountNames: ["Checking"],
-      });
-
-      // We can't directly check sources since names are in them
-      // Just verify it ran without error
-      expect(mockAnalyticsService.getSummary).toHaveBeenCalled();
-    });
-  });
-
-  describe("get_account_balances", () => {
-    it("returns all accounts when no filter", async () => {
-      const result = await service.execute(userId, "get_account_balances", {});
-
-      const data = result.data as Record<string, unknown>;
-      const accounts = data.accounts as Array<Record<string, unknown>>;
-      expect(accounts).toHaveLength(3);
-      expect(accounts[0].name).toBe("Checking");
-      expect(accounts[0].balance).toBe(5000);
-      expect(data.netWorth).toBe(18800);
-      expect(data.totalAssets).toBe(20000);
-      expect(data.totalLiabilities).toBe(1200);
-    });
-
-    it("filters by account names (case-insensitive)", async () => {
-      const result = await service.execute(userId, "get_account_balances", {
-        accountNames: ["checking"],
-      });
-
-      const data = result.data as Record<string, unknown>;
-      const accounts = data.accounts as Array<Record<string, unknown>>;
-      expect(accounts).toHaveLength(1);
-      expect(accounts[0].name).toBe("Checking");
-    });
-
-    it("includes summary with net worth info", async () => {
-      const result = await service.execute(userId, "get_account_balances", {});
-
-      expect(result.summary).toContain("3 accounts");
-      expect(result.summary).toContain("18800.00");
-    });
-
-    it("shows filtered account names in source description", async () => {
-      const result = await service.execute(userId, "get_account_balances", {
-        accountNames: ["Checking", "Savings"],
-      });
-
-      expect(result.sources[0].description).toContain("Checking, Savings");
-    });
-
-    it("shows 'All account balances' when no filter", async () => {
-      const result = await service.execute(userId, "get_account_balances", {});
-
-      expect(result.sources[0].description).toBe("All account balances");
-    });
-
-    it("shows market value as the per-account balance for INVESTMENT_BROKERAGE accounts", async () => {
-      const accountsWithBrokerage = [
-        {
-          id: "acc-1",
-          name: "Checking",
-          accountType: "CHEQUING",
-          accountSubType: null,
-          currencyCode: "USD",
-          currentBalance: "5000.00",
-          futureTransactionsSum: 0,
-        },
-        {
-          id: "acc-brokerage",
-          name: "Brokerage",
-          accountType: "INVESTMENT",
-          accountSubType: "INVESTMENT_BROKERAGE",
-          currencyCode: "USD",
-          currentBalance: "0.00",
-          futureTransactionsSum: 0,
-        },
-      ];
-      mockAccountsService.findAll.mockResolvedValue(accountsWithBrokerage);
-      mockPortfolioService.getAccountMarketValues.mockResolvedValue(
-        new Map([["acc-brokerage", 75000]]),
-      );
-
-      const result = await service.execute(userId, "get_account_balances", {});
-      const data = result.data as Record<string, unknown>;
-      const accounts = data.accounts as Array<Record<string, unknown>>;
-
-      const brokerage = accounts.find((a) => a.name === "Brokerage");
-      expect(brokerage).toBeDefined();
-      expect(brokerage!.balance).toBe(75000);
-    });
-
-    it("includes future-dated transactions in non-brokerage account balances", async () => {
-      const accountsWithFuture = [
-        {
-          id: "acc-1",
-          name: "Checking",
-          accountType: "CHEQUING",
-          accountSubType: null,
-          currencyCode: "USD",
-          currentBalance: "5000.00",
-          futureTransactionsSum: 250,
-        },
-      ];
-      mockAccountsService.findAll.mockResolvedValue(accountsWithFuture);
-
-      const result = await service.execute(userId, "get_account_balances", {});
-      const data = result.data as Record<string, unknown>;
-      const accounts = data.accounts as Array<Record<string, unknown>>;
-
-      expect(accounts[0].balance).toBe(5250);
-    });
-
-    it("uses getMonthlyNetWorth totals so the AI matches the Net Worth widget and report", async () => {
-      mockNetWorthService.getMonthlyNetWorth.mockResolvedValue([
-        { month: "2026-01", assets: 90000, liabilities: 2500, netWorth: 87500 },
-        { month: "2026-02", assets: 95000, liabilities: 2000, netWorth: 93000 },
-      ]);
-
-      const result = await service.execute(userId, "get_account_balances", {});
-      const data = result.data as Record<string, unknown>;
-
-      expect(data.totalAssets).toBe(95000);
-      expect(data.totalLiabilities).toBe(2000);
-      expect(data.netWorth).toBe(93000);
-    });
-
-    it("returns zeroed totals when there are no net worth snapshots yet", async () => {
-      mockNetWorthService.getMonthlyNetWorth.mockResolvedValue([]);
-
-      const result = await service.execute(userId, "get_account_balances", {});
-      const data = result.data as Record<string, unknown>;
-
-      expect(data.totalAssets).toBe(0);
-      expect(data.totalLiabilities).toBe(0);
-      expect(data.netWorth).toBe(0);
-    });
-  });
-
-  describe("get_spending_by_category", () => {
-    it("builds correct query for expense transactions", async () => {
-      mockQueryBuilder.getRawMany.mockResolvedValueOnce([
-        { category: "Groceries", total: "1500", count: "20" },
-        { category: "Dining Out", total: "800", count: "10" },
-      ]);
-
-      const result = await service.execute(userId, "get_spending_by_category", {
-        startDate: "2026-01-01",
-        endDate: "2026-01-31",
-      });
-
-      const data = result.data as Record<string, unknown>;
-      const categories = data.categories as Array<Record<string, unknown>>;
-      expect(categories).toHaveLength(2);
-      expect(categories[0].category).toBe("Groceries");
-      expect(categories[0].amount).toBe(1500);
-      expect(categories[0].percentage).toBeCloseTo(65.22, 1);
-      expect(data.totalSpending).toBe(2300);
-
-      // Verify query filters for expenses using split-aware amount
-      expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
-        "COALESCE(ts.amount, t.amount) < 0",
-      );
-    });
-
-    it("limits results when topN specified", async () => {
-      mockQueryBuilder.getRawMany.mockResolvedValueOnce([
-        { category: "Groceries", total: "1500", count: "20" },
-        { category: "Dining Out", total: "800", count: "10" },
-        { category: "Entertainment", total: "300", count: "5" },
-      ]);
-
-      const result = await service.execute(userId, "get_spending_by_category", {
-        startDate: "2026-01-01",
-        endDate: "2026-01-31",
-        topN: 2,
-      });
-
-      const data = result.data as Record<string, unknown>;
-      const categories = data.categories as Array<Record<string, unknown>>;
-      expect(categories).toHaveLength(2);
-    });
-
-    it("handles no spending data", async () => {
-      mockQueryBuilder.getRawMany.mockResolvedValueOnce([]);
-
-      const result = await service.execute(userId, "get_spending_by_category", {
-        startDate: "2026-01-01",
-        endDate: "2026-01-31",
-      });
-
-      const data = result.data as Record<string, unknown>;
-      expect(data.totalSpending).toBe(0);
-      expect((data.categories as unknown[]).length).toBe(0);
-    });
-
-    it("excludes investment-linked cash debits from spending totals", async () => {
-      mockQueryBuilder.getRawMany.mockResolvedValueOnce([]);
-
-      await service.execute(userId, "get_spending_by_category", {
-        startDate: "2026-01-01",
-        endDate: "2026-01-31",
-      });
-
-      expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
-        "(spendingAccount.accountSubType IS NULL OR spendingAccount.accountSubType != 'INVESTMENT_BROKERAGE')",
-      );
-      expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
-        "NOT EXISTS (SELECT 1 FROM investment_transactions it WHERE it.transaction_id = t.id)",
-      );
-    });
-  });
-
-  describe("get_income_summary", () => {
-    it("groups by category by default", async () => {
-      mockQueryBuilder.getRawMany.mockResolvedValueOnce([
-        { label: "Salary", total: "5000", count: "1" },
-        { label: "Freelance", total: "2000", count: "3" },
-      ]);
-
-      const result = await service.execute(userId, "get_income_summary", {
-        startDate: "2026-01-01",
-        endDate: "2026-01-31",
-      });
-
-      const data = result.data as Record<string, unknown>;
-      expect(data.groupedBy).toBe("category");
-      expect(data.totalIncome).toBe(7000);
-      const items = data.items as Array<Record<string, unknown>>;
-      expect(items).toHaveLength(2);
-
-      // Verify query filters for income using split-aware amount
-      expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
-        "COALESCE(ts.amount, t.amount) > 0",
-      );
-    });
-
-    it("groups by payee when specified", async () => {
-      mockQueryBuilder.getRawMany.mockResolvedValueOnce([
-        { label: "ACME Corp", total: "5000", count: "1" },
-      ]);
-
-      const result = await service.execute(userId, "get_income_summary", {
-        startDate: "2026-01-01",
-        endDate: "2026-01-31",
-        groupBy: "payee",
-      });
-
-      const data = result.data as Record<string, unknown>;
-      expect(data.groupedBy).toBe("payee");
-      expect(mockQueryBuilder.select).toHaveBeenCalledWith(
-        "COALESCE(t.payeeName, 'Unknown')",
-        "label",
-      );
-    });
-
-    it("groups by month when specified", async () => {
-      mockQueryBuilder.getRawMany.mockResolvedValueOnce([
-        { label: "2026-01", total: "5000", count: "1" },
-        { label: "2026-02", total: "5200", count: "1" },
-      ]);
-
-      const result = await service.execute(userId, "get_income_summary", {
-        startDate: "2026-01-01",
-        endDate: "2026-02-28",
-        groupBy: "month",
-      });
-
-      const data = result.data as Record<string, unknown>;
-      expect(data.groupedBy).toBe("month");
-      expect(data.totalIncome).toBe(10200);
-    });
-
-    it("excludes investment-linked cash credits from income totals", async () => {
-      mockQueryBuilder.getRawMany.mockResolvedValueOnce([]);
-
-      await service.execute(userId, "get_income_summary", {
-        startDate: "2026-01-01",
-        endDate: "2026-01-31",
-      });
-
-      expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
-        "(incomeAccount.accountSubType IS NULL OR incomeAccount.accountSubType != 'INVESTMENT_BROKERAGE')",
-      );
-      expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
-        "NOT EXISTS (SELECT 1 FROM investment_transactions it WHERE it.transaction_id = t.id)",
-      );
-    });
-  });
-
-  describe("get_net_worth_history", () => {
-    it("returns monthly net worth data", async () => {
-      const result = await service.execute(userId, "get_net_worth_history", {
-        startDate: "2026-01-01",
-        endDate: "2026-02-28",
-      });
-
-      const data = result.data as Record<string, unknown>;
-      const months = data.months as unknown[];
-      expect(months).toHaveLength(2);
-      expect(result.summary).toContain("2 months");
-    });
-
-    it("defaults dates when not provided", async () => {
-      await service.execute(userId, "get_net_worth_history", {});
-
-      expect(mockNetWorthService.getMonthlyNetWorth).toHaveBeenCalledWith(
-        userId,
-        expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
-        expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
-      );
-    });
-  });
-
-  describe("compare_periods", () => {
-    it("computes differences between two periods", async () => {
-      // Period 1 data
-      mockQueryBuilder.getRawMany
-        .mockResolvedValueOnce([
-          { label: "Groceries", total: "1000" },
-          { label: "Dining Out", total: "500" },
-        ])
-        // Period 2 data
-        .mockResolvedValueOnce([
-          { label: "Groceries", total: "1200" },
-          { label: "Dining Out", total: "400" },
-          { label: "Entertainment", total: "200" },
-        ]);
-
-      const result = await service.execute(userId, "compare_periods", {
-        period1Start: "2025-12-01",
-        period1End: "2025-12-31",
-        period2Start: "2026-01-01",
-        period2End: "2026-01-31",
-      });
-
-      const data = result.data as Record<string, unknown>;
-      expect(data.period1).toBeDefined();
-      expect(data.period2).toBeDefined();
-      expect(data.totalChange).toBeDefined();
-      expect(data.comparison).toBeDefined();
-
-      const comparison = data.comparison as Array<Record<string, unknown>>;
-      // Sorted by abs change descending
-      expect(comparison.length).toBe(3);
-
-      // Groceries: 1200 - 1000 = +200
-      const groceries = comparison.find((c) => c.label === "Groceries");
-      expect(groceries).toBeDefined();
-      expect(groceries!.change).toBe(200);
-      expect(groceries!.changePercent).toBe(20);
-
-      // Entertainment: 200 - 0 = +200 (100% since new)
-      const entertainment = comparison.find((c) => c.label === "Entertainment");
-      expect(entertainment).toBeDefined();
-      expect(entertainment!.period1Amount).toBe(0);
-      expect(entertainment!.period2Amount).toBe(200);
-      expect(entertainment!.changePercent).toBe(100);
-    });
-
-    it("defaults to expenses direction and category groupBy", async () => {
-      mockQueryBuilder.getRawMany
-        .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([]);
-
-      await service.execute(userId, "compare_periods", {
-        period1Start: "2025-12-01",
-        period1End: "2025-12-31",
-        period2Start: "2026-01-01",
-        period2End: "2026-01-31",
-      });
-
-      // Expenses filter: split-aware amount < 0
-      expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
-        "COALESCE(ts.amount, t.amount) < 0",
-      );
-      // Category join
-      expect(mockQueryBuilder.leftJoin).toHaveBeenCalledWith(
-        "t.category",
-        "cat",
-      );
-    });
-
-    it("includes date range in source description", async () => {
-      mockQueryBuilder.getRawMany
-        .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([]);
-
-      const result = await service.execute(userId, "compare_periods", {
-        period1Start: "2025-12-01",
-        period1End: "2025-12-31",
-        period2Start: "2026-01-01",
-        period2End: "2026-01-31",
-      });
-
-      expect(result.sources[0].dateRange).toContain("2025-12-01");
-      expect(result.sources[0].dateRange).toContain("2026-01-31");
-    });
-
-    it("excludes investment-linked cash transactions from period comparisons", async () => {
-      mockQueryBuilder.getRawMany
-        .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([]);
-
-      await service.execute(userId, "compare_periods", {
-        period1Start: "2025-12-01",
-        period1End: "2025-12-31",
-        period2Start: "2026-01-01",
-        period2End: "2026-01-31",
-      });
-
-      expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
-        "(periodAccount.accountSubType IS NULL OR periodAccount.accountSubType != 'INVESTMENT_BROKERAGE')",
-      );
-      expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
-        "NOT EXISTS (SELECT 1 FROM investment_transactions it WHERE it.transaction_id = t.id)",
-      );
-    });
-  });
-
-  describe("get_transfers", () => {
-    it("delegates to the shared analytics service", async () => {
-      mockAnalyticsService.getTransfersByAccount.mockResolvedValueOnce({
-        accounts: [
-          {
-            accountName: "Checking",
-            currency: "USD",
-            inbound: 0,
-            outbound: 1500,
-            net: -1500,
-            transferCount: 3,
-          },
-          {
-            accountName: "Savings",
-            currency: "USD",
-            inbound: 1500,
-            outbound: 0,
-            net: 1500,
-            transferCount: 3,
-          },
-        ],
-        totalInbound: 1500,
-        totalOutbound: 1500,
-        transferCount: 6,
-      });
-
-      const result = await service.execute(userId, "get_transfers", {
-        startDate: "2026-01-01",
-        endDate: "2026-01-31",
-      });
-
-      expect(mockAnalyticsService.getTransfersByAccount).toHaveBeenCalledWith(
-        userId,
-        "2026-01-01",
-        "2026-01-31",
-        undefined,
-      );
-
-      const data = result.data as Record<string, unknown>;
-      expect((data.accounts as unknown[]).length).toBe(2);
-      expect(data.totalInbound).toBe(1500);
-      expect(data.totalOutbound).toBe(1500);
-      expect(data.transferCount).toBe(6);
-    });
-
-    it("resolves accountNames to IDs before delegating", async () => {
-      mockAnalyticsService.getTransfersByAccount.mockResolvedValueOnce({
-        accounts: [],
-        totalInbound: 0,
-        totalOutbound: 0,
-        transferCount: 0,
-      });
-
-      await service.execute(userId, "get_transfers", {
-        startDate: "2026-01-01",
-        endDate: "2026-01-31",
-        accountNames: ["Savings"],
-      });
-
-      expect(mockAccountsService.findAll).toHaveBeenCalledWith(userId, false);
-      expect(mockAnalyticsService.getTransfersByAccount).toHaveBeenCalledWith(
-        userId,
-        "2026-01-01",
-        "2026-01-31",
-        ["acc-2"],
-      );
-    });
-
-    it("produces a human-readable summary and source metadata", async () => {
-      mockAnalyticsService.getTransfersByAccount.mockResolvedValueOnce({
-        accounts: [
-          {
-            accountName: "Savings",
-            currency: "USD",
-            inbound: 500,
-            outbound: 0,
-            net: 500,
-            transferCount: 1,
-          },
-        ],
-        totalInbound: 500,
-        totalOutbound: 0,
-        transferCount: 1,
-      });
-
-      const result = await service.execute(userId, "get_transfers", {
-        startDate: "2026-01-01",
-        endDate: "2026-01-31",
-        accountNames: ["Savings"],
-      });
-
-      expect(result.summary).toContain("1 transfer transactions");
-      expect(result.summary).toContain("Inbound: 500.00");
-      expect(result.sources).toHaveLength(1);
-      expect(result.sources[0]).toMatchObject({
-        type: "transfers",
-        description: "Transfer activity for Savings",
-        dateRange: "2026-01-01 to 2026-01-31",
-      });
-    });
-  });
-
-  describe("get_portfolio_summary", () => {
-    it("delegates to the shared portfolio LLM summary method", async () => {
-      mockPortfolioService.getLlmSummary.mockResolvedValueOnce({
-        holdingCount: 2,
-        totalCashValue: 100,
-        totalHoldingsValue: 9900,
-        totalCostBasis: 9000,
-        totalPortfolioValue: 10000,
-        totalGainLoss: 900,
-        totalGainLossPercent: 10,
-        timeWeightedReturn: 8.5,
-        cagr: 7.2,
-        holdings: [
-          {
-            symbol: "AAPL",
-            name: "Apple Inc.",
-            securityType: "STOCK",
-            currency: "USD",
-            quantity: 10,
-            averageCost: 150,
-            costBasis: 1500,
-            marketValue: 1800,
-            gainLoss: 300,
-            gainLossPercent: 20,
-          },
-        ],
-        allocation: [
-          {
-            name: "AAPL",
-            symbol: "AAPL",
-            type: "security",
-            value: 1800,
-            percentage: 18,
-          },
-        ],
-      });
-
-      const result = await service.execute(userId, "get_portfolio_summary", {});
-
-      expect(mockPortfolioService.getLlmSummary).toHaveBeenCalledWith(
-        userId,
-        undefined,
-      );
-      const data = result.data as Record<string, unknown>;
-      expect(data.totalPortfolioValue).toBe(10000);
-      expect(data.totalGainLoss).toBe(900);
-      expect((data.holdings as unknown[]).length).toBe(1);
-      expect(result.sources[0].type).toBe("portfolio");
-    });
-
-    it("resolves accountNames to IDs before delegating", async () => {
-      await service.execute(userId, "get_portfolio_summary", {
-        accountNames: ["Checking"],
-      });
-
-      expect(mockAccountsService.findAll).toHaveBeenCalledWith(userId, false);
-      expect(mockPortfolioService.getLlmSummary).toHaveBeenCalledWith(userId, [
-        "acc-1",
-      ]);
-    });
-
-    it("formats gain/loss with a + sign when positive", async () => {
-      mockPortfolioService.getLlmSummary.mockResolvedValueOnce({
-        holdingCount: 1,
-        totalCashValue: 0,
-        totalHoldingsValue: 1200,
-        totalCostBasis: 1000,
-        totalPortfolioValue: 1200,
-        totalGainLoss: 200,
-        totalGainLossPercent: 20,
-        timeWeightedReturn: null,
-        cagr: null,
-        holdings: [],
-        allocation: [],
-      });
-
-      const result = await service.execute(userId, "get_portfolio_summary", {});
-
-      expect(result.summary).toContain("+200.00");
-      expect(result.summary).toContain("+20.00%");
-    });
-  });
-
-  describe("calculate", () => {
-    it("routes to calculate tool and returns result", async () => {
-      const result = await service.execute(userId, "calculate", {
-        operation: "percentage",
-        values: [300, 5000],
-        label: "rent percentage",
-      });
-
-      const data = result.data as Record<string, unknown>;
-      expect(data.result).toBe(6);
-      expect(data.formattedResult).toBe("6%");
-      expect(data.operation).toBe("percentage");
-      expect(data.label).toBe("rent percentage");
-      expect(result.summary).toContain("percentage");
-      expect(result.sources[0].type).toBe("calculation");
-    });
-
-    it("returns error for division by zero", async () => {
-      const result = await service.execute(userId, "calculate", {
-        operation: "ratio",
-        values: [100, 0],
-      });
-
-      expect(result.isError).toBe(true);
-      expect(result.summary).toContain("zero");
-    });
-  });
-
-  describe("render_chart", () => {
-    it("echoes a valid chart payload without touching the DB", async () => {
-      const beforeCalls = mockQueryBuilder.getRawMany.mock.calls.length;
-
-      const result = await service.execute(userId, "render_chart", {
-        type: "bar",
-        title: "Spending by Category",
-        data: [
-          { label: "Groceries", value: 500 },
-          { label: "Dining", value: 250 },
-        ],
-      });
-
-      const data = result.data as {
-        type: string;
-        title: string;
-        data: Array<{ label: string; value: number }>;
-      };
-      expect(data.type).toBe("bar");
-      expect(data.title).toBe("Spending by Category");
-      expect(data.data).toEqual([
-        { label: "Groceries", value: 500 },
-        { label: "Dining", value: 250 },
-      ]);
-      expect(result.summary).toContain("bar");
-      expect(result.summary).toContain("2 data points");
-      expect(result.sources).toEqual([]);
-      expect(result.isError).toBeUndefined();
-      // render_chart must not query the database
-      expect(mockQueryBuilder.getRawMany.mock.calls.length).toBe(beforeCalls);
-    });
-
-    it("sanitizes newline- and control-char injections in labels", async () => {
-      const result = await service.execute(userId, "render_chart", {
-        type: "pie",
-        title: "Title with\nnewline",
-        data: [
-          { label: "Groceries\n[INJECT]", value: 100 },
-          { label: "Di\x00ning", value: 50 },
-        ],
-      });
-
-      const data = result.data as {
-        title: string;
-        data: Array<{ label: string; value: number }>;
-      };
-      expect(data.title).not.toMatch(/[\r\n]/);
-      expect(data.title).toBe("Title with newline");
-      expect(data.data[0].label).not.toMatch(/[\r\n]/);
-      expect(data.data[0].label).toBe("Groceries [INJECT]");
-      // eslint-disable-next-line no-control-regex
-      expect(data.data[1].label).not.toMatch(/[\x00-\x1F]/);
-      expect(data.data[1].label).toBe("Dining");
-    });
-
-    it("returns an error for an empty data array", async () => {
-      const result = await service.execute(userId, "render_chart", {
-        type: "bar",
-        title: "Empty",
-        data: [],
-      });
-
-      expect(result.isError).toBe(true);
-      expect(result.summary).toContain("render_chart");
-    });
-
-    it("returns an error for an unknown chart type", async () => {
-      const result = await service.execute(userId, "render_chart", {
-        type: "scatter",
-        title: "Bad Type",
-        data: [{ label: "A", value: 1 }],
-      });
-
-      expect(result.isError).toBe(true);
-    });
-
-    it("returns an error for negative values", async () => {
-      const result = await service.execute(userId, "render_chart", {
-        type: "bar",
-        title: "Negatives",
-        data: [{ label: "Refund", value: -10 }],
-      });
-
-      expect(result.isError).toBe(true);
-    });
-  });
-
-  describe("floating-point precision", () => {
-    it("rounds category totals to avoid float noise", async () => {
-      // Simulate PostgreSQL returning values that could cause float drift
-      // SQL ORDER BY ensures descending order in the mock
-      mockQueryBuilder.getRawMany.mockResolvedValueOnce([
-        { category: "Dining", total: "200.20", count: "5" },
-        { category: "Groceries", total: "100.10", count: "5" },
-        { category: "Gas", total: "50.05", count: "3" },
-      ]);
-
-      const result = await service.execute(userId, "get_spending_by_category", {
-        startDate: "2026-01-01",
-        endDate: "2026-01-31",
-      });
-
-      const data = result.data as Record<string, unknown>;
-      // 200.20 + 100.10 + 50.05 = 350.35 (must be exact, not 350.35000000000002)
-      expect(data.totalSpending).toBe(350.35);
-
-      const categories = data.categories as Array<Record<string, unknown>>;
-      expect(categories[0].amount).toBe(200.2);
-      expect(categories[1].amount).toBe(100.1);
-      expect(categories[2].amount).toBe(50.05);
-    });
-
-    it("rounds income totals using safe arithmetic", async () => {
-      mockQueryBuilder.getRawMany.mockResolvedValueOnce([
-        { label: "Salary", total: "3333.33", count: "1" },
-        { label: "Freelance", total: "3333.33", count: "1" },
-        { label: "Bonus", total: "3333.34", count: "1" },
-      ]);
-
-      const result = await service.execute(userId, "get_income_summary", {
-        startDate: "2026-01-01",
-        endDate: "2026-01-31",
-      });
-
-      const data = result.data as Record<string, unknown>;
-      expect(data.totalIncome).toBe(10000);
     });
   });
 });

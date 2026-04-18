@@ -151,6 +151,28 @@ export class NetWorthService {
     );
   }
 
+  /**
+   * Monthly net worth history shaped for LLM tools. Shared by the AI
+   * Assistant's `get_net_worth_history` tool and the MCP server's matching
+   * tool so both surfaces return the same data with the same default range
+   * (last 12 months if no dates provided).
+   */
+  async getLlmHistory(
+    userId: string,
+    startDate?: string,
+    endDate?: string,
+  ): Promise<
+    { month: string; assets: number; liabilities: number; netWorth: number }[]
+  > {
+    const today = new Date();
+    const defaultStart = new Date(today.getFullYear() - 1, today.getMonth(), 1)
+      .toISOString()
+      .substring(0, 10);
+    const resolvedStart = startDate || defaultStart;
+    const resolvedEnd = endDate || today.toISOString().substring(0, 10);
+    return this.getMonthlyNetWorth(userId, resolvedStart, resolvedEnd);
+  }
+
   async getMonthlyNetWorth(
     userId: string,
     startDate?: string,

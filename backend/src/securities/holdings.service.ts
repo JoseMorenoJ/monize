@@ -3,6 +3,8 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  Inject,
+  forwardRef,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import {
@@ -34,6 +36,7 @@ export class HoldingsService {
     private investmentTransactionsRepository: Repository<InvestmentTransaction>,
     @InjectRepository(Account)
     private accountsRepository: Repository<Account>,
+    @Inject(forwardRef(() => AccountsService))
     private accountsService: AccountsService,
     private securitiesService: SecuritiesService,
     private dataSource: DataSource,

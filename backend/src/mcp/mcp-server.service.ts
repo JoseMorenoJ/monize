@@ -10,6 +10,7 @@ import { McpInvestmentsTools } from "./tools/investments.tool";
 import { McpNetWorthTools } from "./tools/net-worth.tool";
 import { McpScheduledTools } from "./tools/scheduled.tool";
 import { McpCalculateTools } from "./tools/calculate.tool";
+import { McpBudgetsTools } from "./tools/budgets.tool";
 import { McpAccountListResource } from "./resources/account-list.resource";
 import { McpCategoryTreeResource } from "./resources/category-tree.resource";
 import { McpRecentTransactionsResource } from "./resources/recent-transactions.resource";
@@ -31,6 +32,7 @@ export class McpServerService {
     private readonly netWorthTools: McpNetWorthTools,
     private readonly scheduledTools: McpScheduledTools,
     private readonly calculateTools: McpCalculateTools,
+    private readonly budgetsTools: McpBudgetsTools,
     private readonly accountListResource: McpAccountListResource,
     private readonly categoryTreeResource: McpCategoryTreeResource,
     private readonly recentTransactionsResource: McpRecentTransactionsResource,
@@ -97,6 +99,7 @@ export class McpServerService {
     this.netWorthTools.register(server, resolve);
     this.scheduledTools.register(server, resolve);
     this.calculateTools.register(server);
+    this.budgetsTools.register(server, resolve);
 
     this.accountListResource.register(server, resolve);
     this.categoryTreeResource.register(server, resolve);

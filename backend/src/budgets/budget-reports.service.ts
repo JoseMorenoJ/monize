@@ -2,6 +2,12 @@ import { Injectable } from "@nestjs/common";
 import { BudgetTrendReportsService } from "./budget-trend-reports.service";
 import { BudgetHealthReportsService } from "./budget-health-reports.service";
 import { BudgetActivityReportsService } from "./budget-activity-reports.service";
+import { BudgetsService } from "./budgets.service";
+import {
+  getCurrentMonthPeriodDates,
+  getPreviousMonthPeriodDates,
+  parsePeriodFromYYYYMM,
+} from "./budget-date.utils";
 
 export interface BudgetTrendPoint {
   month: string;
@@ -93,12 +99,55 @@ export interface HealthScoreHistoryPoint {
   label: string;
 }
 
+export interface LlmBudgetStatusResult {
+  budgetName: string;
+  strategy: string;
+  period: { start: string; end: string };
+  totalBudgeted: number;
+  totalSpent: number;
+  totalIncome: number;
+  remaining: number;
+  percentUsed: number;
+  overBudgetCategories: Array<{
+    category: string;
+    budgeted: number;
+    spent: number;
+    percentUsed: number;
+  }>;
+  nearLimitCategories: Array<{
+    category: string;
+    budgeted: number;
+    spent: number;
+    remaining: number;
+    percentUsed: number;
+  }>;
+  categoryCount: number;
+  velocity?: {
+    dailyBurnRate: number;
+    safeDailySpend: number;
+    projectedTotal: number;
+    projectedVariance: number;
+    daysRemaining: number;
+    paceStatus: "under" | "on_track" | "over";
+  };
+  healthScore?: {
+    score: number;
+    label: string;
+  };
+}
+
+export interface LlmBudgetStatusError {
+  error: string;
+  availableBudgets?: string[];
+}
+
 @Injectable()
 export class BudgetReportsService {
   constructor(
     private readonly trendReports: BudgetTrendReportsService,
     private readonly healthReports: BudgetHealthReportsService,
     private readonly activityReports: BudgetActivityReportsService,
+    private readonly budgetsService: BudgetsService,
   ) {}
 
   getTrend(
@@ -162,5 +211,134 @@ export class BudgetReportsService {
     budgetId: string,
   ): Promise<FlexGroupStatusResult[]> {
     return this.activityReports.getFlexGroupStatus(userId, budgetId);
+  }
+
+  /**
+   * Budget status shaped for LLM tools. Shared by the AI Assistant's
+   * `get_budget_status` tool and the MCP server's matching tool so both
+   * surfaces return the same data.
+   *
+   * Period accepts "CURRENT" (default), "PREVIOUS", or a specific YYYY-MM.
+   * When `budgetName` is omitted, picks the first active budget; returns an
+   * error payload when the named budget is not found.
+   */
+  async getLlmBudgetStatus(
+    userId: string,
+    period: string = "CURRENT",
+    budgetName?: string,
+  ): Promise<LlmBudgetStatusResult | LlmBudgetStatusError> {
+    const allBudgets = await this.budgetsService.findAll(userId);
+    const activeBudgets = allBudgets.filter((b) => b.isActive);
+
+    if (activeBudgets.length === 0) {
+      return { error: "No active budgets found" };
+    }
+
+    const budget = budgetName
+      ? activeBudgets.find(
+          (b) => b.name.toLowerCase() === budgetName.toLowerCase(),
+        )
+      : activeBudgets[0];
+
+    if (!budget) {
+      return {
+        error: `Budget "${budgetName}" not found`,
+        availableBudgets: activeBudgets.map((b) => b.name),
+      };
+    }
+
+    const { periodStart, periodEnd } = this.resolvePeriodDates(period);
+
+    let summary: Awaited<ReturnType<BudgetsService["getSummary"]>>;
+    try {
+      summary = await this.budgetsService.getSummary(userId, budget.id);
+    } catch {
+      return { error: "Failed to retrieve budget summary" };
+    }
+
+    let velocity: Awaited<ReturnType<BudgetsService["getVelocity"]>> | null =
+      null;
+    try {
+      velocity = await this.budgetsService.getVelocity(userId, budget.id);
+    } catch {
+      velocity = null;
+    }
+
+    let healthScore: HealthScoreResult | null = null;
+    try {
+      healthScore = await this.getHealthScore(userId, budget.id);
+    } catch {
+      healthScore = null;
+    }
+
+    const overBudgetCategories = summary.categoryBreakdown
+      .filter((c) => !c.isIncome && c.percentUsed > 100)
+      .map((c) => ({
+        category: c.categoryName,
+        budgeted: c.budgeted,
+        spent: c.spent,
+        percentUsed: c.percentUsed,
+      }));
+
+    const nearLimitCategories = summary.categoryBreakdown
+      .filter((c) => !c.isIncome && c.percentUsed >= 80 && c.percentUsed <= 100)
+      .map((c) => ({
+        category: c.categoryName,
+        budgeted: c.budgeted,
+        spent: c.spent,
+        remaining: c.remaining,
+        percentUsed: c.percentUsed,
+      }));
+
+    const result: LlmBudgetStatusResult = {
+      budgetName: budget.name,
+      strategy: budget.strategy,
+      period: { start: periodStart, end: periodEnd },
+      totalBudgeted: summary.totalBudgeted,
+      totalSpent: summary.totalSpent,
+      totalIncome: summary.totalIncome,
+      remaining: summary.remaining,
+      percentUsed: summary.percentUsed,
+      overBudgetCategories,
+      nearLimitCategories,
+      categoryCount: summary.categoryBreakdown.filter((c) => !c.isIncome)
+        .length,
+    };
+
+    if (velocity) {
+      result.velocity = {
+        dailyBurnRate: velocity.dailyBurnRate,
+        safeDailySpend: velocity.safeDailySpend,
+        projectedTotal: velocity.projectedTotal,
+        projectedVariance: velocity.projectedVariance,
+        daysRemaining: velocity.daysRemaining,
+        paceStatus: velocity.paceStatus,
+      };
+    }
+
+    if (healthScore) {
+      result.healthScore = {
+        score: healthScore.score,
+        label: healthScore.label,
+      };
+    }
+
+    return result;
+  }
+
+  private resolvePeriodDates(period: string): {
+    periodStart: string;
+    periodEnd: string;
+  } {
+    if (period === "PREVIOUS") {
+      return getPreviousMonthPeriodDates();
+    }
+
+    const parsed = parsePeriodFromYYYYMM(period);
+    if (parsed) {
+      return parsed;
+    }
+
+    return getCurrentMonthPeriodDates();
   }
 }
