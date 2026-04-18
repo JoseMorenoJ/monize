@@ -17,6 +17,7 @@ const PayeeForm = dynamic(() => import('@/components/payees/PayeeForm').then(m =
 const BulkUpdateModal = dynamic(() => import('@/components/transactions/BulkUpdateModal').then(m => m.BulkUpdateModal), { ssr: false });
 const BalanceHistoryChart = dynamic(() => import('@/components/transactions/BalanceHistoryChart').then(m => m.BalanceHistoryChart), { ssr: false });
 const CategoryPayeeBarChart = dynamic(() => import('@/components/transactions/CategoryPayeeBarChart').then(m => m.CategoryPayeeBarChart), { ssr: false });
+const AccountBalancesBarChart = dynamic(() => import('@/components/transactions/AccountBalancesBarChart').then(m => m.AccountBalancesBarChart), { ssr: false });
 import { transactionsApi } from '@/lib/transactions';
 import { accountsApi } from '@/lib/accounts';
 import { categoriesApi } from '@/lib/categories';
@@ -428,26 +429,47 @@ function TransactionsContent() {
     return f;
   }, [filters.filterAccountIds, filters.filterAccountStatus, filters.filteredAccounts, filters.filterCategoryIds, filters.filterPayeeIds, filters.filterTagIds, filters.filterStartDate, filters.filterEndDate, filters.filterSearch, filters.filterAmountFrom, filters.filterAmountTo]);
 
-  // Derive chart currency and aggregate per-account daily balances
-  const { chartBalances, chartCurrency } = useMemo(() => {
-    if (dailyBalances.length === 0) return { chartBalances: [] as Array<{ date: string; balance: number }>, chartCurrency: defaultCurrency };
+  // Derive chart currency, aggregated per-date balances, and latest per-account balances
+  const { chartBalances, chartCurrency, accountBalances } = useMemo(() => {
+    if (dailyBalances.length === 0) {
+      return {
+        chartBalances: [] as Array<{ date: string; balance: number }>,
+        chartCurrency: defaultCurrency,
+        accountBalances: [] as Array<{ accountId: string; accountName: string; balance: number }>,
+      };
+    }
 
     const currencies = new Set(dailyBalances.map((r) => r.currencyCode));
     const isSingleCurrency = currencies.size === 1;
     const displayCurrency = isSingleCurrency ? [...currencies][0] : defaultCurrency;
 
     const byDate = new Map<string, number>();
+    const latestByAccount = new Map<string, { date: string; balance: number; currencyCode: string }>();
     for (const row of dailyBalances) {
       const amount = isSingleCurrency ? row.balance : convertToDefault(row.balance, row.currencyCode);
       byDate.set(row.date, (byDate.get(row.date) ?? 0) + amount);
+
+      const existing = latestByAccount.get(row.accountId);
+      if (!existing || existing.date < row.date) {
+        latestByAccount.set(row.accountId, { date: row.date, balance: row.balance, currencyCode: row.currencyCode });
+      }
     }
 
     const aggregated = [...byDate.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([date, balance]) => ({ date, balance }));
 
-    return { chartBalances: aggregated, chartCurrency: displayCurrency };
-  }, [dailyBalances, defaultCurrency, convertToDefault]);
+    const accountNameById = new Map(accounts.map((a) => [a.id, a.name]));
+    const perAccount = [...latestByAccount.entries()]
+      .map(([accountId, info]) => ({
+        accountId,
+        accountName: accountNameById.get(accountId) ?? 'Unknown',
+        balance: isSingleCurrency ? info.balance : convertToDefault(info.balance, info.currencyCode),
+      }))
+      .sort((a, b) => b.balance - a.balance);
+
+    return { chartBalances: aggregated, chartCurrency: displayCurrency, accountBalances: perAccount };
+  }, [dailyBalances, accounts, defaultCurrency, convertToDefault]);
 
   const selection = useTransactionSelection(
     transactions,
@@ -599,6 +621,13 @@ function TransactionsContent() {
             filters.setFilterEndDate(endDate);
             filters.setFilterTimePeriod('custom');
           }} />
+        ) : accountBalances.length > 1 ? (
+          <AccountBalancesBarChart
+            data={accountBalances}
+            isLoading={isLoading}
+            currencyCode={chartCurrency}
+            onAccountClick={filters.handleAccountFilterClick}
+          />
         ) : (
           <BalanceHistoryChart data={chartBalances} isLoading={isLoading} currencyCode={chartCurrency} />
         )}
