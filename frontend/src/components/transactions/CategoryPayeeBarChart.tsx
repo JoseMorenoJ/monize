@@ -139,13 +139,13 @@ export function CategoryPayeeBarChart({
 
       <div
         ref={chartRef}
-        className="h-80 sm:h-72"
-        style={{ minHeight: isMobile ? 320 : 288 }}
+        className="h-72"
+        style={{ minHeight: 288 }}
       >
         <ResponsiveContainer width="100%" height="100%" minWidth={0}>
           <BarChart
             data={chartData}
-            margin={{ top: 20, right: 5, left: -10, bottom: isMobile ? 20 : 0 }}
+            margin={{ top: 20, right: isMobile ? 16 : 5, left: -10, bottom: 0 }}
             onClick={onMonthClick ? (state: any) => {
               const month = state?.activeLabel;
               if (!month) return;
@@ -169,8 +169,8 @@ export function CategoryPayeeBarChart({
               interval={isMobile ? 'preserveStartEnd' : 0}
               angle={isMobile ? -35 : 0}
               textAnchor={isMobile ? 'end' : 'middle'}
-              tickMargin={isMobile ? 12 : 0}
-              height={isMobile ? 72 : 30}
+              tickMargin={isMobile ? 10 : 0}
+              height={isMobile ? 64 : 30}
             />
             <YAxis
               tick={{ fill: '#6b7280', fontSize: 11 }}
