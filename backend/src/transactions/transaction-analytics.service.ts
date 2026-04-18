@@ -4,6 +4,12 @@ import { Brackets, Repository } from "typeorm";
 import { Transaction } from "./entities/transaction.entity";
 import { Category } from "../categories/entities/category.entity";
 import { getAllCategoryIdsWithChildren } from "../common/category-tree.util";
+import { applyInvestmentTransactionFilters } from "../common/investment-filter.util";
+import {
+  joinSplitsForAnalytics,
+  SPLIT_AMOUNT,
+  SPLIT_CATEGORY_NAME,
+} from "../common/transaction-split-query.util";
 
 export interface TransferAccountSummary {
   accountName: string;
@@ -19,6 +25,104 @@ export interface TransfersByAccountResult {
   totalInbound: number;
   totalOutbound: number;
   transferCount: number;
+}
+
+/**
+ * LLM06-F2: Minimum number of transactions required per group when
+ * returning payee-level breakdowns. Groups below this threshold are
+ * aggregated into an "Other (aggregated)" bucket to prevent revealing
+ * individual transaction amounts through targeted queries.
+ */
+export const MIN_AGGREGATION_COUNT = 3;
+
+export type LlmQueryDirection = "expenses" | "income" | "both";
+export type LlmQueryGroupBy = "category" | "payee" | "year" | "month" | "week";
+
+export interface LlmQueryTransactionsInput {
+  startDate: string;
+  endDate: string;
+  accountIds?: string[];
+  categoryIds?: string[];
+  searchText?: string;
+  groupBy?: LlmQueryGroupBy;
+  direction?: LlmQueryDirection;
+}
+
+export interface LlmQueryTransactionsResult {
+  totalIncome: number;
+  totalExpenses: number;
+  netCashFlow: number;
+  transactionCount: number;
+  byCurrency?: Record<
+    string,
+    {
+      totalIncome: number;
+      totalExpenses: number;
+      netCashFlow: number;
+      transactionCount: number;
+    }
+  >;
+  breakdown?: unknown;
+}
+
+export interface LlmSpendingByCategoryResult {
+  categories: Array<{
+    category: string;
+    amount: number;
+    percentage: number;
+    transactionCount: number;
+  }>;
+  totalSpending: number;
+}
+
+export type LlmIncomeGroupBy = "category" | "payee" | "month";
+
+export interface LlmIncomeSummaryResult {
+  items: Array<{ label: string; amount: number; count: number }>;
+  totalIncome: number;
+  groupedBy: LlmIncomeGroupBy;
+}
+
+export type LlmComparisonGroupBy = "category" | "payee";
+export type LlmComparisonDirection = "expenses" | "income" | "both";
+
+export interface LlmPeriodComparisonInput {
+  period1Start: string;
+  period1End: string;
+  period2Start: string;
+  period2End: string;
+  groupBy?: LlmComparisonGroupBy;
+  direction?: LlmComparisonDirection;
+}
+
+export interface LlmPeriodComparisonResult {
+  period1: { start: string; end: string; total: number };
+  period2: { start: string; end: string; total: number };
+  totalChange: number;
+  totalChangePercent: number;
+  comparison: Array<{
+    label: string;
+    period1Amount: number;
+    period2Amount: number;
+    change: number;
+    changePercent: number;
+  }>;
+}
+
+function sumMoney(values: number[]): number {
+  return values.reduce((sum, v) => sum + Math.round(v * 10000), 0) / 10000;
+}
+
+function roundMoney(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function sanitizeLikePattern(input: string | undefined): string | undefined {
+  if (!input) return undefined;
+  return input
+    .substring(0, 200)
+    .replace(/\\/g, "\\\\")
+    .replace(/[%_]/g, "\\$&");
 }
 
 @Injectable()
@@ -502,4 +606,548 @@ export class TransactionAnalyticsService {
       count: Number(row.count) || 0,
     }));
   }
+
+  /**
+   * Resolve category names plus their descendants to IDs. Shared helper for
+   * tool adapters that accept names from LLM input.
+   */
+  async resolveLlmCategoryIds(
+    userId: string,
+    categoryNames: string[],
+  ): Promise<string[]> {
+    if (categoryNames.length === 0) return [];
+
+    const allCategories = await this.categoriesRepository.find({
+      where: { userId },
+      select: ["id", "name"],
+    });
+    const nameMap = new Map(
+      allCategories.map((c) => [c.name.toLowerCase(), c.id]),
+    );
+
+    const matched = categoryNames
+      .map((name) => nameMap.get(name.toLowerCase()))
+      .filter((id): id is string => id !== undefined);
+
+    if (matched.length === 0) return matched;
+
+    return getAllCategoryIdsWithChildren(
+      this.categoriesRepository,
+      userId,
+      matched,
+    );
+  }
+
+  /**
+   * Transaction summary + optional grouped breakdown shaped for LLM tools.
+   * Shared by `ToolExecutorService.queryTransactions` and the MCP server's
+   * `query_transactions` tool so both surfaces return the same shape.
+   *
+   * Callers resolve account/category names to IDs before calling.
+   */
+  async getLlmQueryTransactions(
+    userId: string,
+    input: LlmQueryTransactionsInput,
+  ): Promise<LlmQueryTransactionsResult> {
+    const safeSearch = sanitizeLikePattern(input.searchText);
+
+    const summary = await this.getSummary(
+      userId,
+      input.accountIds,
+      input.startDate,
+      input.endDate,
+      input.categoryIds,
+      undefined,
+      safeSearch,
+      undefined,
+      undefined,
+      true,
+      true,
+    );
+
+    let breakdown: unknown = undefined;
+    if (input.groupBy) {
+      breakdown = await this.getLlmGroupedBreakdown(
+        userId,
+        input.startDate,
+        input.endDate,
+        input.groupBy,
+        input.direction,
+        input.accountIds,
+        input.categoryIds,
+        safeSearch,
+      );
+    }
+
+    const result: LlmQueryTransactionsResult = {
+      totalIncome: summary.totalIncome,
+      totalExpenses: summary.totalExpenses,
+      netCashFlow: summary.netCashFlow,
+      transactionCount: summary.transactionCount,
+    };
+
+    if (Object.keys(summary.byCurrency).length > 1) {
+      result.byCurrency = summary.byCurrency;
+    }
+
+    if (breakdown !== undefined) {
+      result.breakdown = breakdown;
+    }
+
+    return result;
+  }
+
+  private async getLlmGroupedBreakdown(
+    userId: string,
+    startDate: string,
+    endDate: string,
+    groupBy: LlmQueryGroupBy,
+    direction: LlmQueryDirection | undefined,
+    accountIds?: string[],
+    categoryIds?: string[],
+    safeSearchText?: string,
+  ): Promise<unknown> {
+    const qb = this.transactionsRepository
+      .createQueryBuilder("t")
+      .leftJoin("t.account", "breakdownAccount")
+      .where("t.userId = :userId", { userId })
+      .andWhere("t.transactionDate >= :startDate", { startDate })
+      .andWhere("t.transactionDate <= :endDate", { endDate })
+      .andWhere("t.status != 'VOID'")
+      .andWhere("t.isTransfer = false")
+      .andWhere("t.parentTransactionId IS NULL");
+
+    joinSplitsForAnalytics(qb);
+    applyInvestmentTransactionFilters(qb, "breakdownAccount", "t");
+
+    if (direction === "expenses") {
+      qb.andWhere(`${SPLIT_AMOUNT} < 0`);
+    } else if (direction === "income") {
+      qb.andWhere(`${SPLIT_AMOUNT} > 0`);
+    }
+
+    if (accountIds && accountIds.length > 0) {
+      qb.andWhere("t.accountId IN (:...accountIds)", { accountIds });
+    }
+
+    if (categoryIds && categoryIds.length > 0) {
+      qb.andWhere(
+        "COALESCE(ts.categoryId, t.categoryId) IN (:...categoryIds)",
+        { categoryIds },
+      );
+    }
+
+    if (safeSearchText) {
+      qb.andWhere(
+        "(t.description ILIKE :search OR t.payeeName ILIKE :search OR ts.memo ILIKE :search)",
+        { search: `%${safeSearchText}%` },
+      );
+    }
+
+    switch (groupBy) {
+      case "category": {
+        qb.leftJoin("t.category", "cat")
+          .select(SPLIT_CATEGORY_NAME, "label")
+          .addSelect(`SUM(ABS(${SPLIT_AMOUNT}))`, "total")
+          .addSelect("COUNT(*)", "count")
+          .groupBy(SPLIT_CATEGORY_NAME);
+
+        const rows = await qb.getRawMany();
+        return rows
+          .map((r) => ({
+            category: r.label,
+            total: roundMoney(Number(r.total)),
+            count: Number(r.count),
+          }))
+          .sort((a, b) => b.total - a.total);
+      }
+
+      case "payee": {
+        qb.select("COALESCE(t.payeeName, 'Unknown')", "label")
+          .addSelect(`SUM(ABS(${SPLIT_AMOUNT}))`, "total")
+          .addSelect("COUNT(*)", "count")
+          .groupBy("t.payeeName");
+
+        const rows = await qb.getRawMany();
+        return enforcePayeeAggregationThreshold(
+          rows.map((r) => ({
+            payee: r.label,
+            total: roundMoney(Number(r.total)),
+            count: Number(r.count),
+          })),
+        );
+      }
+
+      case "year": {
+        qb.select("TO_CHAR(t.transactionDate, 'YYYY')", "year")
+          .addSelect(`SUM(ABS(${SPLIT_AMOUNT}))`, "total")
+          .addSelect("COUNT(*)", "count")
+          .groupBy("TO_CHAR(t.transactionDate, 'YYYY')")
+          .orderBy("year", "ASC");
+
+        const rows = await qb.getRawMany();
+        return rows.map((r) => ({
+          year: r.year,
+          total: roundMoney(Number(r.total)),
+          count: Number(r.count),
+        }));
+      }
+
+      case "month": {
+        qb.select("TO_CHAR(t.transactionDate, 'YYYY-MM')", "month")
+          .addSelect(`SUM(ABS(${SPLIT_AMOUNT}))`, "total")
+          .addSelect("COUNT(*)", "count")
+          .groupBy("TO_CHAR(t.transactionDate, 'YYYY-MM')")
+          .orderBy("month", "ASC");
+
+        const rows = await qb.getRawMany();
+        return rows.map((r) => ({
+          month: r.month,
+          total: roundMoney(Number(r.total)),
+          count: Number(r.count),
+        }));
+      }
+
+      case "week": {
+        qb.select(
+          "TO_CHAR(DATE_TRUNC('week', t.transactionDate), 'YYYY-MM-DD')",
+          "week",
+        )
+          .addSelect(`SUM(ABS(${SPLIT_AMOUNT}))`, "total")
+          .addSelect("COUNT(*)", "count")
+          .groupBy("DATE_TRUNC('week', t.transactionDate)")
+          .orderBy("week", "ASC");
+
+        const rows = await qb.getRawMany();
+        return rows.map((r) => ({
+          week: r.week,
+          total: roundMoney(Number(r.total)),
+          count: Number(r.count),
+        }));
+      }
+    }
+  }
+
+  /**
+   * Spending-by-category breakdown shaped for LLM tools. Shared by
+   * `ToolExecutorService.getSpendingByCategory` and the MCP tool.
+   *
+   * Distinct from `SpendingReportsService.getSpendingByCategory`: that one
+   * does currency conversion and parent rollup for the reports UI. This one
+   * preserves subcategory-level detail with per-row percentage and
+   * transaction counts expected by LLM callers.
+   */
+  async getLlmSpendingByCategory(
+    userId: string,
+    startDate: string,
+    endDate: string,
+    topN?: number,
+  ): Promise<LlmSpendingByCategoryResult> {
+    const qb = this.transactionsRepository
+      .createQueryBuilder("t")
+      .leftJoin("t.category", "cat")
+      .leftJoin("t.account", "spendingAccount")
+      .select(SPLIT_CATEGORY_NAME, "category")
+      .addSelect(`SUM(ABS(${SPLIT_AMOUNT}))`, "total")
+      .addSelect("COUNT(*)", "count")
+      .where("t.userId = :userId", { userId })
+      .andWhere("t.transactionDate >= :startDate", { startDate })
+      .andWhere("t.transactionDate <= :endDate", { endDate })
+      .andWhere(`${SPLIT_AMOUNT} < 0`)
+      .andWhere("t.status != 'VOID'")
+      .andWhere("t.isTransfer = false")
+      .andWhere("t.parentTransactionId IS NULL")
+      .groupBy(SPLIT_CATEGORY_NAME)
+      .orderBy("total", "DESC");
+
+    joinSplitsForAnalytics(qb);
+    applyInvestmentTransactionFilters(qb, "spendingAccount", "t");
+
+    const rows = await qb.getRawMany();
+    const totalSpending = sumMoney(rows.map((r) => Number(r.total)));
+
+    let categories = rows.map((r) => {
+      const amount = roundMoney(Number(r.total));
+      return {
+        category: r.category,
+        amount,
+        percentage:
+          totalSpending > 0
+            ? Math.round((amount / totalSpending) * 10000) / 100
+            : 0,
+        transactionCount: Number(r.count),
+      };
+    });
+
+    if (topN && topN > 0) {
+      categories = categories.slice(0, topN);
+    }
+
+    return { categories, totalSpending };
+  }
+
+  /**
+   * Income summary grouped by category, payee, or month. Shared by
+   * `ToolExecutorService.getIncomeSummary` and the MCP tool.
+   */
+  async getLlmIncomeSummary(
+    userId: string,
+    startDate: string,
+    endDate: string,
+    groupBy: LlmIncomeGroupBy = "category",
+  ): Promise<LlmIncomeSummaryResult> {
+    const qb = this.transactionsRepository
+      .createQueryBuilder("t")
+      .leftJoin("t.account", "incomeAccount")
+      .where("t.userId = :userId", { userId })
+      .andWhere("t.transactionDate >= :startDate", { startDate })
+      .andWhere("t.transactionDate <= :endDate", { endDate })
+      .andWhere(`${SPLIT_AMOUNT} > 0`)
+      .andWhere("t.status != 'VOID'")
+      .andWhere("t.isTransfer = false")
+      .andWhere("t.parentTransactionId IS NULL");
+
+    joinSplitsForAnalytics(qb);
+    applyInvestmentTransactionFilters(qb, "incomeAccount", "t");
+
+    let items: Array<{ label: string; amount: number; count: number }>;
+
+    switch (groupBy) {
+      case "payee": {
+        qb.select("COALESCE(t.payeeName, 'Unknown')", "label")
+          .addSelect(`SUM(${SPLIT_AMOUNT})`, "total")
+          .addSelect("COUNT(*)", "count")
+          .groupBy("t.payeeName")
+          .orderBy("total", "DESC");
+        const rows = await qb.getRawMany();
+        const payeeItems = rows.map((r) => ({
+          label: r.label,
+          amount: roundMoney(Number(r.total)),
+          count: Number(r.count),
+        }));
+        items = enforceLabeledAggregationThreshold(payeeItems);
+        break;
+      }
+      case "month": {
+        qb.select("TO_CHAR(t.transactionDate, 'YYYY-MM')", "label")
+          .addSelect(`SUM(${SPLIT_AMOUNT})`, "total")
+          .addSelect("COUNT(*)", "count")
+          .groupBy("TO_CHAR(t.transactionDate, 'YYYY-MM')")
+          .orderBy("label", "ASC");
+        const rows = await qb.getRawMany();
+        items = rows.map((r) => ({
+          label: r.label,
+          amount: roundMoney(Number(r.total)),
+          count: Number(r.count),
+        }));
+        break;
+      }
+      case "category":
+      default: {
+        qb.leftJoin("t.category", "cat")
+          .select(SPLIT_CATEGORY_NAME, "label")
+          .addSelect(`SUM(${SPLIT_AMOUNT})`, "total")
+          .addSelect("COUNT(*)", "count")
+          .groupBy(SPLIT_CATEGORY_NAME)
+          .orderBy("total", "DESC");
+        const rows = await qb.getRawMany();
+        items = rows.map((r) => ({
+          label: r.label,
+          amount: roundMoney(Number(r.total)),
+          count: Number(r.count),
+        }));
+        break;
+      }
+    }
+
+    return {
+      items,
+      totalIncome: sumMoney(items.map((i) => i.amount)),
+      groupedBy: groupBy,
+    };
+  }
+
+  /**
+   * Compare two date ranges side-by-side, grouped by category or payee.
+   * Shared by `ToolExecutorService.comparePeriods` and the MCP tool.
+   */
+  async getLlmPeriodComparison(
+    userId: string,
+    input: LlmPeriodComparisonInput,
+  ): Promise<LlmPeriodComparisonResult> {
+    const groupBy = input.groupBy ?? "category";
+    const direction = input.direction ?? "expenses";
+
+    const [period1, period2] = await Promise.all([
+      this.getComparisonPeriodData(
+        userId,
+        input.period1Start,
+        input.period1End,
+        groupBy,
+        direction,
+      ),
+      this.getComparisonPeriodData(
+        userId,
+        input.period2Start,
+        input.period2End,
+        groupBy,
+        direction,
+      ),
+    ]);
+
+    const allLabels = new Set([
+      ...period1.map((i) => i.label),
+      ...period2.map((i) => i.label),
+    ]);
+
+    const p1Map = new Map(period1.map((i) => [i.label, i.total]));
+    const p2Map = new Map(period2.map((i) => [i.label, i.total]));
+
+    const comparison = Array.from(allLabels).map((label) => {
+      const p1Amount = roundMoney(p1Map.get(label) || 0);
+      const p2Amount = roundMoney(p2Map.get(label) || 0);
+      const change = roundMoney(p2Amount - p1Amount);
+      const changePercent =
+        p1Amount !== 0
+          ? Math.round((change / p1Amount) * 10000) / 100
+          : p2Amount !== 0
+            ? 100
+            : 0;
+
+      return {
+        label,
+        period1Amount: p1Amount,
+        period2Amount: p2Amount,
+        change,
+        changePercent,
+      };
+    });
+
+    comparison.sort((a, b) => Math.abs(b.change) - Math.abs(a.change));
+
+    const p1Total = sumMoney(period1.map((i) => i.total));
+    const p2Total = sumMoney(period2.map((i) => i.total));
+    const totalChange = roundMoney(p2Total - p1Total);
+    const totalChangePercent =
+      p1Total !== 0 ? Math.round((totalChange / p1Total) * 10000) / 100 : 0;
+
+    return {
+      period1: {
+        start: input.period1Start,
+        end: input.period1End,
+        total: p1Total,
+      },
+      period2: {
+        start: input.period2Start,
+        end: input.period2End,
+        total: p2Total,
+      },
+      totalChange,
+      totalChangePercent,
+      comparison,
+    };
+  }
+
+  private async getComparisonPeriodData(
+    userId: string,
+    startDate: string,
+    endDate: string,
+    groupBy: LlmComparisonGroupBy,
+    direction: LlmComparisonDirection,
+  ): Promise<{ label: string; total: number }[]> {
+    const qb = this.transactionsRepository
+      .createQueryBuilder("t")
+      .leftJoin("t.account", "periodAccount")
+      .where("t.userId = :userId", { userId })
+      .andWhere("t.transactionDate >= :startDate", { startDate })
+      .andWhere("t.transactionDate <= :endDate", { endDate })
+      .andWhere("t.status != 'VOID'")
+      .andWhere("t.isTransfer = false")
+      .andWhere("t.parentTransactionId IS NULL");
+
+    joinSplitsForAnalytics(qb);
+    applyInvestmentTransactionFilters(qb, "periodAccount", "t");
+
+    if (direction === "expenses") {
+      qb.andWhere(`${SPLIT_AMOUNT} < 0`);
+    } else if (direction === "income") {
+      qb.andWhere(`${SPLIT_AMOUNT} > 0`);
+    }
+
+    if (groupBy === "payee") {
+      qb.select("COALESCE(t.payeeName, 'Unknown')", "label")
+        .addSelect(`SUM(ABS(${SPLIT_AMOUNT}))`, "total")
+        .addSelect("COUNT(*)", "count")
+        .groupBy("t.payeeName")
+        .orderBy("total", "DESC");
+    } else {
+      qb.leftJoin("t.category", "cat")
+        .select(SPLIT_CATEGORY_NAME, "label")
+        .addSelect(`SUM(ABS(${SPLIT_AMOUNT}))`, "total")
+        .addSelect("COUNT(*)", "count")
+        .groupBy(SPLIT_CATEGORY_NAME)
+        .orderBy("total", "DESC");
+    }
+
+    const rows = await qb.getRawMany();
+    const items = rows.map((r) => ({
+      label: r.label,
+      total: roundMoney(Number(r.total)),
+      count: Number(r.count),
+    }));
+
+    if (groupBy === "payee") {
+      const above = items.filter((i) => i.count >= MIN_AGGREGATION_COUNT);
+      const below = items.filter((i) => i.count < MIN_AGGREGATION_COUNT);
+      if (below.length > 0) {
+        above.push({
+          label: "Other (aggregated)",
+          total: sumMoney(below.map((i) => i.total)),
+          count: below.reduce((s, i) => s + i.count, 0),
+        });
+      }
+      return above.map((i) => ({ label: i.label, total: i.total }));
+    }
+
+    return items.map((r) => ({ label: r.label, total: r.total }));
+  }
+}
+
+/**
+ * LLM06-F2: Fold payee groups with fewer than MIN_AGGREGATION_COUNT
+ * transactions into a single "Other (aggregated)" bucket so individual
+ * transaction amounts can't leak via targeted queries.
+ */
+function enforcePayeeAggregationThreshold(
+  rows: Array<{ payee: string; total: number; count: number }>,
+): Array<{ payee: string; total: number; count: number }> {
+  const above = rows.filter((r) => r.count >= MIN_AGGREGATION_COUNT);
+  const below = rows.filter((r) => r.count < MIN_AGGREGATION_COUNT);
+
+  if (below.length > 0) {
+    above.push({
+      payee: "Other (aggregated)",
+      total: sumMoney(below.map((r) => r.total)),
+      count: below.reduce((sum, r) => sum + r.count, 0),
+    });
+  }
+
+  return above.sort((a, b) => b.total - a.total);
+}
+
+function enforceLabeledAggregationThreshold(
+  items: Array<{ label: string; amount: number; count: number }>,
+): Array<{ label: string; amount: number; count: number }> {
+  const above = items.filter((i) => i.count >= MIN_AGGREGATION_COUNT);
+  const below = items.filter((i) => i.count < MIN_AGGREGATION_COUNT);
+
+  if (below.length > 0) {
+    above.push({
+      label: "Other (aggregated)",
+      amount: sumMoney(below.map((i) => i.amount)),
+      count: below.reduce((s, i) => s + i.count, 0),
+    });
+  }
+
+  return above;
 }

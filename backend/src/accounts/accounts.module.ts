@@ -16,6 +16,7 @@ import { MortgageReminderService } from "./mortgage-reminder.service";
 import { CategoriesModule } from "../categories/categories.module";
 import { ScheduledTransactionsModule } from "../scheduled-transactions/scheduled-transactions.module";
 import { NetWorthModule } from "../net-worth/net-worth.module";
+import { SecuritiesModule } from "../securities/securities.module";
 import { ActionHistoryModule } from "../action-history/action-history.module";
 import { NotificationsModule } from "../notifications/notifications.module";
 
@@ -32,6 +33,7 @@ import { NotificationsModule } from "../notifications/notifications.module";
     forwardRef(() => CategoriesModule),
     forwardRef(() => ScheduledTransactionsModule),
     forwardRef(() => NetWorthModule),
+    forwardRef(() => SecuritiesModule),
     ActionHistoryModule,
     NotificationsModule,
   ],

@@ -12,6 +12,7 @@ import { InvestmentTransaction } from "../securities/entities/investment-transac
 import { CategoriesService } from "../categories/categories.service";
 import { ScheduledTransactionsService } from "../scheduled-transactions/scheduled-transactions.service";
 import { NetWorthService } from "../net-worth/net-worth.service";
+import { PortfolioService } from "../securities/portfolio.service";
 import { LoanMortgageAccountService } from "./loan-mortgage-account.service";
 import { DataSource } from "typeorm";
 import { ActionHistoryService } from "../action-history/action-history.service";
@@ -146,6 +147,12 @@ describe("AccountsService", () => {
           useValue: scheduledTransactionsService,
         },
         { provide: NetWorthService, useValue: netWorthService },
+        {
+          provide: PortfolioService,
+          useValue: {
+            getAccountMarketValues: jest.fn().mockResolvedValue(new Map()),
+          },
+        },
         {
           provide: ActionHistoryService,
           useValue: mockActionHistoryService,

@@ -20,6 +20,7 @@ import { UpdateAccountDto } from "./dto/update-account.dto";
 import { CategoriesService } from "../categories/categories.service";
 import { ScheduledTransactionsService } from "../scheduled-transactions/scheduled-transactions.service";
 import { NetWorthService } from "../net-worth/net-worth.service";
+import { PortfolioService } from "../securities/portfolio.service";
 import { LoanMortgageAccountService } from "./loan-mortgage-account.service";
 import { PaymentFrequency, AmortizationResult } from "./loan-amortization.util";
 import {
@@ -47,6 +48,8 @@ export class AccountsService {
     private scheduledTransactionsService: ScheduledTransactionsService,
     @Inject(forwardRef(() => NetWorthService))
     private netWorthService: NetWorthService,
+    @Inject(forwardRef(() => PortfolioService))
+    private portfolioService: PortfolioService,
     private loanMortgageService: LoanMortgageAccountService,
     private dataSource: DataSource,
     private actionHistoryService: ActionHistoryService,
@@ -800,6 +803,71 @@ export class AccountsService {
       totalAssets,
       totalLiabilities,
       netWorth: totalAssets - totalLiabilities,
+    };
+  }
+
+  /**
+   * Account balances shaped for LLM tools. Shared by the AI Assistant's
+   * `get_account_balances` tool and the MCP server's matching tool so both
+   * surfaces return the same data.
+   *
+   * Per-account balance mirrors the Account List UI: brokerage accounts show
+   * market value of holdings; every other account shows
+   * currentBalance + futureTransactionsSum. Totals come from the same source
+   * as the dashboard Net Worth widget (getMonthlyNetWorth), so all three
+   * surfaces agree.
+   */
+  async getLlmBalances(
+    userId: string,
+    accountNames?: string[],
+  ): Promise<{
+    accounts: Array<{
+      name: string;
+      type: AccountType;
+      balance: number;
+      currency: string;
+    }>;
+    totalAssets: number;
+    totalLiabilities: number;
+    netWorth: number;
+    totalAccounts: number;
+  }> {
+    const allAccounts = await this.findAll(userId, false);
+    const marketValues =
+      await this.portfolioService.getAccountMarketValues(userId);
+
+    let accounts = allAccounts;
+    if (accountNames && accountNames.length > 0) {
+      const lowerNames = new Set(accountNames.map((n) => n.toLowerCase()));
+      accounts = allAccounts.filter((a) =>
+        lowerNames.has(a.name.toLowerCase()),
+      );
+    }
+
+    const roundMoney = (v: number): number => Math.round(v * 100) / 100;
+
+    const accountList = accounts.map((a) => {
+      const balance =
+        a.accountSubType === AccountSubType.INVESTMENT_BROKERAGE
+          ? (marketValues.get(a.id) ?? 0)
+          : Number(a.currentBalance) + Number(a.futureTransactionsSum ?? 0);
+      return {
+        name: a.name,
+        type: a.accountType,
+        balance: roundMoney(balance),
+        currency: a.currencyCode,
+      };
+    });
+
+    const monthly = await this.netWorthService.getMonthlyNetWorth(userId);
+    const latest = monthly[monthly.length - 1];
+
+    return {
+      accounts: accountList,
+      totalAssets: roundMoney(latest?.assets ?? 0),
+      totalLiabilities: roundMoney(latest?.liabilities ?? 0),
+      netWorth: roundMoney(latest?.netWorth ?? 0),
+      totalAccounts: allAccounts.length,
     };
   }
 

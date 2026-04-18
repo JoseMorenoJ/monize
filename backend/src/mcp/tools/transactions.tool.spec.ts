@@ -20,6 +20,10 @@ describe("McpTransactionsTools", () => {
 
     analyticsService = {
       getTransfersByAccount: jest.fn(),
+      getLlmQueryTransactions: jest.fn(),
+      getLlmSpendingByCategory: jest.fn(),
+      getLlmIncomeSummary: jest.fn(),
+      getLlmPeriodComparison: jest.fn(),
     };
 
     accountsService = {
@@ -42,8 +46,110 @@ describe("McpTransactionsTools", () => {
     tool.register(server as any, resolve);
   });
 
-  it("should register 4 tools", () => {
-    expect(server.registerTool).toHaveBeenCalledTimes(4);
+  it("should register 8 tools", () => {
+    expect(server.registerTool).toHaveBeenCalledTimes(8);
+  });
+
+  describe("query_transactions", () => {
+    it("delegates to analyticsService.getLlmQueryTransactions", async () => {
+      resolve.mockReturnValue({ userId: "u1", scopes: "read" });
+      analyticsService.getLlmQueryTransactions.mockResolvedValue({
+        totalIncome: 0,
+        totalExpenses: 0,
+        netCashFlow: 0,
+        transactionCount: 0,
+      });
+
+      await handlers["query_transactions"](
+        { startDate: "2026-01-01", endDate: "2026-01-31", groupBy: "category" },
+        { sessionId: "s1" },
+      );
+
+      expect(analyticsService.getLlmQueryTransactions).toHaveBeenCalledWith(
+        "u1",
+        expect.objectContaining({
+          startDate: "2026-01-01",
+          endDate: "2026-01-31",
+          groupBy: "category",
+        }),
+      );
+    });
+  });
+
+  describe("get_spending_by_category", () => {
+    it("delegates to analyticsService.getLlmSpendingByCategory", async () => {
+      resolve.mockReturnValue({ userId: "u1", scopes: "read" });
+      analyticsService.getLlmSpendingByCategory.mockResolvedValue({
+        categories: [],
+        totalSpending: 0,
+      });
+
+      await handlers["get_spending_by_category"](
+        { startDate: "2026-01-01", endDate: "2026-01-31", topN: 5 },
+        { sessionId: "s1" },
+      );
+
+      expect(analyticsService.getLlmSpendingByCategory).toHaveBeenCalledWith(
+        "u1",
+        "2026-01-01",
+        "2026-01-31",
+        5,
+      );
+    });
+  });
+
+  describe("get_income_summary", () => {
+    it("delegates to analyticsService.getLlmIncomeSummary with default groupBy", async () => {
+      resolve.mockReturnValue({ userId: "u1", scopes: "read" });
+      analyticsService.getLlmIncomeSummary.mockResolvedValue({
+        items: [],
+        totalIncome: 0,
+        groupedBy: "category",
+      });
+
+      await handlers["get_income_summary"](
+        { startDate: "2026-01-01", endDate: "2026-01-31" },
+        { sessionId: "s1" },
+      );
+
+      expect(analyticsService.getLlmIncomeSummary).toHaveBeenCalledWith(
+        "u1",
+        "2026-01-01",
+        "2026-01-31",
+        "category",
+      );
+    });
+  });
+
+  describe("compare_periods", () => {
+    it("delegates to analyticsService.getLlmPeriodComparison", async () => {
+      resolve.mockReturnValue({ userId: "u1", scopes: "read" });
+      analyticsService.getLlmPeriodComparison.mockResolvedValue({
+        period1: { start: "2025-12-01", end: "2025-12-31", total: 0 },
+        period2: { start: "2026-01-01", end: "2026-01-31", total: 0 },
+        totalChange: 0,
+        totalChangePercent: 0,
+        comparison: [],
+      });
+
+      await handlers["compare_periods"](
+        {
+          period1Start: "2025-12-01",
+          period1End: "2025-12-31",
+          period2Start: "2026-01-01",
+          period2End: "2026-01-31",
+        },
+        { sessionId: "s1" },
+      );
+
+      expect(analyticsService.getLlmPeriodComparison).toHaveBeenCalledWith(
+        "u1",
+        expect.objectContaining({
+          period1Start: "2025-12-01",
+          period2Start: "2026-01-01",
+        }),
+      );
+    });
   });
 
   describe("get_transfers", () => {

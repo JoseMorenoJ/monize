@@ -98,5 +98,38 @@ export class McpAccountsTools {
         }
       },
     );
+
+    server.registerTool(
+      "get_account_balances",
+      {
+        description:
+          "Get current account balances with per-account type and currency, plus total assets, total liabilities, and net worth. Returns the same shape as the AI Assistant's get_account_balances tool. Brokerage accounts show market value; every other account shows currentBalance + futureTransactionsSum. Totals match the dashboard Net Worth widget.",
+        inputSchema: {
+          accountNames: z
+            .array(z.string().max(100))
+            .max(50)
+            .optional()
+            .describe(
+              "Optional: filter to specific account names. Omit to cover all accounts.",
+            ),
+        },
+      },
+      async (args, extra) => {
+        const ctx = resolve(extra.sessionId);
+        if (!ctx) return toolError("No user context");
+        const check = requireScope(ctx.scopes, "read");
+        if (check.error) return check.result;
+
+        try {
+          const data = await this.accountsService.getLlmBalances(
+            ctx.userId,
+            args.accountNames,
+          );
+          return toolResult(data);
+        } catch (err: unknown) {
+          return safeToolError(err);
+        }
+      },
+    );
   }
 }

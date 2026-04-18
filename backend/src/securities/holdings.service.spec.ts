@@ -1515,11 +1515,9 @@ describe("HoldingsService", () => {
       ]);
 
       await expect(
-        service.validateNoNegativeHoldingsHistory(
-          "user-1",
-          undefined,
-          ["acc-1"],
-        ),
+        service.validateNoNegativeHoldingsHistory("user-1", undefined, [
+          "acc-1",
+        ]),
       ).resolves.toBeUndefined();
 
       // The scoped list must be passed through to the query, not the

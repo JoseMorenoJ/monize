@@ -12,6 +12,7 @@ describe("McpNetWorthTools", () => {
   beforeEach(() => {
     netWorthService = {
       getMonthlyNetWorth: jest.fn(),
+      getLlmHistory: jest.fn(),
     };
 
     accountsService = {
@@ -56,9 +57,9 @@ describe("McpNetWorthTools", () => {
   });
 
   describe("get_net_worth_history", () => {
-    it("should return monthly net worth history", async () => {
+    it("should return monthly net worth history via shared getLlmHistory", async () => {
       resolve.mockReturnValue({ userId: "u1", scopes: "read" });
-      netWorthService.getMonthlyNetWorth.mockResolvedValue([
+      netWorthService.getLlmHistory.mockResolvedValue([
         { month: "2025-01", netWorth: 7000 },
         { month: "2025-02", netWorth: 8000 },
       ]);
@@ -67,24 +68,28 @@ describe("McpNetWorthTools", () => {
         {},
         { sessionId: "s1" },
       );
-      expect(netWorthService.getMonthlyNetWorth).toHaveBeenCalledWith(
+      expect(netWorthService.getLlmHistory).toHaveBeenCalledWith(
         "u1",
-        expect.any(String),
-        expect.any(String),
+        undefined,
+        undefined,
       );
       const parsed = JSON.parse(result.content[0].text);
       expect(parsed).toHaveLength(2);
     });
 
-    it("should use custom months parameter", async () => {
+    it("should compute date range from months parameter when dates omitted", async () => {
       resolve.mockReturnValue({ userId: "u1", scopes: "read" });
-      netWorthService.getMonthlyNetWorth.mockResolvedValue([]);
+      netWorthService.getLlmHistory.mockResolvedValue([]);
 
       await handlers["get_net_worth_history"](
         { months: 6 },
         { sessionId: "s1" },
       );
-      expect(netWorthService.getMonthlyNetWorth).toHaveBeenCalled();
+      expect(netWorthService.getLlmHistory).toHaveBeenCalledWith(
+        "u1",
+        expect.any(String),
+        expect.any(String),
+      );
     });
   });
 });
