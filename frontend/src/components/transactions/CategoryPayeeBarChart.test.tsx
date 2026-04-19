@@ -2,16 +2,32 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@/test/render';
 import { CategoryPayeeBarChart } from './CategoryPayeeBarChart';
 
+// Capture props passed to the recharts primitives we care about so individual
+// tests can assert on axis / label styling (angle, interval, etc.).
+const capturedProps: { xAxis: any; labelList: any } = { xAxis: null, labelList: null };
+
 vi.mock('recharts', () => ({
   ResponsiveContainer: ({ children }: any) => <div data-testid="responsive-container">{children}</div>,
   BarChart: ({ children }: any) => <div data-testid="bar-chart">{children}</div>,
   Bar: ({ children }: any) => <div data-testid="bar">{children}</div>,
-  XAxis: () => <div data-testid="x-axis" />,
+  XAxis: (props: any) => {
+    capturedProps.xAxis = props;
+    return <div data-testid="x-axis" />;
+  },
   YAxis: () => <div data-testid="y-axis" />,
   CartesianGrid: () => <div data-testid="cartesian-grid" />,
   Tooltip: () => <div data-testid="tooltip" />,
-  LabelList: () => <div data-testid="label-list" />,
+  LabelList: (props: any) => {
+    capturedProps.labelList = props;
+    return <div data-testid="label-list" />;
+  },
   Cell: () => <div data-testid="cell" />,
+}));
+
+// Control the mobile breakpoint deterministically from tests.
+const mockIsMobile = vi.fn(() => false);
+vi.mock('@/hooks/useIsMobile', () => ({
+  useIsMobile: () => mockIsMobile(),
 }));
 
 // Use vi.fn() so individual tests can override the implementation to simulate
@@ -31,7 +47,17 @@ describe('CategoryPayeeBarChart', () => {
     // Reset to default USD-like 2-decimal behaviour before each test
     mockFormatCurrency.mockImplementation((n: number) => `$${n.toFixed(2)}`);
     mockFormatCurrency.mockClear();
+    mockIsMobile.mockReturnValue(false);
+    capturedProps.xAxis = null;
+    capturedProps.labelList = null;
   });
+
+  const buildMonths = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({
+      month: `${2020 + Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, '0')}`,
+      total: -100,
+      count: 1,
+    }));
 
   it('renders loading state with title and pulse skeleton', () => {
     render(<CategoryPayeeBarChart data={[]} isLoading={true} />);
@@ -190,5 +216,44 @@ describe('CategoryPayeeBarChart', () => {
     expect(screen.getByText('BD150.000')).toBeInTheDocument();
     // Total = 300 => BD300.000
     expect(screen.getByText('BD300.000')).toBeInTheDocument();
+  });
+
+  describe('label crowding behaviour', () => {
+    it('always lets the X-axis skip ticks when crowded (preserveStartEnd)', () => {
+      render(<CategoryPayeeBarChart data={buildMonths(48)} isLoading={false} />);
+      expect(capturedProps.xAxis.interval).toBe('preserveStartEnd');
+    });
+
+    it('also lets the X-axis skip ticks when not crowded', () => {
+      render(<CategoryPayeeBarChart data={buildMonths(6)} isLoading={false} />);
+      expect(capturedProps.xAxis.interval).toBe('preserveStartEnd');
+    });
+
+    it('keeps desktop bar-top labels horizontal when uncrowded (<= 36 months)', () => {
+      render(<CategoryPayeeBarChart data={buildMonths(36)} isLoading={false} />);
+      expect(capturedProps.labelList.angle).toBe(0);
+      expect(capturedProps.labelList.offset).toBe(5);
+    });
+
+    it('rotates desktop bar-top labels vertical once column count crosses 36', () => {
+      render(<CategoryPayeeBarChart data={buildMonths(37)} isLoading={false} />);
+      expect(capturedProps.labelList.angle).toBe(-90);
+      expect(capturedProps.labelList.textAnchor).toBe('middle');
+      expect(capturedProps.labelList.offset).toBe(12);
+      // dominantBaseline is nested inside the style object
+      expect(capturedProps.labelList.style).toMatchObject({
+        dominantBaseline: 'central',
+      });
+    });
+
+    it('leaves mobile bar-top labels vertical regardless of column count', () => {
+      mockIsMobile.mockReturnValue(true);
+      render(<CategoryPayeeBarChart data={buildMonths(3)} isLoading={false} />);
+      expect(capturedProps.labelList.angle).toBe(-90);
+      expect(capturedProps.labelList.offset).toBe(14);
+      expect(capturedProps.labelList.style).toMatchObject({
+        dominantBaseline: 'central',
+      });
+    });
   });
 });

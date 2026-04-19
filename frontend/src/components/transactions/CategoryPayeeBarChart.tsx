@@ -20,6 +20,9 @@ import { useIsMobile } from '@/hooks/useIsMobile';
 import { ChartDownloadButton } from '@/components/ui/ChartDownloadButton';
 
 const CHART_TITLE = 'Monthly Totals';
+// Desktop goes vertical on the bar-top labels and widens the top margin only
+// once the column count crosses this threshold (3 years of monthly buckets).
+const DESKTOP_CROWDED_THRESHOLD = 36;
 
 interface CategoryPayeeBarChartProps {
   data: MonthlyTotal[];
@@ -94,6 +97,9 @@ export function CategoryPayeeBarChart({
     });
   }, [data]);
 
+  const isCrowded = chartData.length > DESKTOP_CROWDED_THRESHOLD;
+  const verticalLabels = isMobile || isCrowded;
+
   const summary = useMemo(() => {
     if (chartData.length === 0) return null;
     const total = chartData.reduce((sum, d) => sum + d.total, 0);
@@ -145,7 +151,7 @@ export function CategoryPayeeBarChart({
         <ResponsiveContainer width="100%" height="100%" minWidth={0}>
           <BarChart
             data={chartData}
-            margin={{ top: isMobile ? 32 : 20, right: isMobile ? 16 : 5, left: -10, bottom: 0 }}
+            margin={{ top: verticalLabels ? 32 : 20, right: isMobile ? 16 : 5, left: -10, bottom: 0 }}
             onClick={onMonthClick ? (state: any) => {
               const month = state?.activeLabel;
               if (!month) return;
@@ -166,7 +172,7 @@ export function CategoryPayeeBarChart({
               tickLine={false}
               axisLine={{ stroke: '#e5e7eb' }}
               tickFormatter={(value: string) => format(parseLocalDate(`${value}-01`), 'MMM yy')}
-              interval={isMobile ? 'preserveStartEnd' : 0}
+              interval="preserveStartEnd"
               angle={isMobile ? -35 : 0}
               textAnchor={isMobile ? 'end' : 'middle'}
               tickMargin={isMobile ? 10 : 0}
@@ -194,8 +200,9 @@ export function CategoryPayeeBarChart({
               <LabelList
                 dataKey="total"
                 position="top"
-                angle={isMobile ? -90 : 0}
-                offset={isMobile ? 14 : 5}
+                angle={verticalLabels ? -90 : 0}
+                offset={isMobile ? 14 : verticalLabels ? 12 : 5}
+                textAnchor="middle"
                 formatter={(value: unknown) =>
                   isMobile
                     ? formatCurrencyAxis(Number(value))
@@ -205,7 +212,7 @@ export function CategoryPayeeBarChart({
                   fill: '#6b7280',
                   fontSize: isMobile ? 10 : 11,
                   fontWeight: 500,
-                  ...(isMobile && { dominantBaseline: 'central' as const }),
+                  ...(verticalLabels && { dominantBaseline: 'central' as const }),
                 }}
               />
             </Bar>
