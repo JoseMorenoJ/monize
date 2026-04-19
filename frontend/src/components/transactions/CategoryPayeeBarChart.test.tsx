@@ -239,7 +239,7 @@ describe('CategoryPayeeBarChart', () => {
       render(<CategoryPayeeBarChart data={buildMonths(37)} isLoading={false} />);
       expect(capturedProps.labelList.angle).toBe(-90);
       expect(capturedProps.labelList.textAnchor).toBe('middle');
-      expect(capturedProps.labelList.offset).toBe(12);
+      expect(capturedProps.labelList.offset).toBe(18);
       // dominantBaseline is nested inside the style object
       expect(capturedProps.labelList.style).toMatchObject({
         dominantBaseline: 'central',
@@ -250,7 +250,7 @@ describe('CategoryPayeeBarChart', () => {
       mockIsMobile.mockReturnValue(true);
       render(<CategoryPayeeBarChart data={buildMonths(3)} isLoading={false} />);
       expect(capturedProps.labelList.angle).toBe(-90);
-      expect(capturedProps.labelList.offset).toBe(14);
+      expect(capturedProps.labelList.offset).toBe(20);
       expect(capturedProps.labelList.style).toMatchObject({
         dominantBaseline: 'central',
       });

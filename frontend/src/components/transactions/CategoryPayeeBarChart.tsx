@@ -201,7 +201,7 @@ export function CategoryPayeeBarChart({
                 dataKey="total"
                 position="top"
                 angle={verticalLabels ? -90 : 0}
-                offset={isMobile ? 14 : verticalLabels ? 12 : 5}
+                offset={isMobile ? 20 : verticalLabels ? 18 : 5}
                 textAnchor="middle"
                 formatter={(value: unknown) =>
                   isMobile
