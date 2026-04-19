@@ -611,31 +611,86 @@ export class TransactionAnalyticsService {
    * Resolve category names plus their descendants to IDs. Shared helper for
    * tool adapters that accept names from LLM input.
    */
+  /**
+   * Resolve LLM-supplied category names into the IDs used by the transaction
+   * filters. Handles three input shapes the model often produces:
+   *   - exact name              -> "Dining Out"
+   *   - parent / child notation -> "Food: Dining Out", "Food / Dining Out",
+   *                                "Food > Dining Out", "Food -> Dining Out"
+   *   - extra whitespace        -> "  food   :  dining out  "
+   *
+   * Returns the matched category IDs (expanded to include descendants so a
+   * filter on "Food" naturally catches its subcategories) plus any names we
+   * could not match. Callers should treat any `unresolved` entry as a hard
+   * failure rather than silently dropping the filter -- otherwise a mistyped
+   * category yields "all transactions" instead of an honest error.
+   */
   async resolveLlmCategoryIds(
     userId: string,
     categoryNames: string[],
-  ): Promise<string[]> {
-    if (categoryNames.length === 0) return [];
+  ): Promise<{ categoryIds: string[]; unresolved: string[] }> {
+    if (categoryNames.length === 0) {
+      return { categoryIds: [], unresolved: [] };
+    }
 
     const allCategories = await this.categoriesRepository.find({
       where: { userId },
-      select: ["id", "name"],
+      select: ["id", "name", "parentId"],
     });
-    const nameMap = new Map(
-      allCategories.map((c) => [c.name.toLowerCase(), c.id]),
-    );
 
-    const matched = categoryNames
-      .map((name) => nameMap.get(name.toLowerCase()))
-      .filter((id): id is string => id !== undefined);
+    const norm = (s: string) => s.toLowerCase().trim().replace(/\s+/g, " ");
+    const SEPARATORS = [":", "/", ">", "->"];
 
-    if (matched.length === 0) return matched;
+    const byId = new Map(allCategories.map((c) => [c.id, c]));
+    const lookup = new Map<string, string>();
+    for (const cat of allCategories) {
+      const childKey = norm(cat.name);
+      if (!lookup.has(childKey)) lookup.set(childKey, cat.id);
 
-    return getAllCategoryIdsWithChildren(
+      if (cat.parentId) {
+        const parent = byId.get(cat.parentId);
+        if (parent) {
+          const parentKey = norm(parent.name);
+          for (const sep of SEPARATORS) {
+            lookup.set(`${parentKey}${sep}${childKey}`, cat.id);
+            lookup.set(`${parentKey} ${sep} ${childKey}`, cat.id);
+          }
+        }
+      }
+    }
+
+    const matched: string[] = [];
+    const unresolved: string[] = [];
+    for (const raw of categoryNames) {
+      const normalized = norm(raw);
+      let id = lookup.get(normalized);
+      if (!id) {
+        // Last-segment fallback: "Food: Dining Out" -> try just "Dining Out"
+        for (const sep of SEPARATORS) {
+          if (normalized.includes(sep)) {
+            const lastSeg = norm(normalized.split(sep).pop() ?? "");
+            const candidate = lastSeg ? lookup.get(lastSeg) : undefined;
+            if (candidate) {
+              id = candidate;
+              break;
+            }
+          }
+        }
+      }
+      if (id) matched.push(id);
+      else unresolved.push(raw);
+    }
+
+    if (matched.length === 0) {
+      return { categoryIds: [], unresolved };
+    }
+
+    const categoryIds = await getAllCategoryIdsWithChildren(
       this.categoriesRepository,
       userId,
       matched,
     );
+    return { categoryIds, unresolved };
   }
 
   /**

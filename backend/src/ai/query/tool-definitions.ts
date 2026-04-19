@@ -22,7 +22,7 @@ export const FINANCIAL_TOOLS: AiToolDefinition[] = [
           type: "array",
           items: { type: "string" },
           description:
-            'Filter by category names (e.g., ["Groceries", "Dining Out"]). Use exact names from the user\'s category list.',
+            'Filter by category names (e.g., ["Groceries", "Dining Out"]). Use exact names from the user\'s category list. To target a subcategory unambiguously, use "Parent: Child" notation (e.g., "Food: Dining Out"). If any name cannot be resolved the tool returns an error -- call get_categories first if unsure.',
         },
         accountNames: {
           type: "array",

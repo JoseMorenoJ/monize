@@ -57,7 +57,9 @@ describe("ToolExecutorService", () => {
         totalOutbound: 0,
         transferCount: 0,
       }),
-      resolveLlmCategoryIds: jest.fn().mockResolvedValue(["cat-1"]),
+      resolveLlmCategoryIds: jest
+        .fn()
+        .mockResolvedValue({ categoryIds: ["cat-1"], unresolved: [] }),
     };
 
     categories = {
@@ -220,6 +222,23 @@ describe("ToolExecutorService", () => {
         userId,
         expect.objectContaining({ categoryIds: ["cat-1"] }),
       );
+    });
+
+    it("query_transactions returns an error when a category name cannot be resolved", async () => {
+      analytics.resolveLlmCategoryIds.mockResolvedValueOnce({
+        categoryIds: [],
+        unresolved: ["Bogus"],
+      });
+
+      const result = await service.execute(userId, "query_transactions", {
+        startDate: "2026-01-01",
+        endDate: "2026-01-31",
+        categoryNames: ["Bogus"],
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.summary).toContain("Bogus");
+      expect(analytics.getLlmQueryTransactions).not.toHaveBeenCalled();
     });
 
     it("get_account_balances delegates to accounts.getLlmBalances", async () => {

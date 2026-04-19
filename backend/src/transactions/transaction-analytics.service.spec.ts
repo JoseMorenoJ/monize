@@ -1541,4 +1541,94 @@ describe("TransactionAnalyticsService", () => {
       });
     });
   });
+
+  describe("resolveLlmCategoryIds", () => {
+    const food = { id: "id-food", name: "Food", parentId: null };
+    const dining = { id: "id-dining", name: "Dining Out", parentId: "id-food" };
+    const groceries = {
+      id: "id-groceries",
+      name: "Groceries",
+      parentId: "id-food",
+    };
+    const rent = { id: "id-rent", name: "Rent", parentId: null };
+    const allCategories = [food, dining, groceries, rent];
+
+    beforeEach(() => {
+      // resolveLlmCategoryIds calls categoriesRepository.find twice:
+      // once for the lookup index, once via getAllCategoryIdsWithChildren.
+      categoriesRepository.find.mockResolvedValue(allCategories);
+    });
+
+    it("returns empty result for empty input", async () => {
+      const result = await service.resolveLlmCategoryIds(userId, []);
+      expect(result).toEqual({ categoryIds: [], unresolved: [] });
+    });
+
+    it("matches an exact category name and expands to descendants", async () => {
+      const result = await service.resolveLlmCategoryIds(userId, ["Food"]);
+      expect(result.unresolved).toEqual([]);
+      // Food expands to itself + Dining Out + Groceries
+      expect(result.categoryIds).toEqual(
+        expect.arrayContaining(["id-food", "id-dining", "id-groceries"]),
+      );
+      expect(result.categoryIds).not.toContain("id-rent");
+    });
+
+    it("matches Parent: Child notation for a subcategory", async () => {
+      const result = await service.resolveLlmCategoryIds(userId, [
+        "Food: Dining Out",
+      ]);
+      expect(result.unresolved).toEqual([]);
+      expect(result.categoryIds).toContain("id-dining");
+      // Should not include sibling subcategories of Food
+      expect(result.categoryIds).not.toContain("id-groceries");
+    });
+
+    it("accepts alternate separators (/, >, ->)", async () => {
+      for (const input of [
+        "Food / Dining Out",
+        "Food > Dining Out",
+        "Food -> Dining Out",
+      ]) {
+        const result = await service.resolveLlmCategoryIds(userId, [input]);
+        expect(result.unresolved).toEqual([]);
+        expect(result.categoryIds).toContain("id-dining");
+      }
+    });
+
+    it("is case-insensitive and tolerates extra whitespace", async () => {
+      const result = await service.resolveLlmCategoryIds(userId, [
+        "  food   :   DINING  out  ",
+      ]);
+      expect(result.unresolved).toEqual([]);
+      expect(result.categoryIds).toContain("id-dining");
+    });
+
+    it("falls back to last segment when full Parent: Child key misses", async () => {
+      // "Mystery: Dining Out" — parent doesn't exist but child does
+      const result = await service.resolveLlmCategoryIds(userId, [
+        "Mystery: Dining Out",
+      ]);
+      expect(result.unresolved).toEqual([]);
+      expect(result.categoryIds).toContain("id-dining");
+    });
+
+    it("reports unknown categories in unresolved", async () => {
+      const result = await service.resolveLlmCategoryIds(userId, [
+        "Bogus",
+        "Food",
+      ]);
+      expect(result.unresolved).toEqual(["Bogus"]);
+      expect(result.categoryIds).toContain("id-food");
+    });
+
+    it("returns no IDs when nothing resolves", async () => {
+      const result = await service.resolveLlmCategoryIds(userId, [
+        "Bogus",
+        "AlsoBogus",
+      ]);
+      expect(result.categoryIds).toEqual([]);
+      expect(result.unresolved).toEqual(["Bogus", "AlsoBogus"]);
+    });
+  });
 });

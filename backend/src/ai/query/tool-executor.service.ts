@@ -181,9 +181,29 @@ export class ToolExecutorService {
       | undefined;
 
     const accountIds = await this.resolveAccountIds(userId, accountNames);
-    const categoryIds = categoryNames
-      ? await this.analyticsService.resolveLlmCategoryIds(userId, categoryNames)
-      : undefined;
+    let categoryIds: string[] | undefined;
+    if (categoryNames && categoryNames.length > 0) {
+      const resolved = await this.analyticsService.resolveLlmCategoryIds(
+        userId,
+        categoryNames,
+      );
+      if (resolved.unresolved.length > 0) {
+        // Fail loudly instead of silently dropping the filter -- otherwise
+        // the user sees "all transactions" when they asked for a specific
+        // (mistyped or subcategory-shaped) category.
+        const list = resolved.unresolved.join(", ");
+        return {
+          data: {
+            error: `Unknown categor${resolved.unresolved.length === 1 ? "y" : "ies"}: ${list}. Call get_categories to look up valid names; subcategories can be referenced as "Parent: Child".`,
+            unresolvedCategoryNames: resolved.unresolved,
+          },
+          summary: `Could not resolve categor${resolved.unresolved.length === 1 ? "y" : "ies"}: ${list}.`,
+          sources: [],
+          isError: true,
+        };
+      }
+      categoryIds = resolved.categoryIds;
+    }
 
     const data = await this.analyticsService.getLlmQueryTransactions(userId, {
       startDate,
