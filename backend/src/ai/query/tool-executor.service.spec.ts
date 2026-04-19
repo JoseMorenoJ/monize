@@ -396,6 +396,17 @@ describe("ToolExecutorService", () => {
       expect(result.sources[0].dateRange).toBe("all dates");
     });
 
+    it("query_investment_transactions defaults groupBy to 'security' when omitted", async () => {
+      await service.execute(userId, "query_investment_transactions", {});
+
+      expect(
+        investmentTransactions.getLlmInvestmentTransactions,
+      ).toHaveBeenCalledWith(
+        userId,
+        expect.objectContaining({ groupBy: "security" }),
+      );
+    });
+
     it("get_transfers delegates to analytics.getTransfersByAccount", async () => {
       const result = await service.execute(userId, "get_transfers", {
         startDate: "2026-01-01",

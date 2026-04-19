@@ -95,7 +95,7 @@ export class McpInvestmentsTools {
             .enum(["account", "date", "security", "action"])
             .optional()
             .describe(
-              "Optional grouping: by account name, transaction date, security symbol, or action type.",
+              "Grouping: by account name, transaction date, security symbol, or action type. Defaults to 'security' when omitted.",
             ),
         },
       },
@@ -115,7 +115,9 @@ export class McpInvestmentsTools {
                 accountIds: args.accountIds,
                 symbols: args.symbols,
                 actions: args.actions,
-                groupBy: args.groupBy as LlmInvestmentTxGroupBy | undefined,
+                groupBy:
+                  (args.groupBy as LlmInvestmentTxGroupBy | undefined) ??
+                  "security",
               },
             );
           return toolResult(result);

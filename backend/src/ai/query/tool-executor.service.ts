@@ -399,7 +399,8 @@ export class ToolExecutorService {
     const accountNames = input.accountNames as string[] | undefined;
     const symbols = input.symbols as string[] | undefined;
     const actions = input.actions as InvestmentAction[] | undefined;
-    const groupBy = input.groupBy as LlmInvestmentTxGroupBy | undefined;
+    const groupBy =
+      (input.groupBy as LlmInvestmentTxGroupBy | undefined) ?? "security";
 
     const accountIds = await this.resolveAccountIds(userId, accountNames);
 

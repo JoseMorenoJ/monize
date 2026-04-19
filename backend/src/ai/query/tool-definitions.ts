@@ -240,7 +240,7 @@ export const FINANCIAL_TOOLS: AiToolDefinition[] = [
           type: "string",
           enum: ["account", "date", "security", "action"],
           description:
-            "Optional: group the results by account name, transaction date, security symbol, or action type.",
+            "Group the results by account name, transaction date, security symbol, or action type. Defaults to 'security' when omitted.",
         },
       },
     },
