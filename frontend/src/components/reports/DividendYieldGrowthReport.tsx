@@ -162,35 +162,41 @@ export function DividendYieldGrowthReport() {
     const cutoff = subYears(new Date(), 1);
     const recentTx = transactions.filter((tx) => parseLocalDate(tx.transactionDate) >= cutoff);
 
-    // Aggregate dividends by security
+    // Aggregate dividends by security (skip transactions without a security)
     const dividendMap = new Map<string, { total: number; dates: Date[] }>();
     recentTx.forEach((tx) => {
-      const key = tx.securityId || 'unknown';
-      let existing = dividendMap.get(key);
+      if (!tx.securityId) return;
+      let existing = dividendMap.get(tx.securityId);
       if (!existing) {
         existing = { total: 0, dates: [] };
-        dividendMap.set(key, existing);
+        dividendMap.set(tx.securityId, existing);
       }
       existing.total += getTxAmount(tx);
       existing.dates.push(parseLocalDate(tx.transactionDate));
     });
 
-    // Map holdings to yields
-    const holdingMap = new Map<string, HoldingWithMarketValue>();
-    holdings.forEach((h) => holdingMap.set(h.securityId, h));
+    // Aggregate market value across all accounts holding each security
+    const holdingMap = new Map<string, { symbol: string; name: string; marketValue: number }>();
+    holdings.forEach((h) => {
+      const mv = convertToDefault(h.marketValue ?? 0, h.currencyCode);
+      const existing = holdingMap.get(h.securityId);
+      if (existing) {
+        existing.marketValue += mv;
+      } else {
+        holdingMap.set(h.securityId, { symbol: h.symbol, name: h.name, marketValue: mv });
+      }
+    });
 
     const results: SecurityYield[] = [];
     dividendMap.forEach((data, secId) => {
       const holding = holdingMap.get(secId);
-      const symbol = holding?.symbol || 'Unknown';
-      const name = holding?.name || 'Unknown Security';
-      const mv = holding ? convertToDefault(holding.marketValue ?? 0, holding.currencyCode) : 0;
+      if (!holding) return;
       results.push({
-        symbol,
-        name,
+        symbol: holding.symbol,
+        name: holding.name,
         trailing12mDividends: data.total,
-        marketValue: mv,
-        yield: mv > 0 ? (data.total / mv) * 100 : 0,
+        marketValue: holding.marketValue,
+        yield: holding.marketValue > 0 ? (data.total / holding.marketValue) * 100 : 0,
         frequency: detectFrequency(data.dates),
       });
     });
