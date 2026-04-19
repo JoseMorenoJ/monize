@@ -216,4 +216,125 @@ describe('DividendYieldGrowthReport', () => {
       expect(screen.getByText('Dividend Frequency Analysis')).toBeInTheDocument();
     });
   });
+
+  it('aggregates market value across accounts holding the same security', async () => {
+    // Only return transactions for DIVIDEND action so numbers are deterministic
+    mockGetTransactions.mockImplementation(async ({ action }: { action: string }) => {
+      if (action === 'DIVIDEND') {
+        return {
+          data: [
+            {
+              id: 'tx-1',
+              transactionDate: '2025-09-15',
+              action: 'DIVIDEND',
+              totalAmount: 100,
+              accountId: 'acc-1',
+              securityId: 's-1',
+              security: { symbol: 'VFV', name: 'Vanguard S&P 500' },
+            },
+          ],
+          pagination: { hasMore: false },
+        };
+      }
+      return { data: [], pagination: { hasMore: false } };
+    });
+    mockGetInvestmentAccounts.mockResolvedValue([]);
+    mockGetPortfolioSummary.mockResolvedValue({
+      holdings: [
+        { ...mockHoldings[0], id: 'h-1', accountId: 'acc-1', marketValue: 5000 },
+        { ...mockHoldings[0], id: 'h-2', accountId: 'acc-2', marketValue: 5000 },
+      ],
+    });
+    render(<DividendYieldGrowthReport />);
+    await waitFor(() => {
+      expect(screen.getByText('Per-Security Dividend Yield (Trailing 12 Months)')).toBeInTheDocument();
+    });
+    // Market value appears in both the Portfolio Value summary card and the table row
+    expect(screen.getAllByText('$10000.00').length).toBeGreaterThanOrEqual(2);
+    // Yield = 100 / 10000 * 100 = 1.00%. Without aggregation it would be 2.00%.
+    expect(screen.getAllByText('1.00%').length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText('2.00%')).not.toBeInTheDocument();
+  });
+
+  it('excludes dividends for securities with no matching holding', async () => {
+    mockGetTransactions.mockImplementation(async ({ action }: { action: string }) => {
+      if (action === 'DIVIDEND') {
+        return {
+          data: [
+            {
+              id: 'tx-ghost',
+              transactionDate: '2025-09-15',
+              action: 'DIVIDEND',
+              totalAmount: 50,
+              accountId: 'acc-1',
+              securityId: 's-ghost',
+              security: null,
+            },
+            {
+              id: 'tx-2',
+              transactionDate: '2025-09-20',
+              action: 'DIVIDEND',
+              totalAmount: 100,
+              accountId: 'acc-1',
+              securityId: 's-1',
+              security: { symbol: 'VFV', name: 'Vanguard S&P 500' },
+            },
+          ],
+          pagination: { hasMore: false },
+        };
+      }
+      return { data: [], pagination: { hasMore: false } };
+    });
+    mockGetInvestmentAccounts.mockResolvedValue([]);
+    mockGetPortfolioSummary.mockResolvedValue({ holdings: mockHoldings });
+    render(<DividendYieldGrowthReport />);
+    await waitFor(() => {
+      expect(screen.getByText('Per-Security Dividend Yield (Trailing 12 Months)')).toBeInTheDocument();
+    });
+    expect(screen.getByText('VFV')).toBeInTheDocument();
+    // The unknown-security fallback name would only appear if an unknown row rendered
+    expect(screen.queryByText('Unknown Security')).not.toBeInTheDocument();
+    // Only the header row and a single VFV data row should be present
+    expect(screen.getAllByRole('row')).toHaveLength(2);
+  });
+
+  it('excludes dividend transactions with no securityId', async () => {
+    mockGetTransactions.mockImplementation(async ({ action }: { action: string }) => {
+      if (action === 'DIVIDEND') {
+        return {
+          data: [
+            {
+              id: 'tx-no-sec',
+              transactionDate: '2025-09-15',
+              action: 'DIVIDEND',
+              totalAmount: 25,
+              accountId: 'acc-1',
+              securityId: null,
+              security: null,
+            },
+            {
+              id: 'tx-2',
+              transactionDate: '2025-09-20',
+              action: 'DIVIDEND',
+              totalAmount: 100,
+              accountId: 'acc-1',
+              securityId: 's-1',
+              security: { symbol: 'VFV', name: 'Vanguard S&P 500' },
+            },
+          ],
+          pagination: { hasMore: false },
+        };
+      }
+      return { data: [], pagination: { hasMore: false } };
+    });
+    mockGetInvestmentAccounts.mockResolvedValue([]);
+    mockGetPortfolioSummary.mockResolvedValue({ holdings: mockHoldings });
+    render(<DividendYieldGrowthReport />);
+    await waitFor(() => {
+      expect(screen.getByText('Per-Security Dividend Yield (Trailing 12 Months)')).toBeInTheDocument();
+    });
+    expect(screen.getByText('VFV')).toBeInTheDocument();
+    expect(screen.queryByText('Unknown Security')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('row')).toHaveLength(2);
+  });
 });
