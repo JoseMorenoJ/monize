@@ -118,9 +118,25 @@ function CategoriesContent() {
 
   const filteredCategories = useMemo(() => {
     if (!searchQuery) return typeFilteredCategories;
-    return typeFilteredCategories.filter((c) =>
-      c.name.toLowerCase().includes(searchQuery.toLowerCase())
+    const query = searchQuery.toLowerCase();
+    // Match on any category whose own name matches. Then also include the
+    // parent of any matched subcategory so the tree row renders, and include
+    // every subcategory of a matched parent so the user can see the whole
+    // branch they were searching for.
+    const byId = new Map(typeFilteredCategories.map((c) => [c.id, c]));
+    const matchedIds = new Set(
+      typeFilteredCategories
+        .filter((c) => c.name.toLowerCase().includes(query))
+        .map((c) => c.id),
     );
+    for (const id of Array.from(matchedIds)) {
+      const cat = byId.get(id);
+      if (cat?.parentId) matchedIds.add(cat.parentId);
+    }
+    for (const c of typeFilteredCategories) {
+      if (c.parentId && matchedIds.has(c.parentId)) matchedIds.add(c.id);
+    }
+    return typeFilteredCategories.filter((c) => matchedIds.has(c.id));
   }, [typeFilteredCategories, searchQuery]);
 
   const handleSort = useCallback((field: SortField) => {

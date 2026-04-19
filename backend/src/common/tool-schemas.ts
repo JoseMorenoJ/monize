@@ -60,3 +60,73 @@ export const positiveIntSchema = (min: number, max: number) =>
       typeof val === "string" && /^-?\d+$/.test(val) ? Number(val) : val,
     z.number().int().min(min).max(max),
   );
+
+/**
+ * Defaults applied when an LLM omits parameters that would otherwise be
+ * required. Centralized here so the AI Assistant and the MCP server
+ * fall back to the same values.
+ */
+export const DEFAULT_LOOKBACK_DAYS = 30;
+export const DEFAULT_TOP_N = 10;
+
+/**
+ * Format a local Date as YYYY-MM-DD using local-time components.
+ * Defaults work with calendar dates from the server's perspective,
+ * so local components avoid an off-by-one shift that UTC formatting
+ * would introduce in non-UTC timezones.
+ */
+function localYMD(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+/**
+ * Return a {startDate, endDate} pair covering the last `lookbackDays`
+ * days (inclusive of today). Used when the model omits a date range.
+ */
+export function getDefaultDateRange(
+  lookbackDays: number = DEFAULT_LOOKBACK_DAYS,
+): { startDate: string; endDate: string } {
+  const end = new Date();
+  const start = new Date();
+  start.setDate(start.getDate() - lookbackDays);
+  return { startDate: localYMD(start), endDate: localYMD(end) };
+}
+
+/**
+ * Return the four dates needed to compare the previous full month
+ * against the current month-to-date. Used when the model omits any
+ * period in compare_periods -- treated as all-or-nothing because
+ * mixing user-supplied dates with computed ones would be surprising.
+ */
+export function getDefaultComparePeriods(): {
+  period1Start: string;
+  period1End: string;
+  period2Start: string;
+  period2End: string;
+} {
+  const now = new Date();
+  const currentStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const prevStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  // Day 0 of the current month = last day of the previous month
+  const prevEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+  return {
+    period1Start: localYMD(prevStart),
+    period1End: localYMD(prevEnd),
+    period2Start: localYMD(currentStart),
+    period2End: localYMD(now),
+  };
+}
+
+/**
+ * Return the previous complete calendar month in YYYY-MM format.
+ * Used as the default for monthly_comparison so reports run against
+ * a month that has already closed.
+ */
+export function getDefaultPreviousMonth(): string {
+  const now = new Date();
+  const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  return `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, "0")}`;
+}

@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { AccountsService } from "../../accounts/accounts.service";
+import { AccountType } from "../../accounts/entities/account.entity";
 import {
   UserContextResolver,
   requireScope,
@@ -112,6 +113,19 @@ export class McpAccountsTools {
             .describe(
               "Optional: filter to specific account names. Omit to cover all accounts.",
             ),
+          status: z
+            .enum(["open", "closed", "all"])
+            .optional()
+            .describe(
+              "Which accounts to include by status. Defaults to 'open'.",
+            ),
+          accountTypes: z
+            .array(z.nativeEnum(AccountType))
+            .max(10)
+            .optional()
+            .describe(
+              "Optional: filter to specific account types (CHEQUING, SAVINGS, CREDIT_CARD, LOAN, MORTGAGE, INVESTMENT, CASH, LINE_OF_CREDIT, ASSET, OTHER). Omit to include all types.",
+            ),
         },
       },
       async (args, extra) => {
@@ -121,9 +135,12 @@ export class McpAccountsTools {
         if (check.error) return check.result;
 
         try {
+          // Service owns the "open" default so it stays in one place.
           const data = await this.accountsService.getLlmBalances(
             ctx.userId,
             args.accountNames,
+            args.status,
+            args.accountTypes,
           );
           return toolResult(data);
         } catch (err: unknown) {

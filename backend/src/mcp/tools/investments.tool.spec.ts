@@ -159,7 +159,7 @@ describe("McpInvestmentsTools", () => {
       expect(parsed.groups[0].key).toBe("AAPL");
     });
 
-    it("passes undefined filters when no args provided", async () => {
+    it("defaults groupBy to 'security' and leaves other filters undefined when no args provided", async () => {
       resolve.mockReturnValue({ userId: "u1", scopes: "read" });
       investmentTransactionsService.getLlmInvestmentTransactions.mockResolvedValue(
         {
@@ -185,7 +185,7 @@ describe("McpInvestmentsTools", () => {
         accountIds: undefined,
         symbols: undefined,
         actions: undefined,
-        groupBy: undefined,
+        groupBy: "security",
       });
     });
 

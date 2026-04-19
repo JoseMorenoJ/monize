@@ -1,8 +1,8 @@
 import { FINANCIAL_TOOLS } from "./tool-definitions";
 
 describe("FINANCIAL_TOOLS", () => {
-  it("defines exactly 12 tools", () => {
-    expect(FINANCIAL_TOOLS).toHaveLength(12);
+  it("defines exactly 13 tools", () => {
+    expect(FINANCIAL_TOOLS).toHaveLength(13);
   });
 
   it("has unique tool names", () => {
@@ -13,6 +13,7 @@ describe("FINANCIAL_TOOLS", () => {
   const expectedTools = [
     "query_transactions",
     "get_account_balances",
+    "get_categories",
     "get_spending_by_category",
     "get_income_summary",
     "get_net_worth_history",
@@ -34,11 +35,11 @@ describe("FINANCIAL_TOOLS", () => {
   });
 
   describe("query_transactions", () => {
-    it("requires startDate and endDate", () => {
+    it("has no required fields (dates default to last 30 days)", () => {
       const tool = FINANCIAL_TOOLS.find(
         (t) => t.name === "query_transactions",
       )!;
-      expect(tool.inputSchema.required).toEqual(["startDate", "endDate"]);
+      expect(tool.inputSchema.required).toBeUndefined();
     });
 
     it("supports groupBy with valid enum values", () => {
@@ -77,14 +78,74 @@ describe("FINANCIAL_TOOLS", () => {
       )!;
       expect(tool.inputSchema.required).toBeUndefined();
     });
+
+    it("supports status filter with open/closed/all", () => {
+      const tool = FINANCIAL_TOOLS.find(
+        (t) => t.name === "get_account_balances",
+      )!;
+      const props = tool.inputSchema.properties as Record<
+        string,
+        Record<string, unknown>
+      >;
+      expect(props.status.enum).toEqual(["open", "closed", "all"]);
+    });
+
+    it("exposes every AccountType in the accountTypes enum", () => {
+      const tool = FINANCIAL_TOOLS.find(
+        (t) => t.name === "get_account_balances",
+      )!;
+      const props = tool.inputSchema.properties as Record<
+        string,
+        Record<string, unknown>
+      >;
+      const items = props.accountTypes.items as Record<string, unknown>;
+      expect(items.enum).toEqual([
+        "CHEQUING",
+        "SAVINGS",
+        "CREDIT_CARD",
+        "LOAN",
+        "MORTGAGE",
+        "INVESTMENT",
+        "CASH",
+        "LINE_OF_CREDIT",
+        "ASSET",
+        "OTHER",
+      ]);
+    });
+  });
+
+  describe("get_categories", () => {
+    it("has no required fields (type defaults to all)", () => {
+      const tool = FINANCIAL_TOOLS.find((t) => t.name === "get_categories")!;
+      expect(tool.inputSchema.required).toBeUndefined();
+    });
+
+    it("supports type filter with expense/income/all", () => {
+      const tool = FINANCIAL_TOOLS.find((t) => t.name === "get_categories")!;
+      const props = tool.inputSchema.properties as Record<
+        string,
+        Record<string, unknown>
+      >;
+      expect(props.type.enum).toEqual(["expense", "income", "all"]);
+    });
+
+    it("exposes an optional search parameter", () => {
+      const tool = FINANCIAL_TOOLS.find((t) => t.name === "get_categories")!;
+      const props = tool.inputSchema.properties as Record<
+        string,
+        Record<string, unknown>
+      >;
+      expect(props.search).toBeDefined();
+      expect(props.search.type).toBe("string");
+    });
   });
 
   describe("get_spending_by_category", () => {
-    it("requires startDate and endDate", () => {
+    it("has no required fields (dates default to last 30 days, topN to 10)", () => {
       const tool = FINANCIAL_TOOLS.find(
         (t) => t.name === "get_spending_by_category",
       )!;
-      expect(tool.inputSchema.required).toEqual(["startDate", "endDate"]);
+      expect(tool.inputSchema.required).toBeUndefined();
     });
 
     it("supports topN parameter", () => {
@@ -122,14 +183,9 @@ describe("FINANCIAL_TOOLS", () => {
   });
 
   describe("compare_periods", () => {
-    it("requires all four period boundary dates", () => {
+    it("has no required fields (defaults to previous month vs current month-to-date)", () => {
       const tool = FINANCIAL_TOOLS.find((t) => t.name === "compare_periods")!;
-      expect(tool.inputSchema.required).toEqual([
-        "period1Start",
-        "period1End",
-        "period2Start",
-        "period2End",
-      ]);
+      expect(tool.inputSchema.required).toBeUndefined();
     });
 
     it("supports groupBy with category and payee", () => {
@@ -225,9 +281,9 @@ describe("FINANCIAL_TOOLS", () => {
   });
 
   describe("get_transfers", () => {
-    it("requires startDate and endDate", () => {
+    it("has no required fields (dates default to last 30 days)", () => {
       const tool = FINANCIAL_TOOLS.find((t) => t.name === "get_transfers")!;
-      expect(tool.inputSchema.required).toEqual(["startDate", "endDate"]);
+      expect(tool.inputSchema.required).toBeUndefined();
     });
 
     it("supports optional accountNames filter", () => {

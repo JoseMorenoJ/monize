@@ -18,12 +18,22 @@ export class McpCategoriesTools {
     server.registerTool(
       "get_categories",
       {
-        description: "Get full category tree or filter by type",
+        description:
+          "List the user's categories with their hierarchy (parent names) and transaction counts. Optionally filter by type or search by name. Returns the same shape as the AI Assistant's get_categories tool.",
         inputSchema: {
           type: z
-            .enum(["income", "expense"])
+            .enum(["expense", "income", "all"])
             .optional()
-            .describe("Filter by income or expense categories"),
+            .describe(
+              "Filter by category type. Defaults to 'all' when omitted.",
+            ),
+          search: z
+            .string()
+            .max(100)
+            .optional()
+            .describe(
+              "Optional case-insensitive substring match on category name. Matched subcategories' parents are included so hierarchy stays visible.",
+            ),
         },
       },
       async (args, extra) => {
@@ -33,15 +43,11 @@ export class McpCategoriesTools {
         if (check.error) return check.result;
 
         try {
-          if (args.type) {
-            const categories = await this.categoriesService.findByType(
-              ctx.userId,
-              args.type === "income",
-            );
-            return toolResult(categories);
-          }
-          const tree = await this.categoriesService.getTree(ctx.userId);
-          return toolResult(tree);
+          const data = await this.categoriesService.getLlmCategories(
+            ctx.userId,
+            { type: args.type, search: args.search },
+          );
+          return toolResult(data);
         } catch (err: unknown) {
           return safeToolError(err);
         }

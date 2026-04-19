@@ -594,6 +594,112 @@ describe("CategoriesService", () => {
     });
   });
 
+  describe("getLlmCategories", () => {
+    const expense1 = {
+      ...mockCategory,
+      id: "c1",
+      name: "Food",
+      parentId: null,
+      transactionCount: 5,
+    } as any;
+    const expense2 = {
+      ...mockCategory,
+      id: "c2",
+      name: "Groceries",
+      parentId: "c1",
+      transactionCount: 3,
+    } as any;
+    const expense3 = {
+      ...mockCategory,
+      id: "c3",
+      name: "Rent",
+      parentId: null,
+      transactionCount: 1,
+    } as any;
+    const income1 = {
+      ...mockCategory,
+      id: "c4",
+      name: "Salary",
+      parentId: null,
+      isIncome: true,
+      transactionCount: 2,
+    } as any;
+
+    const allCategories = [expense1, expense2, expense3, income1];
+
+    const stubFindAll = () => {
+      jest.spyOn(service, "findAll").mockResolvedValue(allCategories as any);
+    };
+
+    it("defaults to type='all' and no search", async () => {
+      stubFindAll();
+
+      const result = await service.getLlmCategories("user-1");
+
+      expect(result.totalCount).toBe(4);
+      const names = result.categories.map((c) => c.name);
+      expect(names).toContain("Food");
+      expect(names).toContain("Groceries");
+      expect(names).toContain("Rent");
+      expect(names).toContain("Salary");
+    });
+
+    it("includes parentName for subcategories", async () => {
+      stubFindAll();
+
+      const result = await service.getLlmCategories("user-1");
+
+      const groceries = result.categories.find((c) => c.name === "Groceries");
+      expect(groceries?.parentName).toBe("Food");
+      const food = result.categories.find((c) => c.name === "Food");
+      expect(food?.parentName).toBeNull();
+    });
+
+    it("filters by expense type", async () => {
+      stubFindAll();
+
+      const result = await service.getLlmCategories("user-1", {
+        type: "expense",
+      });
+
+      expect(result.totalCount).toBe(3);
+      expect(result.categories.every((c) => !c.isIncome)).toBe(true);
+    });
+
+    it("filters by income type", async () => {
+      stubFindAll();
+
+      const result = await service.getLlmCategories("user-1", {
+        type: "income",
+      });
+
+      expect(result.totalCount).toBe(1);
+      expect(result.categories[0].name).toBe("Salary");
+    });
+
+    it("search includes matched subcategory's parent", async () => {
+      stubFindAll();
+
+      const result = await service.getLlmCategories("user-1", {
+        search: "groceries",
+      });
+
+      const names = result.categories.map((c) => c.name);
+      expect(names).toEqual(expect.arrayContaining(["Food", "Groceries"]));
+      expect(names).not.toContain("Rent");
+    });
+
+    it("search is case-insensitive", async () => {
+      stubFindAll();
+
+      const result = await service.getLlmCategories("user-1", {
+        search: "RENT",
+      });
+
+      expect(result.categories.map((c) => c.name)).toEqual(["Rent"]);
+    });
+  });
+
   describe("findOne", () => {
     it("returns category when found and belongs to user", async () => {
       categoriesRepository.findOne.mockResolvedValue(mockCategory);

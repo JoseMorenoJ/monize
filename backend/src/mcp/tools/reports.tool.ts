@@ -9,6 +9,10 @@ import {
   toolError,
   safeToolError,
 } from "../mcp-context";
+import {
+  getDefaultDateRange,
+  getDefaultPreviousMonth,
+} from "../../common/tool-schemas";
 
 @Injectable()
 export class McpReportsTools {
@@ -29,8 +33,16 @@ export class McpReportsTools {
               "income_by_source",
             ])
             .describe("Report type"),
-          startDate: z.string().max(10).describe("Start date (YYYY-MM-DD)"),
-          endDate: z.string().max(10).describe("End date (YYYY-MM-DD)"),
+          startDate: z
+            .string()
+            .max(10)
+            .optional()
+            .describe("Start date (YYYY-MM-DD). Defaults to 30 days ago."),
+          endDate: z
+            .string()
+            .max(10)
+            .optional()
+            .describe("End date (YYYY-MM-DD). Defaults to today."),
         },
       },
       async (args, extra) => {
@@ -40,41 +52,44 @@ export class McpReportsTools {
         if (check.error) return check.result;
 
         try {
+          const defaults = getDefaultDateRange();
+          const startDate = args.startDate ?? defaults.startDate;
+          const endDate = args.endDate ?? defaults.endDate;
           let data: any;
           switch (args.type) {
             case "spending_by_category":
               data = await this.reportsService.getSpendingByCategory(
                 ctx.userId,
-                args.startDate,
-                args.endDate,
+                startDate,
+                endDate,
               );
               break;
             case "spending_by_payee":
               data = await this.reportsService.getSpendingByPayee(
                 ctx.userId,
-                args.startDate,
-                args.endDate,
+                startDate,
+                endDate,
               );
               break;
             case "income_vs_expenses":
               data = await this.reportsService.getIncomeVsExpenses(
                 ctx.userId,
-                args.startDate,
-                args.endDate,
+                startDate,
+                endDate,
               );
               break;
             case "monthly_trend":
               data = await this.reportsService.getMonthlySpendingTrend(
                 ctx.userId,
-                args.startDate,
-                args.endDate,
+                startDate,
+                endDate,
               );
               break;
             case "income_by_source":
               data = await this.reportsService.getIncomeBySource(
                 ctx.userId,
-                args.startDate,
-                args.endDate,
+                startDate,
+                endDate,
               );
               break;
           }
@@ -94,7 +109,10 @@ export class McpReportsTools {
           month: z
             .string()
             .max(7)
-            .describe("Month to compare in YYYY-MM format (e.g., 2026-01)"),
+            .optional()
+            .describe(
+              "Month to compare in YYYY-MM format (e.g., 2026-01). Defaults to the previous complete month.",
+            ),
         },
       },
       async (args, extra) => {
@@ -106,7 +124,7 @@ export class McpReportsTools {
         try {
           const data = await this.reportsService.getMonthlyComparison(
             ctx.userId,
-            args.month,
+            args.month ?? getDefaultPreviousMonth(),
           );
           return toolResult(data);
         } catch (err: unknown) {

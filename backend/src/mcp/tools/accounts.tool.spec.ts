@@ -33,7 +33,7 @@ describe("McpAccountsTools", () => {
   });
 
   describe("get_account_balances", () => {
-    it("delegates to accountsService.getLlmBalances", async () => {
+    it("delegates to accountsService.getLlmBalances (service applies 'open' default)", async () => {
       resolve.mockReturnValue({ userId: "u1", scopes: "read" });
       accountsService.getLlmBalances.mockResolvedValue({
         accounts: [],
@@ -48,11 +48,37 @@ describe("McpAccountsTools", () => {
         { sessionId: "s1" },
       );
 
-      expect(accountsService.getLlmBalances).toHaveBeenCalledWith("u1", [
-        "Checking",
-      ]);
+      expect(accountsService.getLlmBalances).toHaveBeenCalledWith(
+        "u1",
+        ["Checking"],
+        undefined,
+        undefined,
+      );
       const parsed = JSON.parse(result.content[0].text);
       expect(parsed.netWorth).toBe(1000);
+    });
+
+    it("passes status and accountTypes filters through", async () => {
+      resolve.mockReturnValue({ userId: "u1", scopes: "read" });
+      accountsService.getLlmBalances.mockResolvedValue({
+        accounts: [],
+        totalAssets: 0,
+        totalLiabilities: 0,
+        netWorth: 0,
+        totalAccounts: 0,
+      });
+
+      await handlers["get_account_balances"](
+        { status: "closed", accountTypes: ["CHEQUING", "SAVINGS"] },
+        { sessionId: "s1" },
+      );
+
+      expect(accountsService.getLlmBalances).toHaveBeenCalledWith(
+        "u1",
+        undefined,
+        "closed",
+        ["CHEQUING", "SAVINGS"],
+      );
     });
   });
 

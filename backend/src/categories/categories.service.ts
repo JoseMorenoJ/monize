@@ -214,6 +214,83 @@ export class CategoriesService {
     return this.resolveEffectiveColors(categories);
   }
 
+  /**
+   * LLM-friendly category listing: returns a flat list with parent names so
+   * the model can understand hierarchy without parsing nested JSON. Used by
+   * both the AI Assistant and the MCP server to keep response shapes in sync.
+   *
+   * - `type` narrows to expense or income categories; 'all' (default)
+   *   returns both.
+   * - `search` is a case-insensitive substring match on category name. If the
+   *   matching category is a subcategory, its parent is included so the LLM
+   *   sees the hierarchy context.
+   */
+  async getLlmCategories(
+    userId: string,
+    options: {
+      type?: "expense" | "income" | "all";
+      search?: string;
+    } = {},
+  ): Promise<{
+    categories: Array<{
+      id: string;
+      name: string;
+      parentName: string | null;
+      isIncome: boolean;
+      transactionCount: number;
+    }>;
+    totalCount: number;
+  }> {
+    const type = options.type ?? "all";
+    const search = options.search?.trim().toLowerCase();
+
+    const all = await this.findAll(userId, false);
+    const byId = new Map(all.map((c) => [c.id, c]));
+
+    let filtered = all;
+    if (type !== "all") {
+      const wantIncome = type === "income";
+      filtered = filtered.filter((c) => c.isIncome === wantIncome);
+    }
+
+    if (search) {
+      const matchIds = new Set(
+        filtered
+          .filter((c) => c.name.toLowerCase().includes(search))
+          .map((c) => c.id),
+      );
+      // Include parents of matched subcategories so hierarchy stays intact.
+      for (const id of Array.from(matchIds)) {
+        const cat = byId.get(id);
+        if (cat?.parentId) matchIds.add(cat.parentId);
+      }
+      filtered = filtered.filter((c) => matchIds.has(c.id));
+    }
+
+    const categories = filtered
+      .map((c) => ({
+        id: c.id,
+        name: c.name,
+        parentName: c.parentId ? (byId.get(c.parentId)?.name ?? null) : null,
+        isIncome: c.isIncome,
+        transactionCount: c.transactionCount,
+      }))
+      .sort((a, b) => {
+        // Parents first, then children, both alphabetized
+        const aKey = a.parentName ?? a.name;
+        const bKey = b.parentName ?? b.name;
+        if (aKey !== bKey) return aKey.localeCompare(bKey);
+        if (a.parentName === null && b.parentName !== null) return -1;
+        if (a.parentName !== null && b.parentName === null) return 1;
+        return a.name.localeCompare(b.name);
+      });
+
+    return {
+      categories,
+      totalCount: categories.length,
+    };
+  }
+
   async findOne(
     userId: string,
     id: string,

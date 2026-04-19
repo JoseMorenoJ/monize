@@ -1,5 +1,7 @@
 import { Injectable, Inject, forwardRef, Logger } from "@nestjs/common";
 import { AccountsService } from "../../accounts/accounts.service";
+import { AccountType } from "../../accounts/entities/account.entity";
+import { CategoriesService } from "../../categories/categories.service";
 import { TransactionAnalyticsService } from "../../transactions/transaction-analytics.service";
 import { NetWorthService } from "../../net-worth/net-worth.service";
 import { BudgetReportsService } from "../../budgets/budget-reports.service";
@@ -12,6 +14,11 @@ import { InvestmentAction } from "../../securities/entities/investment-transacti
 import { validateToolInput } from "./tool-input-schemas";
 import { executeCalculation, CalculateInput } from "./calculate-tool";
 import { sanitizePromptValue } from "../../common/sanitization.util";
+import {
+  DEFAULT_TOP_N,
+  getDefaultComparePeriods,
+  getDefaultDateRange,
+} from "../../common/tool-schemas";
 
 interface ToolResult {
   data: unknown;
@@ -27,6 +34,8 @@ export class ToolExecutorService {
   constructor(
     @Inject(forwardRef(() => AccountsService))
     private readonly accountsService: AccountsService,
+    @Inject(forwardRef(() => CategoriesService))
+    private readonly categoriesService: CategoriesService,
     @Inject(forwardRef(() => TransactionAnalyticsService))
     private readonly analyticsService: TransactionAnalyticsService,
     @Inject(forwardRef(() => NetWorthService))
@@ -70,6 +79,9 @@ export class ToolExecutorService {
           break;
         case "get_account_balances":
           result = await this.getAccountBalances(userId, validatedInput);
+          break;
+        case "get_categories":
+          result = await this.getCategories(userId, validatedInput);
           break;
         case "get_spending_by_category":
           result = await this.getSpendingByCategory(userId, validatedInput);
@@ -149,8 +161,9 @@ export class ToolExecutorService {
     userId: string,
     input: Record<string, unknown>,
   ): Promise<ToolResult> {
-    const startDate = input.startDate as string;
-    const endDate = input.endDate as string;
+    const defaults = getDefaultDateRange();
+    const startDate = (input.startDate as string) ?? defaults.startDate;
+    const endDate = (input.endDate as string) ?? defaults.endDate;
     const categoryNames = input.categoryNames as string[] | undefined;
     const accountNames = input.accountNames as string[] | undefined;
     const searchText = input.searchText as string | undefined;
@@ -168,9 +181,29 @@ export class ToolExecutorService {
       | undefined;
 
     const accountIds = await this.resolveAccountIds(userId, accountNames);
-    const categoryIds = categoryNames
-      ? await this.analyticsService.resolveLlmCategoryIds(userId, categoryNames)
-      : undefined;
+    let categoryIds: string[] | undefined;
+    if (categoryNames && categoryNames.length > 0) {
+      const resolved = await this.analyticsService.resolveLlmCategoryIds(
+        userId,
+        categoryNames,
+      );
+      if (resolved.unresolved.length > 0) {
+        // Fail loudly instead of silently dropping the filter -- otherwise
+        // the user sees "all transactions" when they asked for a specific
+        // (mistyped or subcategory-shaped) category.
+        const list = resolved.unresolved.join(", ");
+        return {
+          data: {
+            error: `Unknown categor${resolved.unresolved.length === 1 ? "y" : "ies"}: ${list}. Call get_categories to look up valid names; subcategories can be referenced as "Parent: Child".`,
+            unresolvedCategoryNames: resolved.unresolved,
+          },
+          summary: `Could not resolve categor${resolved.unresolved.length === 1 ? "y" : "ies"}: ${list}.`,
+          sources: [],
+          isError: true,
+        };
+      }
+      categoryIds = resolved.categoryIds;
+    }
 
     const data = await this.analyticsService.getLlmQueryTransactions(userId, {
       startDate,
@@ -200,11 +233,26 @@ export class ToolExecutorService {
     input: Record<string, unknown>,
   ): Promise<ToolResult> {
     const accountNames = input.accountNames as string[] | undefined;
+    const status =
+      (input.status as "open" | "closed" | "all" | undefined) ?? "open";
+    const accountTypes = input.accountTypes as AccountType[] | undefined;
 
     const data = await this.accountsService.getLlmBalances(
       userId,
       accountNames,
+      status,
+      accountTypes,
     );
+
+    const filterDescParts: string[] = [];
+    if (accountNames?.length) filterDescParts.push(accountNames.join(", "));
+    if (accountTypes?.length) filterDescParts.push(accountTypes.join(", "));
+    const descriptionBase =
+      filterDescParts.length > 0
+        ? `Balances for ${filterDescParts.join("; ")}`
+        : "All account balances";
+    const description =
+      status === "open" ? descriptionBase : `${descriptionBase} (${status})`;
 
     return {
       data,
@@ -212,11 +260,39 @@ export class ToolExecutorService {
       sources: [
         {
           type: "accounts",
-          description: accountNames
-            ? `Balances for ${accountNames.join(", ")}`
-            : "All account balances",
+          description,
         },
       ],
+    };
+  }
+
+  private async getCategories(
+    userId: string,
+    input: Record<string, unknown>,
+  ): Promise<ToolResult> {
+    const type = input.type as "expense" | "income" | "all" | undefined;
+    const search = input.search as string | undefined;
+
+    const data = await this.categoriesService.getLlmCategories(userId, {
+      type,
+      search,
+    });
+
+    const effectiveType = type ?? "all";
+    const descriptionParts: string[] = [];
+    if (effectiveType !== "all") descriptionParts.push(effectiveType);
+    if (search) descriptionParts.push(`matching "${search}"`);
+    const description =
+      descriptionParts.length > 0
+        ? `Categories (${descriptionParts.join(", ")})`
+        : "All categories";
+
+    return {
+      data,
+      summary: `${data.totalCount} categor${data.totalCount === 1 ? "y" : "ies"}${
+        descriptionParts.length > 0 ? ` ${descriptionParts.join(", ")}` : ""
+      }.`,
+      sources: [{ type: "categories", description }],
     };
   }
 
@@ -224,9 +300,10 @@ export class ToolExecutorService {
     userId: string,
     input: Record<string, unknown>,
   ): Promise<ToolResult> {
-    const startDate = input.startDate as string;
-    const endDate = input.endDate as string;
-    const topN = input.topN as number | undefined;
+    const defaults = getDefaultDateRange();
+    const startDate = (input.startDate as string) ?? defaults.startDate;
+    const endDate = (input.endDate as string) ?? defaults.endDate;
+    const topN = (input.topN as number | undefined) ?? DEFAULT_TOP_N;
 
     const data = await this.analyticsService.getLlmSpendingByCategory(
       userId,
@@ -252,8 +329,9 @@ export class ToolExecutorService {
     userId: string,
     input: Record<string, unknown>,
   ): Promise<ToolResult> {
-    const startDate = input.startDate as string;
-    const endDate = input.endDate as string;
+    const defaults = getDefaultDateRange();
+    const startDate = (input.startDate as string) ?? defaults.startDate;
+    const endDate = (input.endDate as string) ?? defaults.endDate;
     const groupBy =
       (input.groupBy as "category" | "payee" | "month") || "category";
 
@@ -318,10 +396,20 @@ export class ToolExecutorService {
     userId: string,
     input: Record<string, unknown>,
   ): Promise<ToolResult> {
-    const p1Start = input.period1Start as string;
-    const p1End = input.period1End as string;
-    const p2Start = input.period2Start as string;
-    const p2End = input.period2End as string;
+    // All-or-nothing defaults: if any of the four dates is missing, fall
+    // back to "previous month vs current month-to-date". Mixing caller
+    // dates with computed ones would compare unrelated windows.
+    const hasAllPeriods = Boolean(
+      input.period1Start &&
+      input.period1End &&
+      input.period2Start &&
+      input.period2End,
+    );
+    const defaults = hasAllPeriods ? null : getDefaultComparePeriods();
+    const p1Start = (input.period1Start as string) ?? defaults!.period1Start;
+    const p1End = (input.period1End as string) ?? defaults!.period1End;
+    const p2Start = (input.period2Start as string) ?? defaults!.period2Start;
+    const p2End = (input.period2End as string) ?? defaults!.period2End;
     const groupBy = (input.groupBy as "category" | "payee") || "category";
     const direction =
       (input.direction as "expenses" | "income" | "both") || "expenses";
@@ -381,7 +469,8 @@ export class ToolExecutorService {
     const accountNames = input.accountNames as string[] | undefined;
     const symbols = input.symbols as string[] | undefined;
     const actions = input.actions as InvestmentAction[] | undefined;
-    const groupBy = input.groupBy as LlmInvestmentTxGroupBy | undefined;
+    const groupBy =
+      (input.groupBy as LlmInvestmentTxGroupBy | undefined) ?? "security";
 
     const accountIds = await this.resolveAccountIds(userId, accountNames);
 
@@ -430,8 +519,9 @@ export class ToolExecutorService {
     userId: string,
     input: Record<string, unknown>,
   ): Promise<ToolResult> {
-    const startDate = input.startDate as string;
-    const endDate = input.endDate as string;
+    const defaults = getDefaultDateRange();
+    const startDate = (input.startDate as string) ?? defaults.startDate;
+    const endDate = (input.endDate as string) ?? defaults.endDate;
     const accountNames = input.accountNames as string[] | undefined;
     const accountIds = await this.resolveAccountIds(userId, accountNames);
 

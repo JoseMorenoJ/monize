@@ -13,6 +13,11 @@ import {
 } from "../mcp-context";
 import { McpWriteLimiter } from "../mcp-write-limiter";
 import { stripHtml } from "../../common/sanitization.util";
+import {
+  DEFAULT_TOP_N,
+  getDefaultComparePeriods,
+  getDefaultDateRange,
+} from "../../common/tool-schemas";
 
 @Injectable()
 export class McpTransactionsTools {
@@ -149,8 +154,16 @@ export class McpTransactionsTools {
         description:
           "Search and aggregate transaction data. Returns totals, counts, and optional grouped breakdowns (category, payee, year, month, week) - never individual transaction details. Returns the same shape as the AI Assistant's query_transactions tool.",
         inputSchema: {
-          startDate: z.string().max(10).describe("Start date (YYYY-MM-DD)"),
-          endDate: z.string().max(10).describe("End date (YYYY-MM-DD)"),
+          startDate: z
+            .string()
+            .max(10)
+            .optional()
+            .describe("Start date (YYYY-MM-DD). Defaults to 30 days ago."),
+          endDate: z
+            .string()
+            .max(10)
+            .optional()
+            .describe("End date (YYYY-MM-DD). Defaults to today."),
           accountIds: z
             .array(z.string().uuid())
             .max(50)
@@ -183,11 +196,12 @@ export class McpTransactionsTools {
         if (check.error) return check.result;
 
         try {
+          const defaults = getDefaultDateRange();
           const data = await this.analyticsService.getLlmQueryTransactions(
             ctx.userId,
             {
-              startDate: args.startDate,
-              endDate: args.endDate,
+              startDate: args.startDate ?? defaults.startDate,
+              endDate: args.endDate ?? defaults.endDate,
               accountIds: args.accountIds,
               categoryIds: args.categoryIds,
               searchText: args.searchText,
@@ -208,15 +222,25 @@ export class McpTransactionsTools {
         description:
           "Spending breakdown by category for a date range. Returns each category with total amount, percentage of total spending, and transaction count. Sorted by amount descending. Returns the same shape as the AI Assistant's get_spending_by_category tool.",
         inputSchema: {
-          startDate: z.string().max(10).describe("Start date (YYYY-MM-DD)"),
-          endDate: z.string().max(10).describe("End date (YYYY-MM-DD)"),
+          startDate: z
+            .string()
+            .max(10)
+            .optional()
+            .describe("Start date (YYYY-MM-DD). Defaults to 30 days ago."),
+          endDate: z
+            .string()
+            .max(10)
+            .optional()
+            .describe("End date (YYYY-MM-DD). Defaults to today."),
           topN: z
             .number()
             .int()
             .min(1)
             .max(50)
             .optional()
-            .describe("Limit to top N categories by amount"),
+            .describe(
+              `Limit to top N categories by amount. Defaults to ${DEFAULT_TOP_N}.`,
+            ),
         },
       },
       async (args, extra) => {
@@ -226,11 +250,12 @@ export class McpTransactionsTools {
         if (check.error) return check.result;
 
         try {
+          const defaults = getDefaultDateRange();
           const data = await this.analyticsService.getLlmSpendingByCategory(
             ctx.userId,
-            args.startDate,
-            args.endDate,
-            args.topN,
+            args.startDate ?? defaults.startDate,
+            args.endDate ?? defaults.endDate,
+            args.topN ?? DEFAULT_TOP_N,
           );
           return toolResult(data);
         } catch (err: unknown) {
@@ -245,8 +270,16 @@ export class McpTransactionsTools {
         description:
           "Income summary for a date range, grouped by category, payee, or month. Returns the same shape as the AI Assistant's get_income_summary tool.",
         inputSchema: {
-          startDate: z.string().max(10).describe("Start date (YYYY-MM-DD)"),
-          endDate: z.string().max(10).describe("End date (YYYY-MM-DD)"),
+          startDate: z
+            .string()
+            .max(10)
+            .optional()
+            .describe("Start date (YYYY-MM-DD). Defaults to 30 days ago."),
+          endDate: z
+            .string()
+            .max(10)
+            .optional()
+            .describe("End date (YYYY-MM-DD). Defaults to today."),
           groupBy: z
             .enum(["category", "payee", "month"])
             .optional()
@@ -260,10 +293,11 @@ export class McpTransactionsTools {
         if (check.error) return check.result;
 
         try {
+          const defaults = getDefaultDateRange();
           const data = await this.analyticsService.getLlmIncomeSummary(
             ctx.userId,
-            args.startDate,
-            args.endDate,
+            args.startDate ?? defaults.startDate,
+            args.endDate ?? defaults.endDate,
             args.groupBy ?? "category",
           );
           return toolResult(data);
@@ -277,24 +311,34 @@ export class McpTransactionsTools {
       "compare_periods",
       {
         description:
-          "Compare spending or income between two time periods. Returns side-by-side comparison showing absolute and percentage changes per group. Returns the same shape as the AI Assistant's compare_periods tool.",
+          "Compare spending or income between two time periods. Returns side-by-side comparison showing absolute and percentage changes per group. If any of the four period dates are omitted, defaults to the previous full month (period1) vs the current month-to-date (period2). Returns the same shape as the AI Assistant's compare_periods tool.",
         inputSchema: {
           period1Start: z
             .string()
             .max(10)
-            .describe("First period start (YYYY-MM-DD)"),
+            .optional()
+            .describe(
+              "First period start (YYYY-MM-DD). Defaults to the start of last month.",
+            ),
           period1End: z
             .string()
             .max(10)
-            .describe("First period end (YYYY-MM-DD)"),
+            .optional()
+            .describe(
+              "First period end (YYYY-MM-DD). Defaults to the last day of last month.",
+            ),
           period2Start: z
             .string()
             .max(10)
-            .describe("Second period start (YYYY-MM-DD)"),
+            .optional()
+            .describe(
+              "Second period start (YYYY-MM-DD). Defaults to the start of the current month.",
+            ),
           period2End: z
             .string()
             .max(10)
-            .describe("Second period end (YYYY-MM-DD)"),
+            .optional()
+            .describe("Second period end (YYYY-MM-DD). Defaults to today."),
           groupBy: z
             .enum(["category", "payee"])
             .optional()
@@ -312,13 +356,20 @@ export class McpTransactionsTools {
         if (check.error) return check.result;
 
         try {
+          const hasAllPeriods = Boolean(
+            args.period1Start &&
+            args.period1End &&
+            args.period2Start &&
+            args.period2End,
+          );
+          const defaults = hasAllPeriods ? null : getDefaultComparePeriods();
           const data = await this.analyticsService.getLlmPeriodComparison(
             ctx.userId,
             {
-              period1Start: args.period1Start,
-              period1End: args.period1End,
-              period2Start: args.period2Start,
-              period2End: args.period2End,
+              period1Start: args.period1Start ?? defaults!.period1Start,
+              period1End: args.period1End ?? defaults!.period1End,
+              period2Start: args.period2Start ?? defaults!.period2Start,
+              period2End: args.period2End ?? defaults!.period2End,
               groupBy: args.groupBy,
               direction: args.direction,
             },
@@ -336,8 +387,16 @@ export class McpTransactionsTools {
         description:
           "Get transfer activity between the user's own accounts for a date range. Returns per-account inbound, outbound, net, and count. Transfers are deliberately excluded from other transaction queries because they net to zero across accounts. Returns the same shape as the AI Assistant's get_transfers tool.",
         inputSchema: {
-          startDate: z.string().max(10).describe("Start date (YYYY-MM-DD)"),
-          endDate: z.string().max(10).describe("End date (YYYY-MM-DD)"),
+          startDate: z
+            .string()
+            .max(10)
+            .optional()
+            .describe("Start date (YYYY-MM-DD). Defaults to 30 days ago."),
+          endDate: z
+            .string()
+            .max(10)
+            .optional()
+            .describe("End date (YYYY-MM-DD). Defaults to today."),
           accountIds: z
             .array(z.string().uuid())
             .max(50)
@@ -354,10 +413,11 @@ export class McpTransactionsTools {
         if (check.error) return check.result;
 
         try {
+          const defaults = getDefaultDateRange();
           const result = await this.analyticsService.getTransfersByAccount(
             ctx.userId,
-            args.startDate,
-            args.endDate,
+            args.startDate ?? defaults.startDate,
+            args.endDate ?? defaults.endDate,
             args.accountIds,
           );
           return toolResult(result);

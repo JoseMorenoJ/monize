@@ -2,6 +2,7 @@ import {
   validateToolInput,
   queryTransactionsSchema,
   getAccountBalancesSchema,
+  getCategoriesSchema,
   getSpendingByCategorySchema,
   getIncomeSummarySchema,
   getNetWorthHistorySchema,
@@ -52,12 +53,13 @@ describe("tool-input-schemas", () => {
       }
     });
 
-    it("returns error when required fields are missing", () => {
+    it("accepts empty input (dates are optional; handler applies defaults)", () => {
       const result = validateToolInput("query_transactions", {});
 
-      expect(result.success).toBe(false);
-      if (!result.success) {
-        expect(result.error).toContain("Invalid input");
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.startDate).toBeUndefined();
+        expect(result.data.endDate).toBeUndefined();
       }
     });
 
@@ -169,14 +171,86 @@ describe("tool-input-schemas", () => {
       });
       expect(result.success).toBe(false);
     });
+
+    it("accepts the three status values", () => {
+      for (const status of ["open", "closed", "all"]) {
+        const result = getAccountBalancesSchema.safeParse({ status });
+        expect(result.success).toBe(true);
+      }
+    });
+
+    it("rejects unknown status values", () => {
+      const result = getAccountBalancesSchema.safeParse({ status: "archived" });
+      expect(result.success).toBe(false);
+    });
+
+    it("accepts accountTypes filter", () => {
+      const result = getAccountBalancesSchema.safeParse({
+        accountTypes: ["CHEQUING", "SAVINGS"],
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("uppercases accountTypes inputs via preprocess", () => {
+      const result = getAccountBalancesSchema.safeParse({
+        accountTypes: ["chequing", " savings "],
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.accountTypes).toEqual(["CHEQUING", "SAVINGS"]);
+      }
+    });
+
+    it("rejects an unknown account type", () => {
+      const result = getAccountBalancesSchema.safeParse({
+        accountTypes: ["NOT_REAL"],
+      });
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe("getCategoriesSchema", () => {
+    it("accepts empty input", () => {
+      const result = getCategoriesSchema.safeParse({});
+      expect(result.success).toBe(true);
+    });
+
+    it("accepts all three type values", () => {
+      for (const type of ["expense", "income", "all"]) {
+        const result = getCategoriesSchema.safeParse({ type });
+        expect(result.success).toBe(true);
+      }
+    });
+
+    it("rejects unknown type values", () => {
+      const result = getCategoriesSchema.safeParse({ type: "transfer" });
+      expect(result.success).toBe(false);
+    });
+
+    it("accepts a search string", () => {
+      const result = getCategoriesSchema.safeParse({ search: "food" });
+      expect(result.success).toBe(true);
+    });
+
+    it("rejects a search string over 100 chars", () => {
+      const result = getCategoriesSchema.safeParse({
+        search: "a".repeat(101),
+      });
+      expect(result.success).toBe(false);
+    });
   });
 
   describe("getSpendingByCategorySchema", () => {
-    it("validates required date fields", () => {
+    it("accepts date fields", () => {
       const result = getSpendingByCategorySchema.safeParse({
         startDate: "2026-01-01",
         endDate: "2026-01-31",
       });
+      expect(result.success).toBe(true);
+    });
+
+    it("accepts empty input (dates are optional)", () => {
+      const result = getSpendingByCategorySchema.safeParse({});
       expect(result.success).toBe(true);
     });
 
@@ -284,13 +358,18 @@ describe("tool-input-schemas", () => {
       expect(result.success).toBe(true);
     });
 
-    it("rejects missing period dates", () => {
+    it("accepts missing period dates (handler applies defaults)", () => {
       const result = comparePeriodsSchema.safeParse({
         period1Start: "2025-12-01",
         period1End: "2025-12-31",
-        // Missing period2Start and period2End
+        // period2Start and period2End omitted; defaulted in the executor
       });
-      expect(result.success).toBe(false);
+      expect(result.success).toBe(true);
+    });
+
+    it("accepts empty input (dates are optional)", () => {
+      const result = comparePeriodsSchema.safeParse({});
+      expect(result.success).toBe(true);
     });
 
     it("accepts optional groupBy and direction", () => {
@@ -427,11 +506,11 @@ describe("tool-input-schemas", () => {
       expect(result.success).toBe(true);
     });
 
-    it("rejects missing required date fields", () => {
+    it("accepts missing date fields (handler applies defaults)", () => {
       const result = getTransfersSchema.safeParse({
         accountNames: ["Chequing"],
       });
-      expect(result.success).toBe(false);
+      expect(result.success).toBe(true);
     });
 
     it("rejects invalid date format", () => {

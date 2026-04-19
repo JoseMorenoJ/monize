@@ -820,28 +820,42 @@ export class AccountsService {
   async getLlmBalances(
     userId: string,
     accountNames?: string[],
+    status: "open" | "closed" | "all" = "open",
+    accountTypes?: AccountType[],
   ): Promise<{
     accounts: Array<{
       name: string;
       type: AccountType;
       balance: number;
       currency: string;
+      isClosed: boolean;
     }>;
     totalAssets: number;
     totalLiabilities: number;
     netWorth: number;
     totalAccounts: number;
   }> {
-    const allAccounts = await this.findAll(userId, false);
+    // findAll(userId, true) returns every account; we then narrow by status
+    // so "open" / "closed" / "all" all go through a single query path.
+    const allAccounts = await this.findAll(userId, true);
     const marketValues =
       await this.portfolioService.getAccountMarketValues(userId);
 
     let accounts = allAccounts;
+    if (status === "open") {
+      accounts = accounts.filter((a) => !a.isClosed);
+    } else if (status === "closed") {
+      accounts = accounts.filter((a) => a.isClosed);
+    }
+
+    if (accountTypes && accountTypes.length > 0) {
+      const typeSet = new Set(accountTypes);
+      accounts = accounts.filter((a) => typeSet.has(a.accountType));
+    }
+
     if (accountNames && accountNames.length > 0) {
       const lowerNames = new Set(accountNames.map((n) => n.toLowerCase()));
-      accounts = allAccounts.filter((a) =>
-        lowerNames.has(a.name.toLowerCase()),
-      );
+      accounts = accounts.filter((a) => lowerNames.has(a.name.toLowerCase()));
     }
 
     const roundMoney = (v: number): number => Math.round(v * 100) / 100;
@@ -856,6 +870,7 @@ export class AccountsService {
         type: a.accountType,
         balance: roundMoney(balance),
         currency: a.currencyCode,
+        isClosed: a.isClosed,
       };
     });
 

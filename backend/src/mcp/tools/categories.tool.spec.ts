@@ -10,8 +10,7 @@ describe("McpCategoriesTools", () => {
 
   beforeEach(() => {
     categoriesService = {
-      getTree: jest.fn(),
-      findByType: jest.fn(),
+      getLlmCategories: jest.fn(),
     };
 
     tool = new McpCategoriesTools(categoriesService as any);
@@ -31,53 +30,60 @@ describe("McpCategoriesTools", () => {
   });
 
   describe("get_categories", () => {
-    it("should return error when no user context", async () => {
+    it("returns error when no user context", async () => {
       resolve.mockReturnValue(undefined);
       const result = await handlers["get_categories"]({}, { sessionId: "s1" });
       expect(result.isError).toBe(true);
     });
 
-    it("should return full tree when no type filter", async () => {
+    it("delegates to categoriesService.getLlmCategories with no filters", async () => {
       resolve.mockReturnValue({ userId: "u1", scopes: "read" });
-      categoriesService.getTree.mockResolvedValue([{ id: "c1", name: "Food" }]);
+      categoriesService.getLlmCategories.mockResolvedValue({
+        categories: [
+          {
+            id: "c1",
+            name: "Food",
+            parentName: null,
+            isIncome: false,
+            transactionCount: 0,
+          },
+        ],
+        totalCount: 1,
+      });
 
       const result = await handlers["get_categories"]({}, { sessionId: "s1" });
-      expect(categoriesService.getTree).toHaveBeenCalledWith("u1");
+      expect(categoriesService.getLlmCategories).toHaveBeenCalledWith("u1", {
+        type: undefined,
+        search: undefined,
+      });
       const parsed = JSON.parse(result.content[0].text);
-      expect(parsed[0].name).toBe("Food");
+      expect(parsed.totalCount).toBe(1);
+      expect(parsed.categories[0].name).toBe("Food");
     });
 
-    it("should filter by income type", async () => {
+    it("passes type and search filters through", async () => {
       resolve.mockReturnValue({ userId: "u1", scopes: "read" });
-      categoriesService.findByType.mockResolvedValue([
-        { id: "c2", name: "Salary" },
-      ]);
-
-      const result = await handlers["get_categories"](
-        { type: "income" },
-        { sessionId: "s1" },
-      );
-      expect(categoriesService.findByType).toHaveBeenCalledWith("u1", true);
-      const parsed = JSON.parse(result.content[0].text);
-      expect(parsed[0].name).toBe("Salary");
-    });
-
-    it("should filter by expense type", async () => {
-      resolve.mockReturnValue({ userId: "u1", scopes: "read" });
-      categoriesService.findByType.mockResolvedValue([
-        { id: "c3", name: "Rent" },
-      ]);
+      categoriesService.getLlmCategories.mockResolvedValue({
+        categories: [],
+        totalCount: 0,
+      });
 
       await handlers["get_categories"](
-        { type: "expense" },
+        { type: "income", search: "salary" },
         { sessionId: "s1" },
       );
-      expect(categoriesService.findByType).toHaveBeenCalledWith("u1", false);
+
+      expect(categoriesService.getLlmCategories).toHaveBeenCalledWith("u1", {
+        type: "income",
+        search: "salary",
+      });
     });
 
-    it("should handle service errors", async () => {
+    it("handles service errors", async () => {
       resolve.mockReturnValue({ userId: "u1", scopes: "read" });
-      categoriesService.getTree.mockRejectedValue(new Error("DB fail"));
+      categoriesService.getLlmCategories.mockRejectedValue(
+        new Error("DB fail"),
+      );
 
       const result = await handlers["get_categories"]({}, { sessionId: "s1" });
       expect(result.isError).toBe(true);

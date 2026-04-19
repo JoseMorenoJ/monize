@@ -1,6 +1,7 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import { ToolExecutorService } from "./tool-executor.service";
 import { AccountsService } from "../../accounts/accounts.service";
+import { CategoriesService } from "../../categories/categories.service";
 import { TransactionAnalyticsService } from "../../transactions/transaction-analytics.service";
 import { NetWorthService } from "../../net-worth/net-worth.service";
 import { BudgetReportsService } from "../../budgets/budget-reports.service";
@@ -15,6 +16,7 @@ describe("ToolExecutorService", () => {
   let budgetReports: Record<string, jest.Mock>;
   let portfolio: Record<string, jest.Mock>;
   let investmentTransactions: Record<string, jest.Mock>;
+  let categories: Record<string, jest.Mock>;
 
   const userId = "user-1";
 
@@ -55,7 +57,24 @@ describe("ToolExecutorService", () => {
         totalOutbound: 0,
         transferCount: 0,
       }),
-      resolveLlmCategoryIds: jest.fn().mockResolvedValue(["cat-1"]),
+      resolveLlmCategoryIds: jest
+        .fn()
+        .mockResolvedValue({ categoryIds: ["cat-1"], unresolved: [] }),
+    };
+
+    categories = {
+      getLlmCategories: jest.fn().mockResolvedValue({
+        categories: [
+          {
+            id: "cat-1",
+            name: "Groceries",
+            parentName: "Food",
+            isIncome: false,
+            transactionCount: 12,
+          },
+        ],
+        totalCount: 1,
+      }),
     };
 
     accounts = {
@@ -140,6 +159,7 @@ describe("ToolExecutorService", () => {
       providers: [
         ToolExecutorService,
         { provide: AccountsService, useValue: accounts },
+        { provide: CategoriesService, useValue: categories },
         { provide: TransactionAnalyticsService, useValue: analytics },
         { provide: NetWorthService, useValue: netWorth },
         { provide: BudgetReportsService, useValue: budgetReports },
@@ -204,12 +224,82 @@ describe("ToolExecutorService", () => {
       );
     });
 
+    it("query_transactions returns an error when a category name cannot be resolved", async () => {
+      analytics.resolveLlmCategoryIds.mockResolvedValueOnce({
+        categoryIds: [],
+        unresolved: ["Bogus"],
+      });
+
+      const result = await service.execute(userId, "query_transactions", {
+        startDate: "2026-01-01",
+        endDate: "2026-01-31",
+        categoryNames: ["Bogus"],
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.summary).toContain("Bogus");
+      expect(analytics.getLlmQueryTransactions).not.toHaveBeenCalled();
+    });
+
     it("get_account_balances delegates to accounts.getLlmBalances", async () => {
       const result = await service.execute(userId, "get_account_balances", {});
 
-      expect(accounts.getLlmBalances).toHaveBeenCalledWith(userId, undefined);
+      expect(accounts.getLlmBalances).toHaveBeenCalledWith(
+        userId,
+        undefined,
+        "open",
+        undefined,
+      );
       expect(result.sources[0].type).toBe("accounts");
       expect(result.summary).toContain("Net worth");
+    });
+
+    it("get_account_balances passes status and accountTypes through", async () => {
+      await service.execute(userId, "get_account_balances", {
+        status: "closed",
+        accountTypes: ["CHEQUING", "SAVINGS"],
+      });
+
+      expect(accounts.getLlmBalances).toHaveBeenCalledWith(
+        userId,
+        undefined,
+        "closed",
+        ["CHEQUING", "SAVINGS"],
+      );
+    });
+
+    it("get_account_balances supports 'all' status", async () => {
+      await service.execute(userId, "get_account_balances", { status: "all" });
+
+      expect(accounts.getLlmBalances).toHaveBeenCalledWith(
+        userId,
+        undefined,
+        "all",
+        undefined,
+      );
+    });
+
+    it("get_categories delegates to categoriesService.getLlmCategories", async () => {
+      const result = await service.execute(userId, "get_categories", {});
+
+      expect(categories.getLlmCategories).toHaveBeenCalledWith(userId, {
+        type: undefined,
+        search: undefined,
+      });
+      expect(result.sources[0].type).toBe("categories");
+      expect(result.summary).toContain("categor");
+    });
+
+    it("get_categories passes type and search through", async () => {
+      await service.execute(userId, "get_categories", {
+        type: "expense",
+        search: "groc",
+      });
+
+      expect(categories.getLlmCategories).toHaveBeenCalledWith(userId, {
+        type: "expense",
+        search: "groc",
+      });
     });
 
     it("get_spending_by_category delegates to analytics.getLlmSpendingByCategory", async () => {
@@ -226,6 +316,17 @@ describe("ToolExecutorService", () => {
         10,
       );
       expect(result.sources[0].type).toBe("spending");
+    });
+
+    it("get_spending_by_category defaults topN to 10 and fills in dates when omitted", async () => {
+      await service.execute(userId, "get_spending_by_category", {});
+
+      expect(analytics.getLlmSpendingByCategory).toHaveBeenCalledWith(
+        userId,
+        expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+        expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+        10,
+      );
     });
 
     it("get_income_summary delegates to analytics.getLlmIncomeSummary", async () => {
@@ -286,6 +387,22 @@ describe("ToolExecutorService", () => {
         direction: "expenses",
       });
       expect(result.sources[0].type).toBe("comparison");
+    });
+
+    it("compare_periods fills in all four dates when omitted", async () => {
+      await service.execute(userId, "compare_periods", {});
+
+      expect(analytics.getLlmPeriodComparison).toHaveBeenCalledWith(
+        userId,
+        expect.objectContaining({
+          period1Start: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+          period1End: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+          period2Start: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+          period2End: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+          groupBy: "category",
+          direction: "expenses",
+        }),
+      );
     });
 
     it("get_portfolio_summary delegates to portfolioService.getLlmSummary", async () => {
@@ -369,6 +486,17 @@ describe("ToolExecutorService", () => {
       expect(result.sources[0].dateRange).toBe("all dates");
     });
 
+    it("query_investment_transactions defaults groupBy to 'security' when omitted", async () => {
+      await service.execute(userId, "query_investment_transactions", {});
+
+      expect(
+        investmentTransactions.getLlmInvestmentTransactions,
+      ).toHaveBeenCalledWith(
+        userId,
+        expect.objectContaining({ groupBy: "security" }),
+      );
+    });
+
     it("get_transfers delegates to analytics.getTransfersByAccount", async () => {
       const result = await service.execute(userId, "get_transfers", {
         startDate: "2026-01-01",
@@ -382,6 +510,28 @@ describe("ToolExecutorService", () => {
         undefined,
       );
       expect(result.sources[0].type).toBe("transfers");
+    });
+
+    it("get_transfers applies default date range when omitted", async () => {
+      await service.execute(userId, "get_transfers", {});
+
+      expect(analytics.getTransfersByAccount).toHaveBeenCalledWith(
+        userId,
+        expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+        expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+        undefined,
+      );
+    });
+
+    it("get_income_summary applies default date range when omitted", async () => {
+      await service.execute(userId, "get_income_summary", {});
+
+      expect(analytics.getLlmIncomeSummary).toHaveBeenCalledWith(
+        userId,
+        expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+        expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+        "category",
+      );
     });
 
     it("get_budget_status delegates to budgetReports.getLlmBudgetStatus", async () => {
@@ -442,11 +592,17 @@ describe("ToolExecutorService", () => {
       expect(analytics.getLlmQueryTransactions).not.toHaveBeenCalled();
     });
 
-    it("rejects missing required fields", async () => {
+    it("applies default date range when startDate and endDate are omitted", async () => {
       const result = await service.execute(userId, "query_transactions", {});
 
-      expect(result.isError).toBe(true);
-      expect(result.summary).toContain("Invalid input");
+      expect(result.isError).toBeUndefined();
+      expect(analytics.getLlmQueryTransactions).toHaveBeenCalledWith(
+        userId,
+        expect.objectContaining({
+          startDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+          endDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+        }),
+      );
     });
 
     it("allows valid input and delegates to the analytics service", async () => {

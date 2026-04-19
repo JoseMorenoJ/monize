@@ -334,6 +334,38 @@ describe('CategoriesPage', () => {
     });
   });
 
+  it('search by subcategory name includes the parent so the tree row renders', async () => {
+    mockGetAll.mockResolvedValue(mockCategories);
+    render(<CategoriesPage />);
+    await waitFor(() => {
+      expect(screen.getByTestId('category-list')).toBeInTheDocument();
+    });
+    // 'Organic' is a subcategory of 'Groceries' (cat-2). Searching for it
+    // should surface both the subcategory and its parent so the hierarchy
+    // row renders in the tree view.
+    fireEvent.change(screen.getByPlaceholderText('Search categories...'), { target: { value: 'Organic' } });
+    await waitFor(() => {
+      expect(screen.getByTestId('category-cat-4')).toBeInTheDocument();
+      expect(screen.getByTestId('category-cat-2')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('category-cat-1')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('category-cat-3')).not.toBeInTheDocument();
+  });
+
+  it('search by parent name includes all its subcategories', async () => {
+    mockGetAll.mockResolvedValue(mockCategories);
+    render(<CategoriesPage />);
+    await waitFor(() => {
+      expect(screen.getByTestId('category-list')).toBeInTheDocument();
+    });
+    fireEvent.change(screen.getByPlaceholderText('Search categories...'), { target: { value: 'Groceries' } });
+    await waitFor(() => {
+      expect(screen.getByTestId('category-cat-2')).toBeInTheDocument();
+      expect(screen.getByTestId('category-cat-4')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('category-cat-1')).not.toBeInTheDocument();
+  });
+
   it('combines search with type filter', async () => {
     mockGetAll.mockResolvedValue(mockCategories);
     render(<CategoriesPage />);

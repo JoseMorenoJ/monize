@@ -129,6 +129,22 @@ describe("McpReportsTools", () => {
       );
       expect(reportsService.getIncomeBySource).toHaveBeenCalled();
     });
+
+    it("applies default dates when omitted", async () => {
+      resolve.mockReturnValue({ userId: "u1", scopes: "reports" });
+      reportsService.getSpendingByCategory.mockResolvedValue({ data: [] });
+
+      await handlers["generate_report"](
+        { type: "spending_by_category" },
+        { sessionId: "s1" },
+      );
+
+      expect(reportsService.getSpendingByCategory).toHaveBeenCalledWith(
+        "u1",
+        expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+        expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+      );
+    });
   });
 
   describe("monthly_comparison", () => {
@@ -185,6 +201,18 @@ describe("McpReportsTools", () => {
       );
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain("An error occurred");
+    });
+
+    it("defaults month to the previous calendar month when omitted", async () => {
+      resolve.mockReturnValue({ userId: "u1", scopes: "reports" });
+      reportsService.getMonthlyComparison.mockResolvedValue({});
+
+      await handlers["monthly_comparison"]({}, { sessionId: "s1" });
+
+      expect(reportsService.getMonthlyComparison).toHaveBeenCalledWith(
+        "u1",
+        expect.stringMatching(/^\d{4}-\d{2}$/),
+      );
     });
   });
 
