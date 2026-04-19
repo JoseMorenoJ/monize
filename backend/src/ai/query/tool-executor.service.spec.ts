@@ -228,6 +228,17 @@ describe("ToolExecutorService", () => {
       expect(result.sources[0].type).toBe("spending");
     });
 
+    it("get_spending_by_category defaults topN to 10 and fills in dates when omitted", async () => {
+      await service.execute(userId, "get_spending_by_category", {});
+
+      expect(analytics.getLlmSpendingByCategory).toHaveBeenCalledWith(
+        userId,
+        expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+        expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+        10,
+      );
+    });
+
     it("get_income_summary delegates to analytics.getLlmIncomeSummary", async () => {
       const result = await service.execute(userId, "get_income_summary", {
         startDate: "2026-01-01",
@@ -286,6 +297,22 @@ describe("ToolExecutorService", () => {
         direction: "expenses",
       });
       expect(result.sources[0].type).toBe("comparison");
+    });
+
+    it("compare_periods fills in all four dates when omitted", async () => {
+      await service.execute(userId, "compare_periods", {});
+
+      expect(analytics.getLlmPeriodComparison).toHaveBeenCalledWith(
+        userId,
+        expect.objectContaining({
+          period1Start: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+          period1End: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+          period2Start: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+          period2End: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+          groupBy: "category",
+          direction: "expenses",
+        }),
+      );
     });
 
     it("get_portfolio_summary delegates to portfolioService.getLlmSummary", async () => {
@@ -384,6 +411,28 @@ describe("ToolExecutorService", () => {
       expect(result.sources[0].type).toBe("transfers");
     });
 
+    it("get_transfers applies default date range when omitted", async () => {
+      await service.execute(userId, "get_transfers", {});
+
+      expect(analytics.getTransfersByAccount).toHaveBeenCalledWith(
+        userId,
+        expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+        expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+        undefined,
+      );
+    });
+
+    it("get_income_summary applies default date range when omitted", async () => {
+      await service.execute(userId, "get_income_summary", {});
+
+      expect(analytics.getLlmIncomeSummary).toHaveBeenCalledWith(
+        userId,
+        expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+        expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+        "category",
+      );
+    });
+
     it("get_budget_status delegates to budgetReports.getLlmBudgetStatus", async () => {
       const result = await service.execute(userId, "get_budget_status", {});
 
@@ -442,11 +491,17 @@ describe("ToolExecutorService", () => {
       expect(analytics.getLlmQueryTransactions).not.toHaveBeenCalled();
     });
 
-    it("rejects missing required fields", async () => {
+    it("applies default date range when startDate and endDate are omitted", async () => {
       const result = await service.execute(userId, "query_transactions", {});
 
-      expect(result.isError).toBe(true);
-      expect(result.summary).toContain("Invalid input");
+      expect(result.isError).toBeUndefined();
+      expect(analytics.getLlmQueryTransactions).toHaveBeenCalledWith(
+        userId,
+        expect.objectContaining({
+          startDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+          endDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+        }),
+      );
     });
 
     it("allows valid input and delegates to the analytics service", async () => {

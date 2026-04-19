@@ -10,11 +10,13 @@ export const FINANCIAL_TOOLS: AiToolDefinition[] = [
       properties: {
         startDate: {
           type: "string",
-          description: "Start date in YYYY-MM-DD format",
+          description:
+            "Start date in YYYY-MM-DD format. Omit to default to 30 days ago.",
         },
         endDate: {
           type: "string",
-          description: "End date in YYYY-MM-DD format",
+          description:
+            "End date in YYYY-MM-DD format. Omit to default to today.",
         },
         categoryNames: {
           type: "array",
@@ -44,7 +46,6 @@ export const FINANCIAL_TOOLS: AiToolDefinition[] = [
             "Filter by direction. Must be EXACTLY one of: 'expenses' (outflows/spending), 'income' (inflows/earnings), or 'both' (default). Do not use 'expense', 'all', 'debit', or any variation.",
         },
       },
-      required: ["startDate", "endDate"],
     },
   },
   {
@@ -71,21 +72,21 @@ export const FINANCIAL_TOOLS: AiToolDefinition[] = [
       properties: {
         startDate: {
           type: "string",
-          description: "Start date (YYYY-MM-DD)",
+          description:
+            "Start date (YYYY-MM-DD). Omit to default to 30 days ago.",
         },
         endDate: {
           type: "string",
-          description: "End date (YYYY-MM-DD)",
+          description: "End date (YYYY-MM-DD). Omit to default to today.",
         },
         topN: {
           type: "integer",
           minimum: 1,
           maximum: 50,
           description:
-            'Optional integer between 1 and 50 to limit to the top N categories by amount. MUST be a number like 10 (not a string like "10" or "all"). Omit this field entirely to get all categories.',
+            'Integer between 1 and 50 to limit to the top N categories by amount. MUST be a number like 10 (not a string like "10" or "all"). Omit to default to 10.',
         },
       },
-      required: ["startDate", "endDate"],
     },
   },
   {
@@ -97,11 +98,12 @@ export const FINANCIAL_TOOLS: AiToolDefinition[] = [
       properties: {
         startDate: {
           type: "string",
-          description: "Start date (YYYY-MM-DD)",
+          description:
+            "Start date (YYYY-MM-DD). Omit to default to 30 days ago.",
         },
         endDate: {
           type: "string",
-          description: "End date (YYYY-MM-DD)",
+          description: "End date (YYYY-MM-DD). Omit to default to today.",
         },
         groupBy: {
           type: "string",
@@ -109,7 +111,6 @@ export const FINANCIAL_TOOLS: AiToolDefinition[] = [
           description: "How to group income (default: category)",
         },
       },
-      required: ["startDate", "endDate"],
     },
   },
   {
@@ -133,25 +134,29 @@ export const FINANCIAL_TOOLS: AiToolDefinition[] = [
   {
     name: "compare_periods",
     description:
-      "Compare spending or income between two time periods. Returns a side-by-side comparison showing absolute and percentage changes. Use for questions like 'compare this month vs last month'.",
+      "Compare spending or income between two time periods. Returns a side-by-side comparison showing absolute and percentage changes. Use for questions like 'compare this month vs last month'. If any of the four date fields are omitted, defaults to the previous full month (period1) vs the current month-to-date (period2).",
     inputSchema: {
       type: "object",
       properties: {
         period1Start: {
           type: "string",
-          description: "First period start date (YYYY-MM-DD)",
+          description:
+            "First period start date (YYYY-MM-DD). Omit to default to the start of last month.",
         },
         period1End: {
           type: "string",
-          description: "First period end date (YYYY-MM-DD)",
+          description:
+            "First period end date (YYYY-MM-DD). Omit to default to the last day of last month.",
         },
         period2Start: {
           type: "string",
-          description: "Second period start date (YYYY-MM-DD)",
+          description:
+            "Second period start date (YYYY-MM-DD). Omit to default to the start of the current month.",
         },
         period2End: {
           type: "string",
-          description: "Second period end date (YYYY-MM-DD)",
+          description:
+            "Second period end date (YYYY-MM-DD). Omit to default to today.",
         },
         groupBy: {
           type: "string",
@@ -165,7 +170,6 @@ export const FINANCIAL_TOOLS: AiToolDefinition[] = [
             "Filter by direction. Must be EXACTLY one of: 'expenses' (default), 'income', or 'both'. Do not use 'expense', 'all', or any variation.",
         },
       },
-      required: ["period1Start", "period1End", "period2Start", "period2End"],
     },
   },
   {
@@ -250,11 +254,12 @@ export const FINANCIAL_TOOLS: AiToolDefinition[] = [
       properties: {
         startDate: {
           type: "string",
-          description: "Start date (YYYY-MM-DD)",
+          description:
+            "Start date (YYYY-MM-DD). Omit to default to 30 days ago.",
         },
         endDate: {
           type: "string",
-          description: "End date (YYYY-MM-DD)",
+          description: "End date (YYYY-MM-DD). Omit to default to today.",
         },
         accountNames: {
           type: "array",
@@ -263,7 +268,6 @@ export const FINANCIAL_TOOLS: AiToolDefinition[] = [
             "Optional: filter to specific account names. Use exact names from the user's account list.",
         },
       },
-      required: ["startDate", "endDate"],
     },
   },
   {

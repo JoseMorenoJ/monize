@@ -74,6 +74,26 @@ describe("McpTransactionsTools", () => {
         }),
       );
     });
+
+    it("fills in default dates when startDate/endDate are omitted", async () => {
+      resolve.mockReturnValue({ userId: "u1", scopes: "read" });
+      analyticsService.getLlmQueryTransactions.mockResolvedValue({
+        totalIncome: 0,
+        totalExpenses: 0,
+        netCashFlow: 0,
+        transactionCount: 0,
+      });
+
+      await handlers["query_transactions"]({}, { sessionId: "s1" });
+
+      expect(analyticsService.getLlmQueryTransactions).toHaveBeenCalledWith(
+        "u1",
+        expect.objectContaining({
+          startDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+          endDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+        }),
+      );
+    });
   });
 
   describe("get_spending_by_category", () => {
@@ -96,6 +116,23 @@ describe("McpTransactionsTools", () => {
         5,
       );
     });
+
+    it("defaults topN to 10 and fills in dates when omitted", async () => {
+      resolve.mockReturnValue({ userId: "u1", scopes: "read" });
+      analyticsService.getLlmSpendingByCategory.mockResolvedValue({
+        categories: [],
+        totalSpending: 0,
+      });
+
+      await handlers["get_spending_by_category"]({}, { sessionId: "s1" });
+
+      expect(analyticsService.getLlmSpendingByCategory).toHaveBeenCalledWith(
+        "u1",
+        expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+        expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+        10,
+      );
+    });
   });
 
   describe("get_income_summary", () => {
@@ -116,6 +153,24 @@ describe("McpTransactionsTools", () => {
         "u1",
         "2026-01-01",
         "2026-01-31",
+        "category",
+      );
+    });
+
+    it("fills in default dates when omitted", async () => {
+      resolve.mockReturnValue({ userId: "u1", scopes: "read" });
+      analyticsService.getLlmIncomeSummary.mockResolvedValue({
+        items: [],
+        totalIncome: 0,
+        groupedBy: "category",
+      });
+
+      await handlers["get_income_summary"]({}, { sessionId: "s1" });
+
+      expect(analyticsService.getLlmIncomeSummary).toHaveBeenCalledWith(
+        "u1",
+        expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+        expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
         "category",
       );
     });
@@ -147,6 +202,29 @@ describe("McpTransactionsTools", () => {
         expect.objectContaining({
           period1Start: "2025-12-01",
           period2Start: "2026-01-01",
+        }),
+      );
+    });
+
+    it("fills in all four dates when omitted", async () => {
+      resolve.mockReturnValue({ userId: "u1", scopes: "read" });
+      analyticsService.getLlmPeriodComparison.mockResolvedValue({
+        period1: { start: "", end: "", total: 0 },
+        period2: { start: "", end: "", total: 0 },
+        totalChange: 0,
+        totalChangePercent: 0,
+        comparison: [],
+      });
+
+      await handlers["compare_periods"]({}, { sessionId: "s1" });
+
+      expect(analyticsService.getLlmPeriodComparison).toHaveBeenCalledWith(
+        "u1",
+        expect.objectContaining({
+          period1Start: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+          period1End: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+          period2Start: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+          period2End: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
         }),
       );
     });
@@ -218,6 +296,25 @@ describe("McpTransactionsTools", () => {
         "2026-01-01",
         "2026-01-31",
         ["00000000-0000-0000-0000-000000000001"],
+      );
+    });
+
+    it("fills in default dates when omitted", async () => {
+      resolve.mockReturnValue({ userId: "u1", scopes: "read" });
+      analyticsService.getTransfersByAccount.mockResolvedValue({
+        accounts: [],
+        totalInbound: 0,
+        totalOutbound: 0,
+        transferCount: 0,
+      });
+
+      await handlers["get_transfers"]({}, { sessionId: "s1" });
+
+      expect(analyticsService.getTransfersByAccount).toHaveBeenCalledWith(
+        "u1",
+        expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+        expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+        undefined,
       );
     });
   });

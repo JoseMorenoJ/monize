@@ -12,6 +12,11 @@ import { InvestmentAction } from "../../securities/entities/investment-transacti
 import { validateToolInput } from "./tool-input-schemas";
 import { executeCalculation, CalculateInput } from "./calculate-tool";
 import { sanitizePromptValue } from "../../common/sanitization.util";
+import {
+  DEFAULT_TOP_N,
+  getDefaultComparePeriods,
+  getDefaultDateRange,
+} from "../../common/tool-schemas";
 
 interface ToolResult {
   data: unknown;
@@ -149,8 +154,9 @@ export class ToolExecutorService {
     userId: string,
     input: Record<string, unknown>,
   ): Promise<ToolResult> {
-    const startDate = input.startDate as string;
-    const endDate = input.endDate as string;
+    const defaults = getDefaultDateRange();
+    const startDate = (input.startDate as string) ?? defaults.startDate;
+    const endDate = (input.endDate as string) ?? defaults.endDate;
     const categoryNames = input.categoryNames as string[] | undefined;
     const accountNames = input.accountNames as string[] | undefined;
     const searchText = input.searchText as string | undefined;
@@ -224,9 +230,10 @@ export class ToolExecutorService {
     userId: string,
     input: Record<string, unknown>,
   ): Promise<ToolResult> {
-    const startDate = input.startDate as string;
-    const endDate = input.endDate as string;
-    const topN = input.topN as number | undefined;
+    const defaults = getDefaultDateRange();
+    const startDate = (input.startDate as string) ?? defaults.startDate;
+    const endDate = (input.endDate as string) ?? defaults.endDate;
+    const topN = (input.topN as number | undefined) ?? DEFAULT_TOP_N;
 
     const data = await this.analyticsService.getLlmSpendingByCategory(
       userId,
@@ -252,8 +259,9 @@ export class ToolExecutorService {
     userId: string,
     input: Record<string, unknown>,
   ): Promise<ToolResult> {
-    const startDate = input.startDate as string;
-    const endDate = input.endDate as string;
+    const defaults = getDefaultDateRange();
+    const startDate = (input.startDate as string) ?? defaults.startDate;
+    const endDate = (input.endDate as string) ?? defaults.endDate;
     const groupBy =
       (input.groupBy as "category" | "payee" | "month") || "category";
 
@@ -318,10 +326,20 @@ export class ToolExecutorService {
     userId: string,
     input: Record<string, unknown>,
   ): Promise<ToolResult> {
-    const p1Start = input.period1Start as string;
-    const p1End = input.period1End as string;
-    const p2Start = input.period2Start as string;
-    const p2End = input.period2End as string;
+    // All-or-nothing defaults: if any of the four dates is missing, fall
+    // back to "previous month vs current month-to-date". Mixing caller
+    // dates with computed ones would compare unrelated windows.
+    const hasAllPeriods = Boolean(
+      input.period1Start &&
+      input.period1End &&
+      input.period2Start &&
+      input.period2End,
+    );
+    const defaults = hasAllPeriods ? null : getDefaultComparePeriods();
+    const p1Start = (input.period1Start as string) ?? defaults!.period1Start;
+    const p1End = (input.period1End as string) ?? defaults!.period1End;
+    const p2Start = (input.period2Start as string) ?? defaults!.period2Start;
+    const p2End = (input.period2End as string) ?? defaults!.period2End;
     const groupBy = (input.groupBy as "category" | "payee") || "category";
     const direction =
       (input.direction as "expenses" | "income" | "both") || "expenses";
@@ -430,8 +448,9 @@ export class ToolExecutorService {
     userId: string,
     input: Record<string, unknown>,
   ): Promise<ToolResult> {
-    const startDate = input.startDate as string;
-    const endDate = input.endDate as string;
+    const defaults = getDefaultDateRange();
+    const startDate = (input.startDate as string) ?? defaults.startDate;
+    const endDate = (input.endDate as string) ?? defaults.endDate;
     const accountNames = input.accountNames as string[] | undefined;
     const accountIds = await this.resolveAccountIds(userId, accountNames);
 

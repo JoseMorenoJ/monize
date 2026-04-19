@@ -34,11 +34,11 @@ describe("FINANCIAL_TOOLS", () => {
   });
 
   describe("query_transactions", () => {
-    it("requires startDate and endDate", () => {
+    it("has no required fields (dates default to last 30 days)", () => {
       const tool = FINANCIAL_TOOLS.find(
         (t) => t.name === "query_transactions",
       )!;
-      expect(tool.inputSchema.required).toEqual(["startDate", "endDate"]);
+      expect(tool.inputSchema.required).toBeUndefined();
     });
 
     it("supports groupBy with valid enum values", () => {
@@ -80,11 +80,11 @@ describe("FINANCIAL_TOOLS", () => {
   });
 
   describe("get_spending_by_category", () => {
-    it("requires startDate and endDate", () => {
+    it("has no required fields (dates default to last 30 days, topN to 10)", () => {
       const tool = FINANCIAL_TOOLS.find(
         (t) => t.name === "get_spending_by_category",
       )!;
-      expect(tool.inputSchema.required).toEqual(["startDate", "endDate"]);
+      expect(tool.inputSchema.required).toBeUndefined();
     });
 
     it("supports topN parameter", () => {
@@ -122,14 +122,9 @@ describe("FINANCIAL_TOOLS", () => {
   });
 
   describe("compare_periods", () => {
-    it("requires all four period boundary dates", () => {
+    it("has no required fields (defaults to previous month vs current month-to-date)", () => {
       const tool = FINANCIAL_TOOLS.find((t) => t.name === "compare_periods")!;
-      expect(tool.inputSchema.required).toEqual([
-        "period1Start",
-        "period1End",
-        "period2Start",
-        "period2End",
-      ]);
+      expect(tool.inputSchema.required).toBeUndefined();
     });
 
     it("supports groupBy with category and payee", () => {
@@ -225,9 +220,9 @@ describe("FINANCIAL_TOOLS", () => {
   });
 
   describe("get_transfers", () => {
-    it("requires startDate and endDate", () => {
+    it("has no required fields (dates default to last 30 days)", () => {
       const tool = FINANCIAL_TOOLS.find((t) => t.name === "get_transfers")!;
-      expect(tool.inputSchema.required).toEqual(["startDate", "endDate"]);
+      expect(tool.inputSchema.required).toBeUndefined();
     });
 
     it("supports optional accountNames filter", () => {

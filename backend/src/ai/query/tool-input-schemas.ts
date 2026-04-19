@@ -17,8 +17,8 @@ import {
  */
 
 export const queryTransactionsSchema = z.object({
-  startDate: isoDateSchema,
-  endDate: isoDateSchema,
+  startDate: isoDateSchema.optional(),
+  endDate: isoDateSchema.optional(),
   categoryNames: z.array(z.string().max(100)).optional(),
   accountNames: z.array(z.string().max(100)).optional(),
   searchText: z.string().max(200).optional(),
@@ -31,14 +31,14 @@ export const getAccountBalancesSchema = z.object({
 });
 
 export const getSpendingByCategorySchema = z.object({
-  startDate: isoDateSchema,
-  endDate: isoDateSchema,
+  startDate: isoDateSchema.optional(),
+  endDate: isoDateSchema.optional(),
   topN: positiveIntSchema(1, 50).optional(),
 });
 
 export const getIncomeSummarySchema = z.object({
-  startDate: isoDateSchema,
-  endDate: isoDateSchema,
+  startDate: isoDateSchema.optional(),
+  endDate: isoDateSchema.optional(),
   groupBy: z.enum(["category", "payee", "month"]).optional(),
 });
 
@@ -48,10 +48,10 @@ export const getNetWorthHistorySchema = z.object({
 });
 
 export const comparePeriodsSchema = z.object({
-  period1Start: isoDateSchema,
-  period1End: isoDateSchema,
-  period2Start: isoDateSchema,
-  period2End: isoDateSchema,
+  period1Start: isoDateSchema.optional(),
+  period1End: isoDateSchema.optional(),
+  period2Start: isoDateSchema.optional(),
+  period2End: isoDateSchema.optional(),
   groupBy: z.enum(["category", "payee"]).optional(),
   direction: directionSchema.optional(),
 });
@@ -89,8 +89,8 @@ export const queryInvestmentTransactionsSchema = z.object({
 });
 
 export const getTransfersSchema = z.object({
-  startDate: isoDateSchema,
-  endDate: isoDateSchema,
+  startDate: isoDateSchema.optional(),
+  endDate: isoDateSchema.optional(),
   accountNames: z.array(z.string().max(100)).optional(),
 });
 
