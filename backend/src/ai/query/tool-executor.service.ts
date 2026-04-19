@@ -1,5 +1,6 @@
 import { Injectable, Inject, forwardRef, Logger } from "@nestjs/common";
 import { AccountsService } from "../../accounts/accounts.service";
+import { AccountType } from "../../accounts/entities/account.entity";
 import { TransactionAnalyticsService } from "../../transactions/transaction-analytics.service";
 import { NetWorthService } from "../../net-worth/net-worth.service";
 import { BudgetReportsService } from "../../budgets/budget-reports.service";
@@ -206,11 +207,26 @@ export class ToolExecutorService {
     input: Record<string, unknown>,
   ): Promise<ToolResult> {
     const accountNames = input.accountNames as string[] | undefined;
+    const status =
+      (input.status as "open" | "closed" | "all" | undefined) ?? "open";
+    const accountTypes = input.accountTypes as AccountType[] | undefined;
 
     const data = await this.accountsService.getLlmBalances(
       userId,
       accountNames,
+      status,
+      accountTypes,
     );
+
+    const filterDescParts: string[] = [];
+    if (accountNames?.length) filterDescParts.push(accountNames.join(", "));
+    if (accountTypes?.length) filterDescParts.push(accountTypes.join(", "));
+    const descriptionBase =
+      filterDescParts.length > 0
+        ? `Balances for ${filterDescParts.join("; ")}`
+        : "All account balances";
+    const description =
+      status === "open" ? descriptionBase : `${descriptionBase} (${status})`;
 
     return {
       data,
@@ -218,9 +234,7 @@ export class ToolExecutorService {
       sources: [
         {
           type: "accounts",
-          description: accountNames
-            ? `Balances for ${accountNames.join(", ")}`
-            : "All account balances",
+          description,
         },
       ],
     };

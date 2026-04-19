@@ -26,8 +26,26 @@ export const queryTransactionsSchema = z.object({
   direction: directionSchema.optional(),
 });
 
+const accountTypeSchema = z.preprocess(
+  (val) => (typeof val === "string" ? val.toUpperCase().trim() : val),
+  z.enum([
+    "CHEQUING",
+    "SAVINGS",
+    "CREDIT_CARD",
+    "LOAN",
+    "MORTGAGE",
+    "INVESTMENT",
+    "CASH",
+    "LINE_OF_CREDIT",
+    "ASSET",
+    "OTHER",
+  ]),
+);
+
 export const getAccountBalancesSchema = z.object({
   accountNames: z.array(z.string().max(100)).optional(),
+  status: z.enum(["open", "closed", "all"]).optional(),
+  accountTypes: z.array(accountTypeSchema).max(10).optional(),
 });
 
 export const getSpendingByCategorySchema = z.object({

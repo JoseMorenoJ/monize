@@ -207,9 +207,39 @@ describe("ToolExecutorService", () => {
     it("get_account_balances delegates to accounts.getLlmBalances", async () => {
       const result = await service.execute(userId, "get_account_balances", {});
 
-      expect(accounts.getLlmBalances).toHaveBeenCalledWith(userId, undefined);
+      expect(accounts.getLlmBalances).toHaveBeenCalledWith(
+        userId,
+        undefined,
+        "open",
+        undefined,
+      );
       expect(result.sources[0].type).toBe("accounts");
       expect(result.summary).toContain("Net worth");
+    });
+
+    it("get_account_balances passes status and accountTypes through", async () => {
+      await service.execute(userId, "get_account_balances", {
+        status: "closed",
+        accountTypes: ["CHEQUING", "SAVINGS"],
+      });
+
+      expect(accounts.getLlmBalances).toHaveBeenCalledWith(
+        userId,
+        undefined,
+        "closed",
+        ["CHEQUING", "SAVINGS"],
+      );
+    });
+
+    it("get_account_balances supports 'all' status", async () => {
+      await service.execute(userId, "get_account_balances", { status: "all" });
+
+      expect(accounts.getLlmBalances).toHaveBeenCalledWith(
+        userId,
+        undefined,
+        "all",
+        undefined,
+      );
     });
 
     it("get_spending_by_category delegates to analytics.getLlmSpendingByCategory", async () => {

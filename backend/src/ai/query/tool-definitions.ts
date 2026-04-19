@@ -60,6 +60,32 @@ export const FINANCIAL_TOOLS: AiToolDefinition[] = [
           items: { type: "string" },
           description: "Optional: filter to specific account names",
         },
+        status: {
+          type: "string",
+          enum: ["open", "closed", "all"],
+          description:
+            "Which accounts to include by status. 'open' returns only active accounts, 'closed' returns only closed accounts, 'all' returns both. Defaults to 'open'.",
+        },
+        accountTypes: {
+          type: "array",
+          items: {
+            type: "string",
+            enum: [
+              "CHEQUING",
+              "SAVINGS",
+              "CREDIT_CARD",
+              "LOAN",
+              "MORTGAGE",
+              "INVESTMENT",
+              "CASH",
+              "LINE_OF_CREDIT",
+              "ASSET",
+              "OTHER",
+            ],
+          },
+          description:
+            "Optional: filter to specific account types. Values must be UPPER_SNAKE_CASE exactly as listed. Omit to include all account types.",
+        },
       },
     },
   },

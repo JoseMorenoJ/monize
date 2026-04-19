@@ -77,6 +77,40 @@ describe("FINANCIAL_TOOLS", () => {
       )!;
       expect(tool.inputSchema.required).toBeUndefined();
     });
+
+    it("supports status filter with open/closed/all", () => {
+      const tool = FINANCIAL_TOOLS.find(
+        (t) => t.name === "get_account_balances",
+      )!;
+      const props = tool.inputSchema.properties as Record<
+        string,
+        Record<string, unknown>
+      >;
+      expect(props.status.enum).toEqual(["open", "closed", "all"]);
+    });
+
+    it("exposes every AccountType in the accountTypes enum", () => {
+      const tool = FINANCIAL_TOOLS.find(
+        (t) => t.name === "get_account_balances",
+      )!;
+      const props = tool.inputSchema.properties as Record<
+        string,
+        Record<string, unknown>
+      >;
+      const items = props.accountTypes.items as Record<string, unknown>;
+      expect(items.enum).toEqual([
+        "CHEQUING",
+        "SAVINGS",
+        "CREDIT_CARD",
+        "LOAN",
+        "MORTGAGE",
+        "INVESTMENT",
+        "CASH",
+        "LINE_OF_CREDIT",
+        "ASSET",
+        "OTHER",
+      ]);
+    });
   });
 
   describe("get_spending_by_category", () => {

@@ -170,6 +170,42 @@ describe("tool-input-schemas", () => {
       });
       expect(result.success).toBe(false);
     });
+
+    it("accepts the three status values", () => {
+      for (const status of ["open", "closed", "all"]) {
+        const result = getAccountBalancesSchema.safeParse({ status });
+        expect(result.success).toBe(true);
+      }
+    });
+
+    it("rejects unknown status values", () => {
+      const result = getAccountBalancesSchema.safeParse({ status: "archived" });
+      expect(result.success).toBe(false);
+    });
+
+    it("accepts accountTypes filter", () => {
+      const result = getAccountBalancesSchema.safeParse({
+        accountTypes: ["CHEQUING", "SAVINGS"],
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("uppercases accountTypes inputs via preprocess", () => {
+      const result = getAccountBalancesSchema.safeParse({
+        accountTypes: ["chequing", " savings "],
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.accountTypes).toEqual(["CHEQUING", "SAVINGS"]);
+      }
+    });
+
+    it("rejects an unknown account type", () => {
+      const result = getAccountBalancesSchema.safeParse({
+        accountTypes: ["NOT_REAL"],
+      });
+      expect(result.success).toBe(false);
+    });
   });
 
   describe("getSpendingByCategorySchema", () => {
