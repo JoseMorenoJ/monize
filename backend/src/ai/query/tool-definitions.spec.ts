@@ -1,8 +1,8 @@
 import { FINANCIAL_TOOLS } from "./tool-definitions";
 
 describe("FINANCIAL_TOOLS", () => {
-  it("defines exactly 12 tools", () => {
-    expect(FINANCIAL_TOOLS).toHaveLength(12);
+  it("defines exactly 13 tools", () => {
+    expect(FINANCIAL_TOOLS).toHaveLength(13);
   });
 
   it("has unique tool names", () => {
@@ -13,6 +13,7 @@ describe("FINANCIAL_TOOLS", () => {
   const expectedTools = [
     "query_transactions",
     "get_account_balances",
+    "get_categories",
     "get_spending_by_category",
     "get_income_summary",
     "get_net_worth_history",
@@ -110,6 +111,32 @@ describe("FINANCIAL_TOOLS", () => {
         "ASSET",
         "OTHER",
       ]);
+    });
+  });
+
+  describe("get_categories", () => {
+    it("has no required fields (type defaults to all)", () => {
+      const tool = FINANCIAL_TOOLS.find((t) => t.name === "get_categories")!;
+      expect(tool.inputSchema.required).toBeUndefined();
+    });
+
+    it("supports type filter with expense/income/all", () => {
+      const tool = FINANCIAL_TOOLS.find((t) => t.name === "get_categories")!;
+      const props = tool.inputSchema.properties as Record<
+        string,
+        Record<string, unknown>
+      >;
+      expect(props.type.enum).toEqual(["expense", "income", "all"]);
+    });
+
+    it("exposes an optional search parameter", () => {
+      const tool = FINANCIAL_TOOLS.find((t) => t.name === "get_categories")!;
+      const props = tool.inputSchema.properties as Record<
+        string,
+        Record<string, unknown>
+      >;
+      expect(props.search).toBeDefined();
+      expect(props.search.type).toBe("string");
     });
   });
 

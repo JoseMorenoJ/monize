@@ -48,6 +48,11 @@ export const getAccountBalancesSchema = z.object({
   accountTypes: z.array(accountTypeSchema).max(10).optional(),
 });
 
+export const getCategoriesSchema = z.object({
+  type: z.enum(["expense", "income", "all"]).optional(),
+  search: z.string().max(100).optional(),
+});
+
 export const getSpendingByCategorySchema = z.object({
   startDate: isoDateSchema.optional(),
   endDate: isoDateSchema.optional(),
@@ -146,6 +151,7 @@ export const renderChartSchema = z.object({
 export const toolInputSchemas: Record<string, z.ZodSchema> = {
   query_transactions: queryTransactionsSchema,
   get_account_balances: getAccountBalancesSchema,
+  get_categories: getCategoriesSchema,
   get_spending_by_category: getSpendingByCategorySchema,
   get_income_summary: getIncomeSummarySchema,
   get_net_worth_history: getNetWorthHistorySchema,

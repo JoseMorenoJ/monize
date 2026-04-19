@@ -1,6 +1,7 @@
 import { Injectable, Inject, forwardRef, Logger } from "@nestjs/common";
 import { AccountsService } from "../../accounts/accounts.service";
 import { AccountType } from "../../accounts/entities/account.entity";
+import { CategoriesService } from "../../categories/categories.service";
 import { TransactionAnalyticsService } from "../../transactions/transaction-analytics.service";
 import { NetWorthService } from "../../net-worth/net-worth.service";
 import { BudgetReportsService } from "../../budgets/budget-reports.service";
@@ -33,6 +34,8 @@ export class ToolExecutorService {
   constructor(
     @Inject(forwardRef(() => AccountsService))
     private readonly accountsService: AccountsService,
+    @Inject(forwardRef(() => CategoriesService))
+    private readonly categoriesService: CategoriesService,
     @Inject(forwardRef(() => TransactionAnalyticsService))
     private readonly analyticsService: TransactionAnalyticsService,
     @Inject(forwardRef(() => NetWorthService))
@@ -76,6 +79,9 @@ export class ToolExecutorService {
           break;
         case "get_account_balances":
           result = await this.getAccountBalances(userId, validatedInput);
+          break;
+        case "get_categories":
+          result = await this.getCategories(userId, validatedInput);
           break;
         case "get_spending_by_category":
           result = await this.getSpendingByCategory(userId, validatedInput);
@@ -237,6 +243,36 @@ export class ToolExecutorService {
           description,
         },
       ],
+    };
+  }
+
+  private async getCategories(
+    userId: string,
+    input: Record<string, unknown>,
+  ): Promise<ToolResult> {
+    const type = input.type as "expense" | "income" | "all" | undefined;
+    const search = input.search as string | undefined;
+
+    const data = await this.categoriesService.getLlmCategories(userId, {
+      type,
+      search,
+    });
+
+    const effectiveType = type ?? "all";
+    const descriptionParts: string[] = [];
+    if (effectiveType !== "all") descriptionParts.push(effectiveType);
+    if (search) descriptionParts.push(`matching "${search}"`);
+    const description =
+      descriptionParts.length > 0
+        ? `Categories (${descriptionParts.join(", ")})`
+        : "All categories";
+
+    return {
+      data,
+      summary: `${data.totalCount} categor${data.totalCount === 1 ? "y" : "ies"}${
+        descriptionParts.length > 0 ? ` ${descriptionParts.join(", ")}` : ""
+      }.`,
+      sources: [{ type: "categories", description }],
     };
   }
 

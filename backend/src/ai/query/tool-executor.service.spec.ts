@@ -1,6 +1,7 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import { ToolExecutorService } from "./tool-executor.service";
 import { AccountsService } from "../../accounts/accounts.service";
+import { CategoriesService } from "../../categories/categories.service";
 import { TransactionAnalyticsService } from "../../transactions/transaction-analytics.service";
 import { NetWorthService } from "../../net-worth/net-worth.service";
 import { BudgetReportsService } from "../../budgets/budget-reports.service";
@@ -15,6 +16,7 @@ describe("ToolExecutorService", () => {
   let budgetReports: Record<string, jest.Mock>;
   let portfolio: Record<string, jest.Mock>;
   let investmentTransactions: Record<string, jest.Mock>;
+  let categories: Record<string, jest.Mock>;
 
   const userId = "user-1";
 
@@ -56,6 +58,21 @@ describe("ToolExecutorService", () => {
         transferCount: 0,
       }),
       resolveLlmCategoryIds: jest.fn().mockResolvedValue(["cat-1"]),
+    };
+
+    categories = {
+      getLlmCategories: jest.fn().mockResolvedValue({
+        categories: [
+          {
+            id: "cat-1",
+            name: "Groceries",
+            parentName: "Food",
+            isIncome: false,
+            transactionCount: 12,
+          },
+        ],
+        totalCount: 1,
+      }),
     };
 
     accounts = {
@@ -140,6 +157,7 @@ describe("ToolExecutorService", () => {
       providers: [
         ToolExecutorService,
         { provide: AccountsService, useValue: accounts },
+        { provide: CategoriesService, useValue: categories },
         { provide: TransactionAnalyticsService, useValue: analytics },
         { provide: NetWorthService, useValue: netWorth },
         { provide: BudgetReportsService, useValue: budgetReports },
@@ -240,6 +258,29 @@ describe("ToolExecutorService", () => {
         "all",
         undefined,
       );
+    });
+
+    it("get_categories delegates to categoriesService.getLlmCategories", async () => {
+      const result = await service.execute(userId, "get_categories", {});
+
+      expect(categories.getLlmCategories).toHaveBeenCalledWith(userId, {
+        type: undefined,
+        search: undefined,
+      });
+      expect(result.sources[0].type).toBe("categories");
+      expect(result.summary).toContain("categor");
+    });
+
+    it("get_categories passes type and search through", async () => {
+      await service.execute(userId, "get_categories", {
+        type: "expense",
+        search: "groc",
+      });
+
+      expect(categories.getLlmCategories).toHaveBeenCalledWith(userId, {
+        type: "expense",
+        search: "groc",
+      });
     });
 
     it("get_spending_by_category delegates to analytics.getLlmSpendingByCategory", async () => {

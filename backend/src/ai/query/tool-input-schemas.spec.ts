@@ -2,6 +2,7 @@ import {
   validateToolInput,
   queryTransactionsSchema,
   getAccountBalancesSchema,
+  getCategoriesSchema,
   getSpendingByCategorySchema,
   getIncomeSummarySchema,
   getNetWorthHistorySchema,
@@ -203,6 +204,37 @@ describe("tool-input-schemas", () => {
     it("rejects an unknown account type", () => {
       const result = getAccountBalancesSchema.safeParse({
         accountTypes: ["NOT_REAL"],
+      });
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe("getCategoriesSchema", () => {
+    it("accepts empty input", () => {
+      const result = getCategoriesSchema.safeParse({});
+      expect(result.success).toBe(true);
+    });
+
+    it("accepts all three type values", () => {
+      for (const type of ["expense", "income", "all"]) {
+        const result = getCategoriesSchema.safeParse({ type });
+        expect(result.success).toBe(true);
+      }
+    });
+
+    it("rejects unknown type values", () => {
+      const result = getCategoriesSchema.safeParse({ type: "transfer" });
+      expect(result.success).toBe(false);
+    });
+
+    it("accepts a search string", () => {
+      const result = getCategoriesSchema.safeParse({ search: "food" });
+      expect(result.success).toBe(true);
+    });
+
+    it("rejects a search string over 100 chars", () => {
+      const result = getCategoriesSchema.safeParse({
+        search: "a".repeat(101),
       });
       expect(result.success).toBe(false);
     });

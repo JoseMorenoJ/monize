@@ -90,6 +90,27 @@ export const FINANCIAL_TOOLS: AiToolDefinition[] = [
     },
   },
   {
+    name: "get_categories",
+    description:
+      "List the user's categories with their hierarchy (parent names) and transaction counts. Use this for questions like 'what categories do I have', 'list my income categories', or 'do I have a category for groceries'. Returns a flat list with each category's parent name so hierarchy is visible without nested JSON. Do not use this to query spending amounts -- use get_spending_by_category for that.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        type: {
+          type: "string",
+          enum: ["expense", "income", "all"],
+          description:
+            "Filter by category type. 'expense' returns only expense categories, 'income' returns only income categories, 'all' returns both. Defaults to 'all'.",
+        },
+        search: {
+          type: "string",
+          description:
+            "Optional case-insensitive substring match on category name. If a matching category is a subcategory, its parent is included so the hierarchy stays visible.",
+        },
+      },
+    },
+  },
+  {
     name: "get_spending_by_category",
     description:
       "Get a breakdown of spending (expenses) by category for a given date range. Returns each category with its total amount, percentage of total spending, and transaction count. Sorted by amount descending.",
