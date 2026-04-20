@@ -451,7 +451,7 @@ describe('AccountBalancesBarChart', () => {
       expect(capturedXAxisProps.height).toBeGreaterThan(30);
     });
 
-    it('truncates vertical x-axis labels longer than 20 characters with an ellipsis', () => {
+    it('truncates vertical x-axis labels longer than 15 characters with an ellipsis', () => {
       render(
         <AccountBalancesBarChart
           data={[
@@ -480,11 +480,11 @@ describe('AccountBalancesBarChart', () => {
 
       const text = container.querySelector('text');
       expect(text).not.toBeNull();
-      expect(text?.textContent).toBe('A Very Long Account N...');
-      expect(text?.textContent?.length).toBe(23); // 20 chars + "..."
+      expect(text?.textContent).toBe('A Very Long Acc...');
+      expect(text?.textContent?.length).toBe(18); // 15 chars + "..."
     });
 
-    it('leaves vertical x-axis labels under 20 characters untouched', () => {
+    it('leaves vertical x-axis labels under 15 characters untouched', () => {
       render(<AccountBalancesBarChart data={buildAccounts(11)} isLoading={false} />);
       const CustomTick = capturedXAxisProps.tick as React.ReactElement;
       const { container } = render(

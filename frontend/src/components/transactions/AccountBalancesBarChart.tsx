@@ -28,7 +28,7 @@ const DESKTOP_VERTICAL_AXIS_THRESHOLD = 10;
 
 // Cap vertical x-axis labels at this many characters so an extra-long account
 // name can't eat the whole chart height.
-const VERTICAL_LABEL_MAX_LEN = 20;
+const VERTICAL_LABEL_MAX_LEN = 15;
 
 function truncateAccountName(name: string): string {
   return name.length > VERTICAL_LABEL_MAX_LEN
@@ -237,8 +237,8 @@ export function AccountBalancesBarChart({
 
       <div
         ref={chartRef}
-        className="h-72"
-        style={{ minHeight: 288 }}
+        className="h-96"
+        style={{ minHeight: 384 }}
       >
         <ResponsiveContainer width="100%" height="100%" minWidth={0}>
           <BarChart
@@ -273,7 +273,7 @@ export function AccountBalancesBarChart({
               angle={isMobile ? -35 : 0}
               textAnchor={isMobile ? 'end' : 'middle'}
               tickMargin={isMobile ? 10 : verticalXAxis ? 8 : 0}
-              height={isMobile ? 64 : verticalXAxis ? 150 : 30}
+              height={isMobile ? 64 : verticalXAxis ? 120 : 30}
             />
             <YAxis
               tick={{ fill: '#6b7280', fontSize: 11 }}
