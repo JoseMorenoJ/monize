@@ -12,7 +12,7 @@ import {
 } from 'recharts';
 import { format } from 'date-fns';
 import { investmentsApi } from '@/lib/investments';
-import { InvestmentTransaction } from '@/types/investment';
+import { RealizedGainEntry } from '@/types/investment';
 import { Account } from '@/types/account';
 import { parseLocalDate } from '@/lib/utils';
 import { useNumberFormat } from '@/hooks/useNumberFormat';
@@ -24,8 +24,6 @@ import { exportToCsv } from '@/lib/csv-export';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('RealizedGainsReport');
-
-const MAX_PAGES = 50;
 
 function CustomTooltip({ active, payload, fmtValue }: {
   active?: boolean;
@@ -57,28 +55,23 @@ interface SecurityGain {
 export function RealizedGainsReport() {
   const { formatCurrency: formatCurrencyFull, formatCurrencyAxis } = useNumberFormat();
   const { defaultCurrency, convertToDefault } = useExchangeRates();
-  const [transactions, setTransactions] = useState<InvestmentTransaction[]>([]);
+  const [entries, setEntries] = useState<RealizedGainEntry[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState<string>('');
   const { dateRange, setDateRange, resolvedRange, isValid } = useDateRange({ defaultRange: '1y', alignment: 'month' });
   const [isLoading, setIsLoading] = useState(true);
   const [viewType, setViewType] = useState<'chart' | 'table'>('chart');
 
-  const accountCurrencyMap = useMemo(() => {
-    const map = new Map<string, string>();
-    accounts.forEach((a) => map.set(a.id, a.currencyCode));
-    return map;
-  }, [accounts]);
-
   const selectedAccount = accounts.find((a) => a.id === selectedAccountId);
   const displayCurrency = selectedAccount?.currencyCode || defaultCurrency;
   const isForeign = displayCurrency !== defaultCurrency;
 
-  const getTxAmount = useCallback((amount: number, accountId: string): number => {
+  // Backend returns each figure in the holding account's currency. Convert to
+  // the default currency when viewing All Accounts; otherwise pass through.
+  const toDisplay = useCallback((amount: number, accountCurrencyCode: string | null): number => {
     if (selectedAccountId) return amount;
-    const txCurrency = accountCurrencyMap.get(accountId) || defaultCurrency;
-    return convertToDefault(amount, txCurrency);
-  }, [selectedAccountId, accountCurrencyMap, defaultCurrency, convertToDefault]);
+    return convertToDefault(amount, accountCurrencyCode || defaultCurrency);
+  }, [selectedAccountId, defaultCurrency, convertToDefault]);
 
   const fmtValue = useCallback((value: number): string => {
     if (isForeign) {
@@ -100,26 +93,14 @@ export function RealizedGainsReport() {
       setIsLoading(true);
       try {
         const { start, end } = resolvedRange;
-        const allTransactions: InvestmentTransaction[] = [];
-        let page = 1;
-        let hasMore = true;
-        while (hasMore && page <= MAX_PAGES) {
-          const result = await investmentsApi.getTransactions({
-            accountIds: selectedAccountId || undefined,
-            startDate: start || undefined,
-            endDate: end,
-            action: 'SELL',
-            limit: 200,
-            page,
-          });
-          allTransactions.push(...result.data);
-          hasMore = result.pagination.hasMore;
-          page++;
-        }
-
-        setTransactions(allTransactions);
+        const data = await investmentsApi.getRealizedGains({
+          accountIds: selectedAccountId || undefined,
+          startDate: start || undefined,
+          endDate: end,
+        });
+        setEntries(data);
       } catch (error) {
-        logger.error('Failed to load sell transactions:', error);
+        logger.error('Failed to load realized gains:', error);
       } finally {
         setIsLoading(false);
       }
@@ -130,13 +111,13 @@ export function RealizedGainsReport() {
   const securityGains = useMemo((): SecurityGain[] => {
     const map = new Map<string, SecurityGain>();
 
-    transactions.forEach((tx) => {
-      const symbol = tx.security?.symbol || 'Unknown';
-      const name = tx.security?.name || 'Unknown Security';
+    entries.forEach((entry) => {
+      const symbol = entry.symbol || 'Unknown';
+      const name = entry.securityName || 'Unknown Security';
 
-      let entry = map.get(symbol);
-      if (!entry) {
-        entry = {
+      let bucket = map.get(symbol);
+      if (!bucket) {
+        bucket = {
           symbol,
           name,
           totalProceeds: 0,
@@ -144,22 +125,17 @@ export function RealizedGainsReport() {
           realizedGain: 0,
           transactionCount: 0,
         };
-        map.set(symbol, entry);
+        map.set(symbol, bucket);
       }
 
-      const proceeds = getTxAmount(Math.abs(tx.totalAmount), tx.accountId);
-      const costBasis = tx.quantity && tx.price
-        ? getTxAmount(Math.abs(tx.quantity) * Math.abs(tx.price), tx.accountId)
-        : proceeds;
-
-      entry.totalProceeds += proceeds;
-      entry.totalCostBasis += costBasis;
-      entry.realizedGain += proceeds - costBasis;
-      entry.transactionCount += 1;
+      bucket.totalProceeds += toDisplay(entry.proceeds, entry.accountCurrencyCode);
+      bucket.totalCostBasis += toDisplay(entry.costBasis, entry.accountCurrencyCode);
+      bucket.realizedGain += toDisplay(entry.realizedGain, entry.accountCurrencyCode);
+      bucket.transactionCount += 1;
     });
 
     return Array.from(map.values()).sort((a, b) => b.realizedGain - a.realizedGain);
-  }, [transactions, getTxAmount]);
+  }, [entries, toDisplay]);
 
   const chartData = useMemo(() => {
     return securityGains
@@ -183,24 +159,22 @@ export function RealizedGainsReport() {
     return { totalProceeds, totalCostBasis, totalGain, totalTransactions, gainers, losers };
   }, [securityGains]);
 
-  const sortedTransactions = useMemo(
-    () => [...transactions].sort((a, b) => b.transactionDate.localeCompare(a.transactionDate)),
-    [transactions],
+  const sortedEntries = useMemo(
+    () => [...entries].sort((a, b) => b.transactionDate.localeCompare(a.transactionDate)),
+    [entries],
   );
 
   const getExportData = useCallback(() => {
     const headers = ['Security', 'Date Sold', 'Quantity', 'Proceeds', 'Cost Basis', 'Gain/Loss', 'Return %'];
-    const rows: (string | number)[][] = sortedTransactions.map((tx) => {
-      const proceeds = getTxAmount(Math.abs(tx.totalAmount), tx.accountId);
-      const costBasis = tx.quantity && tx.price
-        ? getTxAmount(Math.abs(tx.quantity) * Math.abs(tx.price), tx.accountId)
-        : proceeds;
-      const gain = proceeds - costBasis;
+    const rows: (string | number)[][] = sortedEntries.map((entry) => {
+      const proceeds = toDisplay(entry.proceeds, entry.accountCurrencyCode);
+      const costBasis = toDisplay(entry.costBasis, entry.accountCurrencyCode);
+      const gain = toDisplay(entry.realizedGain, entry.accountCurrencyCode);
       const returnPct = costBasis !== 0 ? ((gain / costBasis) * 100).toFixed(2) + '%' : '-';
       return [
-        tx.security?.symbol || 'N/A',
-        format(parseLocalDate(tx.transactionDate), 'yyyy-MM-dd'),
-        tx.quantity != null ? Math.abs(tx.quantity) : '',
+        entry.symbol || 'N/A',
+        format(parseLocalDate(entry.transactionDate), 'yyyy-MM-dd'),
+        entry.quantity,
         proceeds,
         costBasis,
         gain,
@@ -208,7 +182,7 @@ export function RealizedGainsReport() {
       ];
     });
     return { headers, rows };
-  }, [sortedTransactions, getTxAmount]);
+  }, [sortedEntries, toDisplay]);
 
   const handleExportCsv = useCallback(() => {
     const { headers, rows } = getExportData();
@@ -328,12 +302,12 @@ export function RealizedGainsReport() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M3 14h18M3 6h18M3 18h18" />
               </svg>
             </button>
-            <ExportDropdown onExportCsv={handleExportCsv} onExportPdf={handleExportPdf} disabled={transactions.length === 0} />
+            <ExportDropdown onExportCsv={handleExportCsv} onExportPdf={handleExportPdf} disabled={entries.length === 0} />
           </div>
         </div>
       </div>
 
-      {transactions.length === 0 ? (
+      {entries.length === 0 ? (
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-6">
           <p className="text-gray-500 dark:text-gray-400 text-center py-8">
             No sell transactions found for this period.
@@ -446,11 +420,11 @@ export function RealizedGainsReport() {
       )}
 
       {/* Individual Transactions */}
-      {transactions.length > 0 && (
+      {entries.length > 0 && (
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-              Sell Transactions ({transactions.length})
+              Sell Transactions ({entries.length})
             </h3>
           </div>
           <div className="overflow-x-auto">
@@ -470,29 +444,29 @@ export function RealizedGainsReport() {
                     Price
                   </th>
                   <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
-                    Total
+                    Proceeds
                   </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                {sortedTransactions.map((tx) => (
-                  <tr key={tx.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                {sortedEntries.map((entry) => (
+                  <tr key={entry.transactionId} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                     <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
-                      {format(parseLocalDate(tx.transactionDate), 'MMM d, yyyy')}
+                      {format(parseLocalDate(entry.transactionDate), 'MMM d, yyyy')}
                     </td>
                     <td className="px-4 py-3">
                       <div className="font-medium text-sm text-gray-900 dark:text-gray-100">
-                        {tx.security?.symbol || 'N/A'}
+                        {entry.symbol || 'N/A'}
                       </div>
                     </td>
                     <td className="px-4 py-3 text-right text-sm text-gray-900 dark:text-gray-100">
-                      {tx.quantity != null ? Math.abs(tx.quantity).toFixed(4) : '-'}
+                      {entry.quantity.toFixed(4)}
                     </td>
                     <td className="px-4 py-3 text-right text-sm text-gray-900 dark:text-gray-100">
-                      {tx.price != null ? fmtValue(tx.price) : '-'}
+                      {fmtValue(entry.price)}
                     </td>
                     <td className="px-4 py-3 text-right text-sm font-medium text-gray-900 dark:text-gray-100">
-                      {fmtValue(Math.abs(tx.totalAmount))}
+                      {fmtValue(toDisplay(entry.proceeds, entry.accountCurrencyCode))}
                     </td>
                   </tr>
                 ))}

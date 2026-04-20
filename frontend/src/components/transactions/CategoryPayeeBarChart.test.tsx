@@ -4,11 +4,18 @@ import { CategoryPayeeBarChart } from './CategoryPayeeBarChart';
 
 // Capture props passed to the recharts primitives we care about so individual
 // tests can assert on axis / label styling (angle, interval, etc.).
-const capturedProps: { xAxis: any; labelList: any } = { xAxis: null, labelList: null };
+const capturedProps: { xAxis: any; labelList: any; barChart: any } = {
+  xAxis: null,
+  labelList: null,
+  barChart: null,
+};
 
 vi.mock('recharts', () => ({
   ResponsiveContainer: ({ children }: any) => <div data-testid="responsive-container">{children}</div>,
-  BarChart: ({ children }: any) => <div data-testid="bar-chart">{children}</div>,
+  BarChart: ({ children, ...rest }: any) => {
+    capturedProps.barChart = rest;
+    return <div data-testid="bar-chart">{children}</div>;
+  },
   Bar: ({ children }: any) => <div data-testid="bar">{children}</div>,
   XAxis: (props: any) => {
     capturedProps.xAxis = props;
@@ -50,6 +57,7 @@ describe('CategoryPayeeBarChart', () => {
     mockIsMobile.mockReturnValue(false);
     capturedProps.xAxis = null;
     capturedProps.labelList = null;
+    capturedProps.barChart = null;
   });
 
   const buildMonths = (n: number) =>
@@ -232,14 +240,17 @@ describe('CategoryPayeeBarChart', () => {
     it('keeps desktop bar-top labels horizontal when uncrowded (<= 36 months)', () => {
       render(<CategoryPayeeBarChart data={buildMonths(36)} isLoading={false} />);
       expect(capturedProps.labelList.angle).toBe(0);
+      expect(capturedProps.labelList.textAnchor).toBe('middle');
       expect(capturedProps.labelList.offset).toBe(5);
     });
 
-    it('rotates desktop bar-top labels vertical once column count crosses 36', () => {
+    it('rotates desktop bar-top labels vertical once column count crosses 36 and anchors them to sit above the bar', () => {
       render(<CategoryPayeeBarChart data={buildMonths(37)} isLoading={false} />);
       expect(capturedProps.labelList.angle).toBe(-90);
-      expect(capturedProps.labelList.textAnchor).toBe('middle');
-      expect(capturedProps.labelList.offset).toBe(18);
+      // textAnchor='start' (with angle -90) makes rotated text extend upward
+      // from the anchor, so values never overlap the bar they label.
+      expect(capturedProps.labelList.textAnchor).toBe('start');
+      expect(capturedProps.labelList.offset).toBe(6);
       // dominantBaseline is nested inside the style object
       expect(capturedProps.labelList.style).toMatchObject({
         dominantBaseline: 'central',
@@ -250,10 +261,16 @@ describe('CategoryPayeeBarChart', () => {
       mockIsMobile.mockReturnValue(true);
       render(<CategoryPayeeBarChart data={buildMonths(3)} isLoading={false} />);
       expect(capturedProps.labelList.angle).toBe(-90);
-      expect(capturedProps.labelList.offset).toBe(20);
+      expect(capturedProps.labelList.textAnchor).toBe('start');
+      expect(capturedProps.labelList.offset).toBe(8);
       expect(capturedProps.labelList.style).toMatchObject({
         dominantBaseline: 'central',
       });
+    });
+
+    it('reserves extra top margin when bar-top labels are vertical', () => {
+      render(<CategoryPayeeBarChart data={buildMonths(40)} isLoading={false} />);
+      expect(capturedProps.barChart.margin.top).toBe(20);
     });
   });
 });

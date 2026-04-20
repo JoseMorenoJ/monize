@@ -14,6 +14,7 @@ import { AccountSubType } from "../accounts/entities/account.entity";
 import { AccountsService } from "../accounts/accounts.service";
 import { TransactionsService } from "../transactions/transactions.service";
 import { HoldingsService } from "./holdings.service";
+import { PortfolioCalculationService } from "./portfolio-calculation.service";
 import { SecuritiesService } from "./securities.service";
 import { SecurityPriceService } from "./security-price.service";
 import { NetWorthService } from "../net-worth/net-worth.service";
@@ -334,6 +335,10 @@ describe("InvestmentTransactionsService", () => {
         {
           provide: HoldingsService,
           useValue: holdingsService,
+        },
+        {
+          provide: PortfolioCalculationService,
+          useValue: { calculateRealizedGains: jest.fn().mockResolvedValue([]) },
         },
         {
           provide: SecuritiesService,

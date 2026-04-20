@@ -17,6 +17,10 @@ import { UpdateInvestmentTransactionDto } from "./dto/update-investment-transact
 import { AccountsService } from "../accounts/accounts.service";
 import { TransactionsService } from "../transactions/transactions.service";
 import { HoldingsService } from "./holdings.service";
+import {
+  PortfolioCalculationService,
+  RealizedGainEntry,
+} from "./portfolio-calculation.service";
 import { SecuritiesService } from "./securities.service";
 import { SecurityPriceService } from "./security-price.service";
 import { NetWorthService } from "../net-worth/net-worth.service";
@@ -82,6 +86,7 @@ export class InvestmentTransactionsService {
     @Inject(forwardRef(() => TransactionsService))
     private transactionsService: TransactionsService,
     private holdingsService: HoldingsService,
+    private portfolioCalculationService: PortfolioCalculationService,
     private securitiesService: SecuritiesService,
     private securityPriceService: SecurityPriceService,
     private netWorthService: NetWorthService,
@@ -765,6 +770,37 @@ export class InvestmentTransactionsService {
         hasMore: pageNum < totalPages,
       },
     };
+  }
+
+  /**
+   * Return each SELL transaction annotated with cost basis and realized gain,
+   * computed by replaying the user's transaction history under the
+   * average-cost method. Linked brokerage/cash accounts are resolved the same
+   * way as `findAll()` so filtering by either side yields consistent results.
+   */
+  async getRealizedGains(
+    userId: string,
+    opts: {
+      accountIds?: string[];
+      startDate?: string;
+      endDate?: string;
+    } = {},
+  ): Promise<RealizedGainEntry[]> {
+    let accountIds = opts.accountIds;
+    if (accountIds && accountIds.length > 0) {
+      const resolvedIds = new Set<string>(accountIds);
+      const accounts = await this.accountsService.findByIds(userId, accountIds);
+      for (const acct of accounts) {
+        if (acct.linkedAccountId) resolvedIds.add(acct.linkedAccountId);
+      }
+      accountIds = [...resolvedIds];
+    }
+
+    return this.portfolioCalculationService.calculateRealizedGains(userId, {
+      accountIds,
+      startDate: opts.startDate,
+      endDate: opts.endDate,
+    });
   }
 
   async findOne(userId: string, id: string): Promise<InvestmentTransaction> {

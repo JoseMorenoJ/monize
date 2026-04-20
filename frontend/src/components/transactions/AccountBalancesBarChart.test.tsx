@@ -1,12 +1,18 @@
+import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@/test/render';
 import { AccountBalancesBarChart } from './AccountBalancesBarChart';
 
-// Capture the BarChart onClick handler so we can simulate account bar clicks
+// Capture the Bar onClick handler so we can simulate account bar clicks
 // without relying on the real recharts rendering pipeline.
+let capturedBarOnClick: ((entry: any) => void) | undefined;
+// Capture the BarChart onClick so we can simulate clicks anywhere in the
+// tooltip-highlighted column (the whitespace above a bar).
 let capturedBarChartOnClick: ((state: any) => void) | undefined;
 // Capture the YAxis props so we can assert which scale the chart picked.
 let capturedYAxisProps: any;
+// Capture the XAxis props so we can assert label rotation behaviour.
+let capturedXAxisProps: any;
 
 vi.mock('recharts', () => ({
   ResponsiveContainer: ({ children }: any) => <div data-testid="responsive-container">{children}</div>,
@@ -14,8 +20,14 @@ vi.mock('recharts', () => ({
     capturedBarChartOnClick = onClick;
     return <div data-testid="bar-chart">{children}</div>;
   },
-  Bar: ({ children }: any) => <div data-testid="bar">{children}</div>,
-  XAxis: () => <div data-testid="x-axis" />,
+  Bar: ({ children, onClick }: any) => {
+    capturedBarOnClick = onClick;
+    return <div data-testid="bar">{children}</div>;
+  },
+  XAxis: (props: any) => {
+    capturedXAxisProps = props;
+    return <div data-testid="x-axis" />;
+  },
   YAxis: (props: any) => {
     capturedYAxisProps = props;
     return <div data-testid="y-axis" />;
@@ -38,8 +50,10 @@ vi.mock('@/hooks/useNumberFormat', () => ({
 
 describe('AccountBalancesBarChart', () => {
   beforeEach(() => {
+    capturedBarOnClick = undefined;
     capturedBarChartOnClick = undefined;
     capturedYAxisProps = undefined;
+    capturedXAxisProps = undefined;
     mockFormatCurrency.mockImplementation((n: number) => `$${n.toFixed(2)}`);
     mockFormatCurrency.mockClear();
     mockFormatCurrencyAxis.mockClear();
@@ -273,8 +287,47 @@ describe('AccountBalancesBarChart', () => {
       />
     );
 
-    expect(capturedBarChartOnClick).toBeDefined();
+    expect(capturedBarOnClick).toBeDefined();
 
+    // Recharts passes the data point directly as the first arg to a Bar's
+    // onClick handler.
+    capturedBarOnClick?.({ accountId: 'acc-2', accountName: 'Savings', balance: 500, absBalance: 500 });
+
+    expect(onAccountClick).toHaveBeenCalledWith('acc-2');
+  });
+
+  it('reads accountId from entry.payload as a fallback', () => {
+    const onAccountClick = vi.fn();
+    render(
+      <AccountBalancesBarChart
+        data={[
+          { accountId: 'acc-1', accountName: 'Checking', balance: 1000 },
+        ]}
+        isLoading={false}
+        onAccountClick={onAccountClick}
+      />
+    );
+
+    capturedBarOnClick?.({ payload: { accountId: 'acc-1' } });
+
+    expect(onAccountClick).toHaveBeenCalledWith('acc-1');
+  });
+
+  it('fires onAccountClick from BarChart-level clicks (tooltip-highlighted column)', () => {
+    const onAccountClick = vi.fn();
+    render(
+      <AccountBalancesBarChart
+        data={[
+          { accountId: 'acc-1', accountName: 'Checking', balance: 1000 },
+          { accountId: 'acc-2', accountName: 'Savings', balance: 500 },
+        ]}
+        isLoading={false}
+        onAccountClick={onAccountClick}
+      />,
+    );
+
+    // A click in the column whitespace (above the bar) gives Recharts an
+    // activePayload but no direct Bar hit -- it must still fire the filter.
     capturedBarChartOnClick?.({
       activePayload: [
         { payload: { accountId: 'acc-2', accountName: 'Savings', balance: 500, absBalance: 500 } },
@@ -284,7 +337,43 @@ describe('AccountBalancesBarChart', () => {
     expect(onAccountClick).toHaveBeenCalledWith('acc-2');
   });
 
-  it('does not call onAccountClick when activePayload is missing', () => {
+  it('fires onAccountClick when only activeLabel is available (column whitespace)', () => {
+    const onAccountClick = vi.fn();
+    render(
+      <AccountBalancesBarChart
+        data={[
+          { accountId: 'acc-1', accountName: 'Checking', balance: 1000 },
+          { accountId: 'acc-2', accountName: 'Savings', balance: 500 },
+        ]}
+        isLoading={false}
+        onAccountClick={onAccountClick}
+      />,
+    );
+
+    // Clicks in the highlighted column sometimes populate activeLabel but
+    // not activePayload; the handler must fall back to a chartData lookup.
+    capturedBarChartOnClick?.({ activeLabel: 'Savings' });
+
+    expect(onAccountClick).toHaveBeenCalledWith('acc-2');
+  });
+
+  it('ignores BarChart clicks outside any active column (no activePayload and no activeLabel)', () => {
+    const onAccountClick = vi.fn();
+    render(
+      <AccountBalancesBarChart
+        data={[
+          { accountId: 'acc-1', accountName: 'Checking', balance: 1000 },
+        ]}
+        isLoading={false}
+        onAccountClick={onAccountClick}
+      />,
+    );
+
+    capturedBarChartOnClick?.({});
+    expect(onAccountClick).not.toHaveBeenCalled();
+  });
+
+  it('does not call onAccountClick when no accountId is present on the entry', () => {
     const onAccountClick = vi.fn();
     render(
       <AccountBalancesBarChart
@@ -297,7 +386,7 @@ describe('AccountBalancesBarChart', () => {
       />
     );
 
-    capturedBarChartOnClick?.({});
+    capturedBarOnClick?.({});
     expect(onAccountClick).not.toHaveBeenCalled();
   });
 
@@ -312,6 +401,7 @@ describe('AccountBalancesBarChart', () => {
       />
     );
 
+    expect(capturedBarOnClick).toBeUndefined();
     expect(capturedBarChartOnClick).toBeUndefined();
   });
 
@@ -353,6 +443,84 @@ describe('AccountBalancesBarChart', () => {
     expect(screen.getByText('¥100,000')).toBeInTheDocument();
   });
 
+  describe('x-axis label rotation', () => {
+    const buildAccounts = (n: number) =>
+      Array.from({ length: n }, (_, i) => ({
+        accountId: `a${i + 1}`,
+        accountName: `Account ${i + 1}`,
+        balance: 100 * (i + 1),
+      }));
+
+    it('keeps desktop x-axis labels horizontal at or below 10 accounts', () => {
+      render(<AccountBalancesBarChart data={buildAccounts(10)} isLoading={false} />);
+      expect(capturedXAxisProps.angle).toBe(0);
+      expect(capturedXAxisProps.textAnchor).toBe('middle');
+      expect(capturedXAxisProps.height).toBe(30);
+    });
+
+    it('rotates desktop x-axis labels vertical once account count crosses 10 via a custom tick', () => {
+      render(<AccountBalancesBarChart data={buildAccounts(11)} isLoading={false} />);
+      // A custom tick renderer handles the rotation so the first character
+      // anchors at the axis line (textAnchor='start' + rotate(90)); the
+      // XAxis itself no longer sets angle/textAnchor.
+      expect(capturedXAxisProps.tick).not.toBe(null);
+      expect(typeof capturedXAxisProps.tick).toBe('object');
+      expect(capturedXAxisProps.angle).toBe(0);
+      expect(capturedXAxisProps.textAnchor).toBe('middle');
+      // Reserve enough vertical space for the rotated labels.
+      expect(capturedXAxisProps.height).toBeGreaterThan(30);
+    });
+
+    it('truncates vertical x-axis labels longer than 15 characters with an ellipsis', () => {
+      render(
+        <AccountBalancesBarChart
+          data={[
+            {
+              accountId: 'a1',
+              accountName: 'A Very Long Account Name That Should Be Truncated',
+              balance: 100,
+            },
+            ...buildAccounts(10),
+          ]}
+          isLoading={false}
+        />,
+      );
+
+      // Render the custom tick directly so we can inspect the rendered text.
+      const CustomTick = capturedXAxisProps.tick as React.ReactElement<any>;
+      const { container } = render(
+        <svg>
+          {React.cloneElement(CustomTick, {
+            x: 0,
+            y: 0,
+            payload: { value: 'A Very Long Account Name That Should Be Truncated' },
+          })}
+        </svg>,
+      );
+
+      const text = container.querySelector('text');
+      expect(text).not.toBeNull();
+      expect(text?.textContent).toBe('A Very Long Acc...');
+      expect(text?.textContent?.length).toBe(18); // 15 chars + "..."
+    });
+
+    it('leaves vertical x-axis labels under 15 characters untouched', () => {
+      render(<AccountBalancesBarChart data={buildAccounts(11)} isLoading={false} />);
+      const CustomTick = capturedXAxisProps.tick as React.ReactElement<any>;
+      const { container } = render(
+        <svg>
+          {React.cloneElement(CustomTick, {
+            x: 0,
+            y: 0,
+            payload: { value: 'Short Name' },
+          })}
+        </svg>,
+      );
+      const text = container.querySelector('text');
+      expect(text?.textContent).toBe('Short Name');
+    });
+  });
+
   it('does not render the tooltip when there is no data', () => {
     render(<AccountBalancesBarChart data={[]} isLoading={false} />);
     expect(screen.queryByTestId('tooltip')).not.toBeInTheDocument();
@@ -370,7 +538,7 @@ describe('AccountBalancesBarChart', () => {
       />,
     );
     // First render without handler
-    expect(capturedBarChartOnClick).toBeUndefined();
+    expect(capturedBarOnClick).toBeUndefined();
 
     // Re-render with the handler
     const onAccountClick = vi.fn();
@@ -385,11 +553,7 @@ describe('AccountBalancesBarChart', () => {
       />,
     );
 
-    capturedBarChartOnClick?.({
-      activePayload: [
-        { payload: { accountId: 'a1', accountName: 'Checking', balance: 100, absBalance: 100 } },
-      ],
-    });
+    capturedBarOnClick?.({ accountId: 'a1', accountName: 'Checking', balance: 100, absBalance: 100 });
     expect(onAccountClick).toHaveBeenCalledWith('a1');
   });
 });

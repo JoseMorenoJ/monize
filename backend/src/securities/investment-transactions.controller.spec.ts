@@ -30,6 +30,7 @@ describe("InvestmentTransactionsController", () => {
       create: jest.fn(),
       findAll: jest.fn(),
       getSummary: jest.fn(),
+      getRealizedGains: jest.fn(),
       findOne: jest.fn(),
       update: jest.fn(),
       remove: jest.fn(),
@@ -187,6 +188,39 @@ describe("InvestmentTransactionsController", () => {
       await controller.getSummary(req, `${UUID1},${UUID2}`);
 
       expect(service.getSummary).toHaveBeenCalledWith("user-1", [UUID1, UUID2]);
+    });
+  });
+
+  describe("getRealizedGains", () => {
+    it("passes filters through to the service", async () => {
+      const rows = [{ transactionId: "s1", realizedGain: 100 }];
+      service.getRealizedGains.mockResolvedValue(rows);
+
+      const result = await controller.getRealizedGains(
+        req,
+        `${UUID1},${UUID2}`,
+        "2024-01-01",
+        "2024-12-31",
+      );
+
+      expect(service.getRealizedGains).toHaveBeenCalledWith("user-1", {
+        accountIds: [UUID1, UUID2],
+        startDate: "2024-01-01",
+        endDate: "2024-12-31",
+      });
+      expect(result).toEqual(rows);
+    });
+
+    it("rejects invalid UUIDs", () => {
+      expect(() => controller.getRealizedGains(req, "not-a-uuid")).toThrow(
+        BadRequestException,
+      );
+    });
+
+    it("rejects malformed dates", () => {
+      expect(() =>
+        controller.getRealizedGains(req, undefined, "2024/01/01"),
+      ).toThrow(BadRequestException);
     });
   });
 

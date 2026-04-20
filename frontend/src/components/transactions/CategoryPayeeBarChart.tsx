@@ -151,7 +151,7 @@ export function CategoryPayeeBarChart({
         <ResponsiveContainer width="100%" height="100%" minWidth={0}>
           <BarChart
             data={chartData}
-            margin={{ top: verticalLabels ? 32 : 20, right: isMobile ? 16 : 5, left: -10, bottom: 0 }}
+            margin={{ top: verticalLabels ? 20 : 12, right: isMobile ? 16 : 5, left: -10, bottom: 0 }}
             onClick={onMonthClick ? (state: any) => {
               const month = state?.activeLabel;
               if (!month) return;
@@ -201,8 +201,8 @@ export function CategoryPayeeBarChart({
                 dataKey="total"
                 position="top"
                 angle={verticalLabels ? -90 : 0}
-                offset={isMobile ? 20 : verticalLabels ? 18 : 5}
-                textAnchor="middle"
+                offset={verticalLabels ? (isMobile ? 8 : 6) : 5}
+                textAnchor={verticalLabels ? 'start' : 'middle'}
                 formatter={(value: unknown) =>
                   isMobile
                     ? formatCurrencyAxis(Number(value))

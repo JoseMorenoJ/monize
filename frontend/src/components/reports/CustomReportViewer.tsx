@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import Link from 'next/link';
@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/Button';
 import { DateInput } from '@/components/ui/DateInput';
 import { Select } from '@/components/ui/Select';
 import { customReportsApi } from '@/lib/custom-reports';
+import { CHART_COLOURS } from '@/lib/chart-colours';
 import {
   CustomReport,
   ReportResult,
@@ -125,6 +126,16 @@ export function CustomReportViewer({ reportId }: CustomReportViewerProps) {
     { value: '', label: 'Use saved timeframe' },
     ...Object.entries(TIMEFRAME_LABELS).map(([value, label]) => ({ value, label })),
   ];
+
+  // Mirror ReportChart's colour assignment so legend swatches match chart slices/bars.
+  const legendData = useMemo(() => {
+    if (!result) return [];
+    let colourIndex = 0;
+    return result.data.map((item) => ({
+      ...item,
+      color: item.color || CHART_COLOURS[colourIndex++ % CHART_COLOURS.length],
+    }));
+  }, [result]);
 
   if (isLoading) {
     return (
@@ -257,10 +268,10 @@ export function CustomReportViewer({ reportId }: CustomReportViewerProps) {
 
           {/* Legend for pie/bar charts */}
           {(result.viewType === ReportViewType.PIE_CHART || result.viewType === ReportViewType.BAR_CHART) &&
-            result.data.length > 0 && (
+            legendData.length > 0 && (
               <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
-                  {result.data.slice(0, 15).map((item, index) => (
+                  {legendData.slice(0, 15).map((item, index) => (
                     <button
                       key={index}
                       onClick={() => item.id && handleDataPointClick(item.id)}
@@ -268,7 +279,7 @@ export function CustomReportViewer({ reportId }: CustomReportViewerProps) {
                     >
                       <div
                         className="w-3 h-3 rounded-full flex-shrink-0"
-                        style={{ backgroundColor: item.color || '#3b82f6' }}
+                        style={{ backgroundColor: item.color }}
                       />
                       <span className="text-gray-600 dark:text-gray-400 truncate">
                         {item.label}

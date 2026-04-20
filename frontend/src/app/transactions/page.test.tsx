@@ -940,6 +940,36 @@ describe('TransactionsPage', () => {
       expect((callArgs.accountIds as string).split(',')).toEqual(['acc-3']);
     });
 
+    it('excludes brokerage accounts from the chart query when no Show Accounts filter is set (All)', async () => {
+      // Regression: previously the chart fell back to accountIds=undefined
+      // when the Active/Closed/All toggle was on "All", which let the daily
+      // balances API include brokerage accounts. The Account Balances chart
+      // should never surface brokerage accounts here -- they're only
+      // actionable from the Investments page.
+      mockGetAllAccounts.mockResolvedValue(mockAccounts);
+
+      render(<TransactionsPage />);
+
+      // Wait until the filter panel shows -- that's our signal that accounts
+      // have loaded and filteredAccounts is populated, so the subsequent
+      // loadTransactions re-run has the real account list to work with.
+      await waitFor(() => {
+        expect(screen.getByTestId('filter-panel')).toBeInTheDocument();
+      });
+
+      await waitFor(() => {
+        const latest = mockGetDailyBalances.mock.calls.at(-1)?.[0];
+        expect(latest?.accountIds).toBeDefined();
+      });
+
+      const callArgs = mockGetDailyBalances.mock.calls.at(-1)?.[0];
+      const accountIds = (callArgs.accountIds as string).split(',').sort();
+      // acc-4 is a brokerage account in the mock fixtures and must not appear.
+      expect(accountIds).not.toContain('acc-4');
+      // All non-brokerage accounts (active + closed) should be requested.
+      expect(accountIds).toEqual(['acc-1', 'acc-2', 'acc-3']);
+    });
+
     it('forwards a filter label to Monthly Totals chart built from selected category/payee/tag names', async () => {
       mockGetAllAccounts.mockResolvedValue(mockAccounts);
       mockGetAllCategories.mockResolvedValue(mockCategories);

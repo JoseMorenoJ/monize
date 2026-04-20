@@ -13,7 +13,7 @@ import {
 } from 'recharts';
 import { format, eachMonthOfInterval } from 'date-fns';
 import { investmentsApi } from '@/lib/investments';
-import { InvestmentTransaction } from '@/types/investment';
+import { InvestmentTransaction, RealizedGainEntry } from '@/types/investment';
 import { Account } from '@/types/account';
 import { parseLocalDate } from '@/lib/utils';
 import { useNumberFormat } from '@/hooks/useNumberFormat';
@@ -48,6 +48,7 @@ export function DividendIncomeReport() {
   const { defaultCurrency, convertToDefault } = useExchangeRates();
   const chartRef = useRef<HTMLDivElement>(null);
   const [transactions, setTransactions] = useState<InvestmentTransaction[]>([]);
+  const [realizedGains, setRealizedGains] = useState<RealizedGainEntry[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState<string>('');
   const { dateRange, setDateRange, resolvedRange, isValid } = useDateRange({ defaultRange: '1y', alignment: 'month' });
@@ -77,6 +78,14 @@ export function DividendIncomeReport() {
     return convertToDefault(amount, txCurrency);
   }, [selectedAccountId, accountCurrencyMap, defaultCurrency, convertToDefault]);
 
+  // Backend already returns each realized gain in the holding account's
+  // currency (cost basis derived via chronological replay). Convert to the
+  // default currency for the All-Accounts view; pass through otherwise.
+  const convertRealized = useCallback((entry: RealizedGainEntry): number => {
+    if (selectedAccountId) return entry.realizedGain;
+    return convertToDefault(entry.realizedGain, entry.accountCurrencyCode || defaultCurrency);
+  }, [selectedAccountId, defaultCurrency, convertToDefault]);
+
   const fmtValue = useCallback((value: number): string => {
     if (isForeign) {
       return `${formatCurrencyFull(value, displayCurrency)} ${displayCurrency}`;
@@ -91,8 +100,14 @@ export function DividendIncomeReport() {
       try {
         const { start, end } = resolvedRange;
 
+        const accountsPromise = investmentsApi.getInvestmentAccounts();
+        const realizedGainsPromise = investmentsApi.getRealizedGains({
+          accountIds: selectedAccountId || undefined,
+          startDate: start || undefined,
+          endDate: end,
+        });
+
         // Paginate through all transactions (API limit is 200 per page)
-        const accountsData = await investmentsApi.getInvestmentAccounts();
         let allTransactions: InvestmentTransaction[] = [];
         let page = 1;
         let hasMore = true;
@@ -109,12 +124,22 @@ export function DividendIncomeReport() {
           page++;
         }
 
-        // Filter to only income transactions
+        const [accountsData, realizedGainsData] = await Promise.all([
+          accountsPromise,
+          realizedGainsPromise,
+        ]);
+
+        // Dividend / Interest / CAPITAL_GAIN come from the plain transaction
+        // list; SELL realized gains come from the backend replay endpoint.
         const incomeTransactions = allTransactions.filter(
-          (tx) => tx.action === 'DIVIDEND' || tx.action === 'INTEREST' || tx.action === 'CAPITAL_GAIN'
+          (tx) =>
+            tx.action === 'DIVIDEND' ||
+            tx.action === 'INTEREST' ||
+            tx.action === 'CAPITAL_GAIN',
         );
 
         setTransactions(incomeTransactions);
+        setRealizedGains(realizedGainsData);
         setAccounts(accountsData);
       } catch (error) {
         logger.error('Failed to load investment transactions:', error);
@@ -151,11 +176,8 @@ export function DividendIncomeReport() {
       });
     });
 
-    // Aggregate transactions
-    transactions.forEach((tx) => {
-      const txDate = parseLocalDate(tx.transactionDate);
+    const getOrCreateBucket = (txDate: Date): MonthlyIncome => {
       const monthKey = format(txDate, 'yyyy-MM');
-
       let bucket = monthMap.get(monthKey);
       if (!bucket) {
         bucket = {
@@ -168,71 +190,101 @@ export function DividendIncomeReport() {
         };
         monthMap.set(monthKey, bucket);
       }
+      return bucket;
+    };
 
-      const amount = getTxAmount(tx);
+    transactions.forEach((tx) => {
+      const bucket = getOrCreateBucket(parseLocalDate(tx.transactionDate));
+      const contribution = getTxAmount(tx);
       switch (tx.action) {
         case 'DIVIDEND':
-          bucket.dividends += amount;
+          bucket.dividends += contribution;
           break;
         case 'INTEREST':
-          bucket.interest += amount;
+          bucket.interest += contribution;
           break;
         case 'CAPITAL_GAIN':
-          bucket.capitalGains += amount;
+          bucket.capitalGains += contribution;
           break;
       }
-      bucket.total += amount;
+      bucket.total += contribution;
+    });
+
+    realizedGains.forEach((entry) => {
+      const bucket = getOrCreateBucket(parseLocalDate(entry.transactionDate));
+      const gain = convertRealized(entry);
+      bucket.capitalGains += gain;
+      bucket.total += gain;
     });
 
     return Array.from(monthMap.values()).sort((a, b) => a.month.localeCompare(b.month));
-  }, [transactions, dateRange, resolvedRange, getTxAmount]);
+  }, [transactions, realizedGains, dateRange, resolvedRange, getTxAmount, convertRealized]);
 
   const securityData = useMemo((): SecurityIncome[] => {
     const securityMap = new Map<string, SecurityIncome>();
 
+    const getOrCreateBucket = (symbol: string, name: string): SecurityIncome => {
+      let bucket = securityMap.get(symbol);
+      if (!bucket) {
+        bucket = { symbol, name, dividends: 0, interest: 0, capitalGains: 0, total: 0 };
+        securityMap.set(symbol, bucket);
+      }
+      return bucket;
+    };
+
     transactions.forEach((tx) => {
       const symbol = tx.security?.symbol || 'Unknown';
       const name = tx.security?.name || 'Unknown Security';
-
-      let bucket = securityMap.get(symbol);
-      if (!bucket) {
-        bucket = {
-          symbol,
-          name,
-          dividends: 0,
-          interest: 0,
-          capitalGains: 0,
-          total: 0,
-        };
-        securityMap.set(symbol, bucket);
-      }
-
-      const amount = getTxAmount(tx);
+      const bucket = getOrCreateBucket(symbol, name);
+      const contribution = getTxAmount(tx);
       switch (tx.action) {
         case 'DIVIDEND':
-          bucket.dividends += amount;
+          bucket.dividends += contribution;
           break;
         case 'INTEREST':
-          bucket.interest += amount;
+          bucket.interest += contribution;
           break;
         case 'CAPITAL_GAIN':
-          bucket.capitalGains += amount;
+          bucket.capitalGains += contribution;
           break;
       }
-      bucket.total += amount;
+      bucket.total += contribution;
+    });
+
+    realizedGains.forEach((entry) => {
+      const symbol = entry.symbol || 'Unknown';
+      const name = entry.securityName || 'Unknown Security';
+      const bucket = getOrCreateBucket(symbol, name);
+      const gain = convertRealized(entry);
+      bucket.capitalGains += gain;
+      bucket.total += gain;
     });
 
     return Array.from(securityMap.values()).sort((a, b) => b.total - a.total);
-  }, [transactions, getTxAmount]);
+  }, [transactions, realizedGains, getTxAmount, convertRealized]);
 
   const totals = useMemo(() => {
+    const dividends = transactions
+      .filter((t) => t.action === 'DIVIDEND')
+      .reduce((sum, t) => sum + getTxAmount(t), 0);
+    const interest = transactions
+      .filter((t) => t.action === 'INTEREST')
+      .reduce((sum, t) => sum + getTxAmount(t), 0);
+    const manualCapitalGains = transactions
+      .filter((t) => t.action === 'CAPITAL_GAIN')
+      .reduce((sum, t) => sum + getTxAmount(t), 0);
+    const sellRealizedGains = realizedGains.reduce(
+      (sum, entry) => sum + convertRealized(entry),
+      0,
+    );
+    const capitalGains = manualCapitalGains + sellRealizedGains;
     return {
-      dividends: transactions.filter((t) => t.action === 'DIVIDEND').reduce((sum, t) => sum + getTxAmount(t), 0),
-      interest: transactions.filter((t) => t.action === 'INTEREST').reduce((sum, t) => sum + getTxAmount(t), 0),
-      capitalGains: transactions.filter((t) => t.action === 'CAPITAL_GAIN').reduce((sum, t) => sum + getTxAmount(t), 0),
-      total: transactions.reduce((sum, t) => sum + getTxAmount(t), 0),
+      dividends,
+      interest,
+      capitalGains,
+      total: dividends + interest + capitalGains,
     };
-  }, [transactions, getTxAmount]);
+  }, [transactions, realizedGains, getTxAmount, convertRealized]);
 
   const handleExportPdf = async () => {
     const { exportToPdf } = await import('@/lib/pdf-export');
@@ -359,10 +411,10 @@ export function DividendIncomeReport() {
         </div>
       </div>
 
-      {transactions.length === 0 ? (
+      {transactions.length === 0 && realizedGains.length === 0 ? (
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-6">
           <p className="text-gray-500 dark:text-gray-400 text-center py-8">
-            No dividend, interest, or capital gain transactions found for this period.
+            No dividend, interest, capital gain, or sell transactions found for this period.
           </p>
         </div>
       ) : viewType === 'monthly' ? (
@@ -433,7 +485,7 @@ export function DividendIncomeReport() {
                       {security.interest > 0 ? fmtValue(security.interest) : '-'}
                     </td>
                     <td className="px-4 py-3 text-right text-sm text-purple-600 dark:text-purple-400">
-                      {security.capitalGains > 0 ? fmtValue(security.capitalGains) : '-'}
+                      {security.capitalGains !== 0 ? fmtValue(security.capitalGains) : '-'}
                     </td>
                     <td className="px-4 py-3 text-right text-sm font-medium text-gray-900 dark:text-gray-100">
                       {fmtValue(security.total)}

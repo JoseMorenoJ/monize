@@ -22,6 +22,47 @@ const CHART_TITLE = 'Account Balances';
 // the "auto" mode switches to a log scale so small bars remain visible.
 const AUTO_LOG_RATIO = 50;
 
+// Past this many bars on desktop, x-axis account names are rotated vertical
+// so they stop overlapping each other along the axis.
+const DESKTOP_VERTICAL_AXIS_THRESHOLD = 10;
+
+// Cap vertical x-axis labels at this many characters so an extra-long account
+// name can't eat the whole chart height.
+const VERTICAL_LABEL_MAX_LEN = 15;
+
+function truncateAccountName(name: string): string {
+  return name.length > VERTICAL_LABEL_MAX_LEN
+    ? `${name.slice(0, VERTICAL_LABEL_MAX_LEN)}...`
+    : name;
+}
+
+// Custom tick used when the x-axis is rotated vertical. textAnchor='start'
+// combined with the 90deg rotation anchors the first character at the tick
+// so the label's visual left edge sits flush with the x-axis line, rather
+// than the label straddling the axis as the default centered tick does.
+function VerticalAccountTick({
+  x,
+  y,
+  payload,
+}: {
+  x?: number;
+  y?: number;
+  payload?: { value?: string };
+}) {
+  return (
+    <g transform={`translate(${x ?? 0},${y ?? 0})`}>
+      <text
+        textAnchor="start"
+        fill="#6b7280"
+        fontSize={12}
+        transform="rotate(90)"
+      >
+        {truncateAccountName(String(payload?.value ?? ''))}
+      </text>
+    </g>
+  );
+}
+
 type ScaleMode = 'auto' | 'linear' | 'log';
 type EffectiveScale = 'linear' | 'log';
 
@@ -119,6 +160,10 @@ export function AccountBalancesBarChart({
   const effectiveScale: EffectiveScale =
     scaleMode === 'auto' ? (autoPrefersLog ? 'log' : 'linear') : scaleMode;
 
+  // Mobile keeps its existing -35° slant; on desktop, switch to fully vertical
+  // labels once the bar count crosses the crowding threshold.
+  const verticalXAxis = !isMobile && chartData.length > DESKTOP_VERTICAL_AXIS_THRESHOLD;
+
   const summary = useMemo(() => {
     if (chartData.length === 0) return null;
     const totalCents = chartData.reduce(
@@ -199,10 +244,19 @@ export function AccountBalancesBarChart({
           <BarChart
             data={chartData}
             margin={{ top: 20, right: isMobile ? 16 : 5, left: -10, bottom: 0 }}
+            // Fire on clicks anywhere in the tooltip-highlighted column (not
+            // just the bar rect). Prefer state.activeLabel -- which Recharts
+            // sets to the active category whenever the cursor is in an
+            // active column -- and fall back to activePayload for the direct
+            // bar hit case.
             onClick={onAccountClick ? (state: any) => {
-              const accountId = state?.activePayload?.[0]?.payload?.accountId;
-              if (!accountId) return;
-              onAccountClick(accountId);
+              const activeName: string | undefined = state?.activeLabel;
+              const fromLabel = activeName
+                ? chartData.find((d) => d.accountName === activeName)?.accountId
+                : undefined;
+              const accountId =
+                fromLabel ?? state?.activePayload?.[0]?.payload?.accountId;
+              if (accountId) onAccountClick(accountId);
             } : undefined}
             style={onAccountClick ? { cursor: 'pointer' } : undefined}
           >
@@ -213,14 +267,18 @@ export function AccountBalancesBarChart({
             />
             <XAxis
               dataKey="accountName"
-              tick={{ fill: '#6b7280', fontSize: isMobile ? 10 : 12 }}
+              tick={
+                verticalXAxis
+                  ? <VerticalAccountTick />
+                  : { fill: '#6b7280', fontSize: isMobile ? 10 : 12 }
+              }
               tickLine={false}
               axisLine={{ stroke: '#e5e7eb' }}
               interval={isMobile ? 'preserveStartEnd' : 0}
               angle={isMobile ? -35 : 0}
               textAnchor={isMobile ? 'end' : 'middle'}
-              tickMargin={isMobile ? 10 : 0}
-              height={isMobile ? 64 : 30}
+              tickMargin={isMobile ? 10 : verticalXAxis ? 8 : 0}
+              height={isMobile ? 64 : verticalXAxis ? 120 : 30}
             />
             <YAxis
               tick={{ fill: '#6b7280', fontSize: 11 }}
@@ -232,11 +290,23 @@ export function AccountBalancesBarChart({
               domain={effectiveScale === 'log' ? ['auto', 'auto'] : undefined}
               allowDataOverflow={false}
             />
-            <Tooltip content={<AccountBalanceTooltip formatCurrency={formatCurrency} />} />
+            <Tooltip
+              content={<AccountBalanceTooltip formatCurrency={formatCurrency} />}
+              // Keep the highlight rect visually present but transparent to
+              // pointer events so clicks fall through to BarChart's onClick.
+              cursor={{ fill: '#e5e7eb', fillOpacity: 0.35, style: { pointerEvents: 'none' } }}
+            />
             <Bar
               dataKey="absBalance"
               radius={[4, 4, 0, 0]}
               maxBarSize={50}
+              onClick={onAccountClick ? (entry: any) => {
+                // Recharts passes the data point as the first arg. With Cell
+                // children the BarChart-level onClick can fail to populate
+                // activePayload, so we read accountId straight off the bar.
+                const accountId = entry?.accountId ?? entry?.payload?.accountId;
+                if (accountId) onAccountClick(accountId);
+              } : undefined}
             >
               {chartData.map((entry, index) => (
                 <Cell
