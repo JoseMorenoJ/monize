@@ -6,6 +6,7 @@ import {
   InvestmentTransaction,
   CreateInvestmentTransactionData,
   Holding,
+  RealizedGainEntry,
   Security,
   CreateSecurityData,
   CreateSecurityPriceData,
@@ -81,6 +82,19 @@ export const investmentsApi = {
   }): Promise<PaginatedInvestmentTransactions> => {
     const response = await apiClient.get<PaginatedInvestmentTransactions>(
       '/investment-transactions',
+      { params },
+    );
+    return response.data;
+  },
+
+  // Get realized gains per SELL transaction (proper cost basis via replay)
+  getRealizedGains: async (params?: {
+    accountIds?: string;
+    startDate?: string;
+    endDate?: string;
+  }): Promise<RealizedGainEntry[]> => {
+    const response = await apiClient.get<RealizedGainEntry[]>(
+      '/investment-transactions/realized-gains',
       { params },
     );
     return response.data;

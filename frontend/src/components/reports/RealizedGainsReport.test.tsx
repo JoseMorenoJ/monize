@@ -49,12 +49,12 @@ vi.mock('recharts', () => ({
   Tooltip: () => null,
 }));
 
-const mockGetTransactions = vi.fn();
+const mockGetRealizedGains = vi.fn();
 const mockGetInvestmentAccounts = vi.fn();
 
 vi.mock('@/lib/investments', () => ({
   investmentsApi: {
-    getTransactions: (...args: any[]) => mockGetTransactions(...args),
+    getRealizedGains: (...args: any[]) => mockGetRealizedGains(...args),
     getInvestmentAccounts: (...args: any[]) => mockGetInvestmentAccounts(...args),
   },
 }));
@@ -68,20 +68,39 @@ vi.mock('@/lib/logger', () => ({
   }),
 }));
 
+const gainEntry = (overrides: Partial<Record<string, unknown>> = {}) => ({
+  transactionId: 'sell-1',
+  transactionDate: '2025-06-15',
+  accountId: 'acc-1',
+  accountName: 'TFSA',
+  accountCurrencyCode: 'CAD',
+  securityId: 'sec-1',
+  symbol: 'AAPL',
+  securityName: 'Apple Inc.',
+  securityCurrencyCode: 'CAD',
+  quantity: 50,
+  price: 110,
+  commission: 0,
+  proceeds: 5500,
+  costBasis: 5000,
+  realizedGain: 500,
+  ...overrides,
+});
+
 describe('RealizedGainsReport', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   it('shows loading state initially', () => {
-    mockGetTransactions.mockReturnValue(new Promise(() => {}));
+    mockGetRealizedGains.mockReturnValue(new Promise(() => {}));
     mockGetInvestmentAccounts.mockReturnValue(new Promise(() => {}));
     render(<RealizedGainsReport />);
     expect(document.querySelector('.animate-pulse')).toBeTruthy();
   });
 
   it('renders empty state when no sell transactions', async () => {
-    mockGetTransactions.mockResolvedValue({ data: [], pagination: { hasMore: false } });
+    mockGetRealizedGains.mockResolvedValue([]);
     mockGetInvestmentAccounts.mockResolvedValue([]);
     render(<RealizedGainsReport />);
     await waitFor(() => {
@@ -89,32 +108,19 @@ describe('RealizedGainsReport', () => {
     });
   });
 
-  it('renders summary cards with sell transaction data', async () => {
-    mockGetTransactions.mockResolvedValue({
-      data: [
-        {
-          id: 'tx-1',
-          transactionDate: '2025-06-15',
-          action: 'SELL',
-          totalAmount: -5000,
-          quantity: -50,
-          price: 100,
-          accountId: 'acc-1',
-          security: { symbol: 'AAPL', name: 'Apple Inc.' },
-        },
-        {
-          id: 'tx-2',
-          transactionDate: '2025-08-20',
-          action: 'SELL',
-          totalAmount: -3000,
-          quantity: -30,
-          price: 100,
-          accountId: 'acc-1',
-          security: { symbol: 'MSFT', name: 'Microsoft Corp.' },
-        },
-      ],
-      pagination: { hasMore: false },
-    });
+  it('renders summary cards with realized gain data', async () => {
+    mockGetRealizedGains.mockResolvedValue([
+      gainEntry(),
+      gainEntry({
+        transactionId: 'sell-2',
+        transactionDate: '2025-08-20',
+        symbol: 'MSFT',
+        securityName: 'Microsoft Corp.',
+        proceeds: 3300,
+        costBasis: 3000,
+        realizedGain: 300,
+      }),
+    ]);
     mockGetInvestmentAccounts.mockResolvedValue([
       { id: 'acc-1', name: 'TFSA', currencyCode: 'CAD', accountSubType: 'INVESTMENT_CASH' },
     ]);
@@ -128,7 +134,7 @@ describe('RealizedGainsReport', () => {
   });
 
   it('renders view type toggle buttons', async () => {
-    mockGetTransactions.mockResolvedValue({ data: [], pagination: { hasMore: false } });
+    mockGetRealizedGains.mockResolvedValue([]);
     mockGetInvestmentAccounts.mockResolvedValue([]);
     render(<RealizedGainsReport />);
     await waitFor(() => {
@@ -138,21 +144,7 @@ describe('RealizedGainsReport', () => {
   });
 
   it('renders chart with gain data', async () => {
-    mockGetTransactions.mockResolvedValue({
-      data: [
-        {
-          id: 'tx-1',
-          transactionDate: '2025-06-15',
-          action: 'SELL',
-          totalAmount: -5500,
-          quantity: -50,
-          price: 100,
-          accountId: 'acc-1',
-          security: { symbol: 'AAPL', name: 'Apple Inc.' },
-        },
-      ],
-      pagination: { hasMore: false },
-    });
+    mockGetRealizedGains.mockResolvedValue([gainEntry()]);
     mockGetInvestmentAccounts.mockResolvedValue([]);
     render(<RealizedGainsReport />);
     await waitFor(() => {
@@ -162,21 +154,7 @@ describe('RealizedGainsReport', () => {
   });
 
   it('renders sell transactions table', async () => {
-    mockGetTransactions.mockResolvedValue({
-      data: [
-        {
-          id: 'tx-1',
-          transactionDate: '2025-06-15',
-          action: 'SELL',
-          totalAmount: -5000,
-          quantity: -50,
-          price: 100,
-          accountId: 'acc-1',
-          security: { symbol: 'AAPL', name: 'Apple Inc.' },
-        },
-      ],
-      pagination: { hasMore: false },
-    });
+    mockGetRealizedGains.mockResolvedValue([gainEntry()]);
     mockGetInvestmentAccounts.mockResolvedValue([]);
     render(<RealizedGainsReport />);
     await waitFor(() => {
@@ -185,13 +163,16 @@ describe('RealizedGainsReport', () => {
     expect(screen.getByText('AAPL')).toBeInTheDocument();
   });
 
-  it('filters transactions by SELL action', async () => {
-    mockGetTransactions.mockResolvedValue({ data: [], pagination: { hasMore: false } });
+  it('queries the realized-gains endpoint with the selected date range', async () => {
+    mockGetRealizedGains.mockResolvedValue([]);
     mockGetInvestmentAccounts.mockResolvedValue([]);
     render(<RealizedGainsReport />);
     await waitFor(() => {
-      expect(mockGetTransactions).toHaveBeenCalledWith(
-        expect.objectContaining({ action: 'SELL' }),
+      expect(mockGetRealizedGains).toHaveBeenCalledWith(
+        expect.objectContaining({
+          startDate: '2025-01-01',
+          endDate: '2026-01-01',
+        }),
       );
     });
   });

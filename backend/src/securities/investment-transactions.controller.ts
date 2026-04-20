@@ -178,6 +178,47 @@ export class InvestmentTransactionsController {
     return this.investmentTransactionsService.getSummary(req.user.id, ids);
   }
 
+  @Get("realized-gains")
+  @ApiOperation({
+    summary:
+      "Realized gains for each SELL transaction, using average-cost basis replay",
+  })
+  @ApiQuery({ name: "accountIds", required: false })
+  @ApiQuery({ name: "startDate", required: false })
+  @ApiQuery({ name: "endDate", required: false })
+  @ApiResponse({ status: 200, description: "List of SELLs with realized gain" })
+  getRealizedGains(
+    @Request() req,
+    @Query("accountIds") accountIds?: string,
+    @Query("startDate") startDate?: string,
+    @Query("endDate") endDate?: string,
+  ) {
+    const uuidRegex =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+
+    const ids = accountIds ? accountIds.split(",").filter(Boolean) : undefined;
+    if (ids) {
+      for (const id of ids) {
+        if (!uuidRegex.test(id)) {
+          throw new BadRequestException(`Invalid account UUID: ${id}`);
+        }
+      }
+    }
+    if (startDate !== undefined && !dateRegex.test(startDate)) {
+      throw new BadRequestException("startDate must be in YYYY-MM-DD format");
+    }
+    if (endDate !== undefined && !dateRegex.test(endDate)) {
+      throw new BadRequestException("endDate must be in YYYY-MM-DD format");
+    }
+
+    return this.investmentTransactionsService.getRealizedGains(req.user.id, {
+      accountIds: ids,
+      startDate,
+      endDate,
+    });
+  }
+
   @Get(":id")
   @ApiOperation({ summary: "Get an investment transaction by ID" })
   @ApiResponse({

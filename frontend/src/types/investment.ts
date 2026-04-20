@@ -210,3 +210,21 @@ export interface PaginatedInvestmentTransactions {
   data: InvestmentTransaction[];
   pagination: InvestmentTransactionPaginationInfo;
 }
+
+export interface RealizedGainEntry {
+  transactionId: string;
+  transactionDate: string;
+  accountId: string;
+  accountName: string | null;
+  accountCurrencyCode: string | null;
+  securityId: string;
+  symbol: string | null;
+  securityName: string | null;
+  securityCurrencyCode: string | null;
+  quantity: number;
+  price: number;
+  commission: number;
+  proceeds: number;
+  costBasis: number;
+  realizedGain: number;
+}

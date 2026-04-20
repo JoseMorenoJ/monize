@@ -27,6 +27,33 @@ export interface CategorisedAccounts {
 }
 
 /**
+ * A single SELL transaction with the cost basis and realized gain derived
+ * from replaying transaction history up to the sale. All monetary fields
+ * are denominated in the holding account's currency.
+ */
+export interface RealizedGainEntry {
+  transactionId: string;
+  transactionDate: string;
+  accountId: string;
+  accountName: string | null;
+  accountCurrencyCode: string | null;
+  securityId: string;
+  symbol: string | null;
+  securityName: string | null;
+  securityCurrencyCode: string | null;
+  quantity: number;
+  price: number;
+  commission: number;
+  proceeds: number;
+  costBasis: number;
+  realizedGain: number;
+}
+
+function roundMoney(value: number): number {
+  return Math.round(value * 10000) / 10000;
+}
+
+/**
  * Service responsible for the core portfolio value calculations:
  * holdings valuation, account grouping, allocation, TWR, and CAGR.
  *
@@ -321,6 +348,135 @@ export class PortfolioCalculationService {
     }
 
     return result;
+  }
+
+  /**
+   * Replay the user's investment transaction history to compute the realized
+   * gain or loss of each SELL transaction using the average-cost method.
+   *
+   * For every prior BUY/REINVEST/TRANSFER_IN, the running cost basis for that
+   * (account, security) grows by `quantity * price * exchangeRate` (the same
+   * bookkeeping as `calculateCostBasesInAccountCurrency`). A SELL then draws
+   * down cost basis proportionally at the running average cost per share, and
+   * the realized gain is `proceeds - costBasis` — all in the holding account's
+   * currency.
+   *
+   * The entire history is replayed regardless of the requested date range so
+   * SELLs early in the range still see cost basis built up by prior BUYs; only
+   * the returned rows are filtered to the requested window.
+   */
+  async calculateRealizedGains(
+    userId: string,
+    opts: {
+      accountIds?: string[];
+      startDate?: string;
+      endDate?: string;
+    } = {},
+  ): Promise<RealizedGainEntry[]> {
+    const { accountIds, startDate, endDate } = opts;
+
+    const where: {
+      userId: string;
+      accountId?: ReturnType<typeof In>;
+      transactionDate?: ReturnType<typeof LessThanOrEqual>;
+    } = { userId };
+
+    if (accountIds && accountIds.length > 0) {
+      where.accountId = In(accountIds);
+    }
+    if (endDate) {
+      where.transactionDate = LessThanOrEqual(endDate);
+    }
+
+    const transactions = await this.investmentTransactionRepository.find({
+      where,
+      relations: ["security", "account"],
+      order: { transactionDate: "ASC", createdAt: "ASC" },
+    });
+
+    const state = new Map<string, { quantity: number; costBasis: number }>();
+    const results: RealizedGainEntry[] = [];
+
+    for (const tx of transactions) {
+      if (!tx.securityId) continue;
+
+      const key = `${tx.accountId}:${tx.securityId}`;
+      let entry = state.get(key);
+      if (!entry) {
+        entry = { quantity: 0, costBasis: 0 };
+        state.set(key, entry);
+      }
+
+      const quantity = Number(tx.quantity) || 0;
+      const price = Number(tx.price) || 0;
+      const exchangeRate = Number(tx.exchangeRate) || 1;
+
+      switch (tx.action) {
+        case InvestmentAction.BUY:
+        case InvestmentAction.REINVEST:
+        case InvestmentAction.TRANSFER_IN: {
+          entry.costBasis += quantity * price * exchangeRate;
+          entry.quantity += quantity;
+          break;
+        }
+        case InvestmentAction.SELL:
+        case InvestmentAction.TRANSFER_OUT: {
+          const sellQty = Math.min(quantity, entry.quantity);
+          const avgCostPerShare =
+            entry.quantity > 0 ? entry.costBasis / entry.quantity : 0;
+          const costBasisSold = sellQty * avgCostPerShare;
+          entry.costBasis -= costBasisSold;
+          entry.quantity -= sellQty;
+
+          if (tx.action === InvestmentAction.SELL) {
+            // totalAmount is already stored in the security's currency and is
+            // net of commission; multiply by exchangeRate to put both sides of
+            // the gain calculation in the holding account's currency.
+            const proceeds = Number(tx.totalAmount) * exchangeRate;
+            const realizedGain = proceeds - costBasisSold;
+
+            if (!startDate || tx.transactionDate >= startDate) {
+              results.push({
+                transactionId: tx.id,
+                transactionDate: tx.transactionDate,
+                accountId: tx.accountId,
+                accountName: tx.account?.name ?? null,
+                accountCurrencyCode: tx.account?.currencyCode ?? null,
+                securityId: tx.securityId,
+                symbol: tx.security?.symbol ?? null,
+                securityName: tx.security?.name ?? null,
+                securityCurrencyCode: tx.security?.currencyCode ?? null,
+                quantity: Math.abs(quantity),
+                price,
+                commission: Number(tx.commission) || 0,
+                proceeds: roundMoney(proceeds),
+                costBasis: roundMoney(costBasisSold),
+                realizedGain: roundMoney(realizedGain),
+              });
+            }
+          }
+          break;
+        }
+        case InvestmentAction.ADD_SHARES:
+          entry.quantity += quantity;
+          break;
+        case InvestmentAction.REMOVE_SHARES:
+          entry.quantity -= quantity;
+          break;
+        case InvestmentAction.SPLIT: {
+          const splitRatio = quantity || 1;
+          if (splitRatio > 0) entry.quantity *= splitRatio;
+          break;
+        }
+      }
+
+      if (Math.abs(entry.quantity) < 0.0001) {
+        entry.quantity = 0;
+        entry.costBasis = 0;
+      }
+    }
+
+    return results;
   }
 
   /**
