@@ -2,19 +2,21 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@/test/render';
 import { AccountBalancesBarChart } from './AccountBalancesBarChart';
 
-// Capture the BarChart onClick handler so we can simulate account bar clicks
+// Capture the Bar onClick handler so we can simulate account bar clicks
 // without relying on the real recharts rendering pipeline.
-let capturedBarChartOnClick: ((state: any) => void) | undefined;
+let capturedBarOnClick: ((entry: any) => void) | undefined;
 // Capture the YAxis props so we can assert which scale the chart picked.
 let capturedYAxisProps: any;
 
 vi.mock('recharts', () => ({
   ResponsiveContainer: ({ children }: any) => <div data-testid="responsive-container">{children}</div>,
-  BarChart: ({ children, onClick }: any) => {
-    capturedBarChartOnClick = onClick;
+  BarChart: ({ children }: any) => {
     return <div data-testid="bar-chart">{children}</div>;
   },
-  Bar: ({ children }: any) => <div data-testid="bar">{children}</div>,
+  Bar: ({ children, onClick }: any) => {
+    capturedBarOnClick = onClick;
+    return <div data-testid="bar">{children}</div>;
+  },
   XAxis: () => <div data-testid="x-axis" />,
   YAxis: (props: any) => {
     capturedYAxisProps = props;
@@ -38,7 +40,7 @@ vi.mock('@/hooks/useNumberFormat', () => ({
 
 describe('AccountBalancesBarChart', () => {
   beforeEach(() => {
-    capturedBarChartOnClick = undefined;
+    capturedBarOnClick = undefined;
     capturedYAxisProps = undefined;
     mockFormatCurrency.mockImplementation((n: number) => `$${n.toFixed(2)}`);
     mockFormatCurrency.mockClear();
@@ -273,18 +275,33 @@ describe('AccountBalancesBarChart', () => {
       />
     );
 
-    expect(capturedBarChartOnClick).toBeDefined();
+    expect(capturedBarOnClick).toBeDefined();
 
-    capturedBarChartOnClick?.({
-      activePayload: [
-        { payload: { accountId: 'acc-2', accountName: 'Savings', balance: 500, absBalance: 500 } },
-      ],
-    });
+    // Recharts passes the data point directly as the first arg to a Bar's
+    // onClick handler.
+    capturedBarOnClick?.({ accountId: 'acc-2', accountName: 'Savings', balance: 500, absBalance: 500 });
 
     expect(onAccountClick).toHaveBeenCalledWith('acc-2');
   });
 
-  it('does not call onAccountClick when activePayload is missing', () => {
+  it('reads accountId from entry.payload as a fallback', () => {
+    const onAccountClick = vi.fn();
+    render(
+      <AccountBalancesBarChart
+        data={[
+          { accountId: 'acc-1', accountName: 'Checking', balance: 1000 },
+        ]}
+        isLoading={false}
+        onAccountClick={onAccountClick}
+      />
+    );
+
+    capturedBarOnClick?.({ payload: { accountId: 'acc-1' } });
+
+    expect(onAccountClick).toHaveBeenCalledWith('acc-1');
+  });
+
+  it('does not call onAccountClick when no accountId is present on the entry', () => {
     const onAccountClick = vi.fn();
     render(
       <AccountBalancesBarChart
@@ -297,7 +314,7 @@ describe('AccountBalancesBarChart', () => {
       />
     );
 
-    capturedBarChartOnClick?.({});
+    capturedBarOnClick?.({});
     expect(onAccountClick).not.toHaveBeenCalled();
   });
 
@@ -312,7 +329,7 @@ describe('AccountBalancesBarChart', () => {
       />
     );
 
-    expect(capturedBarChartOnClick).toBeUndefined();
+    expect(capturedBarOnClick).toBeUndefined();
   });
 
   it('renders each account name in the x-axis dataset', () => {
@@ -370,7 +387,7 @@ describe('AccountBalancesBarChart', () => {
       />,
     );
     // First render without handler
-    expect(capturedBarChartOnClick).toBeUndefined();
+    expect(capturedBarOnClick).toBeUndefined();
 
     // Re-render with the handler
     const onAccountClick = vi.fn();
@@ -385,11 +402,7 @@ describe('AccountBalancesBarChart', () => {
       />,
     );
 
-    capturedBarChartOnClick?.({
-      activePayload: [
-        { payload: { accountId: 'a1', accountName: 'Checking', balance: 100, absBalance: 100 } },
-      ],
-    });
+    capturedBarOnClick?.({ accountId: 'a1', accountName: 'Checking', balance: 100, absBalance: 100 });
     expect(onAccountClick).toHaveBeenCalledWith('a1');
   });
 });

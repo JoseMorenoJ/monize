@@ -199,11 +199,6 @@ export function AccountBalancesBarChart({
           <BarChart
             data={chartData}
             margin={{ top: 20, right: isMobile ? 16 : 5, left: -10, bottom: 0 }}
-            onClick={onAccountClick ? (state: any) => {
-              const accountId = state?.activePayload?.[0]?.payload?.accountId;
-              if (!accountId) return;
-              onAccountClick(accountId);
-            } : undefined}
             style={onAccountClick ? { cursor: 'pointer' } : undefined}
           >
             <CartesianGrid
@@ -237,6 +232,13 @@ export function AccountBalancesBarChart({
               dataKey="absBalance"
               radius={[4, 4, 0, 0]}
               maxBarSize={50}
+              onClick={onAccountClick ? (entry: any) => {
+                // Recharts passes the data point as the first arg. With Cell
+                // children the BarChart-level onClick can fail to populate
+                // activePayload, so we read accountId straight off the bar.
+                const accountId = entry?.accountId ?? entry?.payload?.accountId;
+                if (accountId) onAccountClick(accountId);
+              } : undefined}
             >
               {chartData.map((entry, index) => (
                 <Cell
