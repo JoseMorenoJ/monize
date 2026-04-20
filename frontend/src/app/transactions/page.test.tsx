@@ -950,12 +950,19 @@ describe('TransactionsPage', () => {
 
       render(<TransactionsPage />);
 
+      // Wait until the filter panel shows -- that's our signal that accounts
+      // have loaded and filteredAccounts is populated, so the subsequent
+      // loadTransactions re-run has the real account list to work with.
       await waitFor(() => {
-        expect(mockGetDailyBalances).toHaveBeenCalled();
+        expect(screen.getByTestId('filter-panel')).toBeInTheDocument();
+      });
+
+      await waitFor(() => {
+        const latest = mockGetDailyBalances.mock.calls.at(-1)?.[0];
+        expect(latest?.accountIds).toBeDefined();
       });
 
       const callArgs = mockGetDailyBalances.mock.calls.at(-1)?.[0];
-      expect(callArgs).toBeDefined();
       const accountIds = (callArgs.accountIds as string).split(',').sort();
       // acc-4 is a brokerage account in the mock fixtures and must not appear.
       expect(accountIds).not.toContain('acc-4');

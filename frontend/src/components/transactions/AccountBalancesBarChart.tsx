@@ -237,8 +237,8 @@ export function AccountBalancesBarChart({
 
       <div
         ref={chartRef}
-        className="h-96"
-        style={{ minHeight: 384 }}
+        className="h-72"
+        style={{ minHeight: 288 }}
       >
         <ResponsiveContainer width="100%" height="100%" minWidth={0}>
           <BarChart
