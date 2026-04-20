@@ -151,7 +151,7 @@ export function CategoryPayeeBarChart({
         <ResponsiveContainer width="100%" height="100%" minWidth={0}>
           <BarChart
             data={chartData}
-            margin={{ top: verticalLabels ? 36 : 20, right: isMobile ? 16 : 5, left: -10, bottom: 0 }}
+            margin={{ top: verticalLabels ? 36 : 12, right: isMobile ? 16 : 5, left: -10, bottom: 0 }}
             onClick={onMonthClick ? (state: any) => {
               const month = state?.activeLabel;
               if (!month) return;
