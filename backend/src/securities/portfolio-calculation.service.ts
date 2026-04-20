@@ -1,6 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository, In, LessThanOrEqual } from "typeorm";
+import { Repository, In, LessThanOrEqual, FindOptionsWhere } from "typeorm";
 import { Holding } from "./entities/holding.entity";
 import { SecurityPrice } from "./entities/security-price.entity";
 import {
@@ -375,12 +375,7 @@ export class PortfolioCalculationService {
   ): Promise<RealizedGainEntry[]> {
     const { accountIds, startDate, endDate } = opts;
 
-    const where: {
-      userId: string;
-      accountId?: ReturnType<typeof In>;
-      transactionDate?: ReturnType<typeof LessThanOrEqual>;
-    } = { userId };
-
+    const where: FindOptionsWhere<InvestmentTransaction> = { userId };
     if (accountIds && accountIds.length > 0) {
       where.accountId = In(accountIds);
     }
