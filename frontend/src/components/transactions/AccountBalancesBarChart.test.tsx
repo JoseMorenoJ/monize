@@ -487,7 +487,7 @@ describe('AccountBalancesBarChart', () => {
       );
 
       // Render the custom tick directly so we can inspect the rendered text.
-      const CustomTick = capturedXAxisProps.tick as React.ReactElement;
+      const CustomTick = capturedXAxisProps.tick as React.ReactElement<any>;
       const { container } = render(
         <svg>
           {React.cloneElement(CustomTick, {
@@ -506,7 +506,7 @@ describe('AccountBalancesBarChart', () => {
 
     it('leaves vertical x-axis labels under 15 characters untouched', () => {
       render(<AccountBalancesBarChart data={buildAccounts(11)} isLoading={false} />);
-      const CustomTick = capturedXAxisProps.tick as React.ReactElement;
+      const CustomTick = capturedXAxisProps.tick as React.ReactElement<any>;
       const { container } = render(
         <svg>
           {React.cloneElement(CustomTick, {
