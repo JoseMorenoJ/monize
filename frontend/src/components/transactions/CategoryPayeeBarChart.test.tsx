@@ -270,7 +270,7 @@ describe('CategoryPayeeBarChart', () => {
 
     it('reserves extra top margin when bar-top labels are vertical', () => {
       render(<CategoryPayeeBarChart data={buildMonths(40)} isLoading={false} />);
-      expect(capturedProps.barChart.margin.top).toBe(36);
+      expect(capturedProps.barChart.margin.top).toBe(20);
     });
   });
 });

@@ -7,6 +7,8 @@ import { AccountBalancesBarChart } from './AccountBalancesBarChart';
 let capturedBarOnClick: ((entry: any) => void) | undefined;
 // Capture the YAxis props so we can assert which scale the chart picked.
 let capturedYAxisProps: any;
+// Capture the XAxis props so we can assert label rotation behaviour.
+let capturedXAxisProps: any;
 
 vi.mock('recharts', () => ({
   ResponsiveContainer: ({ children }: any) => <div data-testid="responsive-container">{children}</div>,
@@ -17,7 +19,10 @@ vi.mock('recharts', () => ({
     capturedBarOnClick = onClick;
     return <div data-testid="bar">{children}</div>;
   },
-  XAxis: () => <div data-testid="x-axis" />,
+  XAxis: (props: any) => {
+    capturedXAxisProps = props;
+    return <div data-testid="x-axis" />;
+  },
   YAxis: (props: any) => {
     capturedYAxisProps = props;
     return <div data-testid="y-axis" />;
@@ -42,6 +47,7 @@ describe('AccountBalancesBarChart', () => {
   beforeEach(() => {
     capturedBarOnClick = undefined;
     capturedYAxisProps = undefined;
+    capturedXAxisProps = undefined;
     mockFormatCurrency.mockImplementation((n: number) => `$${n.toFixed(2)}`);
     mockFormatCurrency.mockClear();
     mockFormatCurrencyAxis.mockClear();
@@ -368,6 +374,32 @@ describe('AccountBalancesBarChart', () => {
     // Average = 50,000, Total = 100,000
     expect(screen.getByText('¥50,000')).toBeInTheDocument();
     expect(screen.getByText('¥100,000')).toBeInTheDocument();
+  });
+
+  describe('x-axis label rotation', () => {
+    const buildAccounts = (n: number) =>
+      Array.from({ length: n }, (_, i) => ({
+        accountId: `a${i + 1}`,
+        accountName: `Account ${i + 1}`,
+        balance: 100 * (i + 1),
+      }));
+
+    it('keeps desktop x-axis labels horizontal at or below 10 accounts', () => {
+      render(<AccountBalancesBarChart data={buildAccounts(10)} isLoading={false} />);
+      expect(capturedXAxisProps.angle).toBe(0);
+      expect(capturedXAxisProps.textAnchor).toBe('middle');
+      expect(capturedXAxisProps.height).toBe(30);
+    });
+
+    it('rotates desktop x-axis labels vertical once account count crosses 10', () => {
+      render(<AccountBalancesBarChart data={buildAccounts(11)} isLoading={false} />);
+      // angle=90 + textAnchor='start' anchors the first character at the tick
+      // and lets the rest of the name hang straight down past the axis.
+      expect(capturedXAxisProps.angle).toBe(90);
+      expect(capturedXAxisProps.textAnchor).toBe('start');
+      // Reserve enough vertical space for the rotated labels.
+      expect(capturedXAxisProps.height).toBeGreaterThan(30);
+    });
   });
 
   it('does not render the tooltip when there is no data', () => {

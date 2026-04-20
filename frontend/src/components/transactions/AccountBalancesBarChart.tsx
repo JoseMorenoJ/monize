@@ -22,6 +22,10 @@ const CHART_TITLE = 'Account Balances';
 // the "auto" mode switches to a log scale so small bars remain visible.
 const AUTO_LOG_RATIO = 50;
 
+// Past this many bars on desktop, x-axis account names are rotated vertical
+// so they stop overlapping each other along the axis.
+const DESKTOP_VERTICAL_AXIS_THRESHOLD = 10;
+
 type ScaleMode = 'auto' | 'linear' | 'log';
 type EffectiveScale = 'linear' | 'log';
 
@@ -119,6 +123,10 @@ export function AccountBalancesBarChart({
   const effectiveScale: EffectiveScale =
     scaleMode === 'auto' ? (autoPrefersLog ? 'log' : 'linear') : scaleMode;
 
+  // Mobile keeps its existing -35° slant; on desktop, switch to fully vertical
+  // labels once the bar count crosses the crowding threshold.
+  const verticalXAxis = !isMobile && chartData.length > DESKTOP_VERTICAL_AXIS_THRESHOLD;
+
   const summary = useMemo(() => {
     if (chartData.length === 0) return null;
     const totalCents = chartData.reduce(
@@ -212,10 +220,14 @@ export function AccountBalancesBarChart({
               tickLine={false}
               axisLine={{ stroke: '#e5e7eb' }}
               interval={isMobile ? 'preserveStartEnd' : 0}
-              angle={isMobile ? -35 : 0}
-              textAnchor={isMobile ? 'end' : 'middle'}
-              tickMargin={isMobile ? 10 : 0}
-              height={isMobile ? 64 : 30}
+              // Rotate desktop labels fully vertical once there are enough
+              // bars to start running into each other. textAnchor='start' with
+              // angle=90 anchors the FIRST character at the tick so the label
+              // hangs straight down from its bar without overlapping the axis.
+              angle={isMobile ? -35 : verticalXAxis ? 90 : 0}
+              textAnchor={isMobile ? 'end' : verticalXAxis ? 'start' : 'middle'}
+              tickMargin={isMobile ? 10 : verticalXAxis ? 8 : 0}
+              height={isMobile ? 64 : verticalXAxis ? 120 : 30}
             />
             <YAxis
               tick={{ fill: '#6b7280', fontSize: 11 }}
