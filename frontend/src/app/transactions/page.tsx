@@ -129,7 +129,11 @@ function TransactionsContent() {
       let accountIdsForQuery: string[] | undefined;
       if (filters.filterAccountIds.length > 0) {
         accountIdsForQuery = filters.filterAccountIds;
-      } else if (filters.filterAccountStatus && filters.filteredAccounts.length > 0) {
+      } else if (filters.filteredAccounts.length > 0) {
+        // Always narrow to filteredAccounts (which strips brokerage and
+        // honours the Active/Closed/All toggle). Without this, the "All"
+        // toggle would let the chart query include brokerage accounts whose
+        // balances are not actionable from the Transactions page.
         accountIdsForQuery = filters.filteredAccounts.map(a => a.id);
       }
 
@@ -418,7 +422,7 @@ function TransactionsContent() {
     const f: BulkUpdateFilters = {};
     if (filters.filterAccountIds.length > 0) {
       f.accountIds = filters.filterAccountIds;
-    } else if (filters.filterAccountStatus && filters.filteredAccounts.length > 0) {
+    } else if (filters.filteredAccounts.length > 0) {
       f.accountIds = filters.filteredAccounts.map(a => a.id);
     }
     if (filters.filterCategoryIds.length > 0) f.categoryIds = filters.filterCategoryIds;
@@ -568,7 +572,11 @@ function TransactionsContent() {
       let accountIdsForQuery: string[] | undefined;
       if (filters.filterAccountIds.length > 0) {
         accountIdsForQuery = filters.filterAccountIds;
-      } else if (filters.filterAccountStatus && filters.filteredAccounts.length > 0) {
+      } else if (filters.filteredAccounts.length > 0) {
+        // Always narrow to filteredAccounts (which strips brokerage and
+        // honours the Active/Closed/All toggle). Without this, the "All"
+        // toggle would let the chart query include brokerage accounts whose
+        // balances are not actionable from the Transactions page.
         accountIdsForQuery = filters.filteredAccounts.map(a => a.id);
       }
 
