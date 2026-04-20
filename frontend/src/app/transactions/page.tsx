@@ -434,7 +434,7 @@ function TransactionsContent() {
     if (filters.filterAmountFrom) f.amountFrom = parseFloat(filters.filterAmountFrom);
     if (filters.filterAmountTo) f.amountTo = parseFloat(filters.filterAmountTo);
     return f;
-  }, [filters.filterAccountIds, filters.filterAccountStatus, filters.filteredAccounts, filters.filterCategoryIds, filters.filterPayeeIds, filters.filterTagIds, filters.filterStartDate, filters.filterEndDate, filters.filterSearch, filters.filterAmountFrom, filters.filterAmountTo]);
+  }, [filters.filterAccountIds, filters.filteredAccounts, filters.filterCategoryIds, filters.filterPayeeIds, filters.filterTagIds, filters.filterStartDate, filters.filterEndDate, filters.filterSearch, filters.filterAmountFrom, filters.filterAmountTo]);
 
   // Derive chart currency, aggregated per-date balances, and latest per-account balances
   const { chartBalances, chartCurrency, accountBalances } = useMemo(() => {
@@ -660,7 +660,7 @@ function TransactionsContent() {
     } finally {
       setIsExporting(false);
     }
-  }, [filters.filterAccountIds, filters.filterAccountStatus, filters.filteredAccounts, filters.filterCategoryIds, filters.filterPayeeIds, filters.filterTagIds, filters.filterStartDate, filters.filterEndDate, filters.filterSearch, filters.filterAmountFrom, filters.filterAmountTo]);
+  }, [filters.filterAccountIds, filters.filteredAccounts, filters.filterCategoryIds, filters.filterPayeeIds, filters.filterTagIds, filters.filterStartDate, filters.filterEndDate, filters.filterSearch, filters.filterAmountFrom, filters.filterAmountTo]);
 
   return (
     <PageLayout>
