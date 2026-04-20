@@ -5,6 +5,9 @@ import { AccountBalancesBarChart } from './AccountBalancesBarChart';
 // Capture the Bar onClick handler so we can simulate account bar clicks
 // without relying on the real recharts rendering pipeline.
 let capturedBarOnClick: ((entry: any) => void) | undefined;
+// Capture the BarChart onClick so we can simulate clicks anywhere in the
+// tooltip-highlighted column (the whitespace above a bar).
+let capturedBarChartOnClick: ((state: any) => void) | undefined;
 // Capture the YAxis props so we can assert which scale the chart picked.
 let capturedYAxisProps: any;
 // Capture the XAxis props so we can assert label rotation behaviour.
@@ -12,7 +15,8 @@ let capturedXAxisProps: any;
 
 vi.mock('recharts', () => ({
   ResponsiveContainer: ({ children }: any) => <div data-testid="responsive-container">{children}</div>,
-  BarChart: ({ children }: any) => {
+  BarChart: ({ children, onClick }: any) => {
+    capturedBarChartOnClick = onClick;
     return <div data-testid="bar-chart">{children}</div>;
   },
   Bar: ({ children, onClick }: any) => {
@@ -46,6 +50,7 @@ vi.mock('@/hooks/useNumberFormat', () => ({
 describe('AccountBalancesBarChart', () => {
   beforeEach(() => {
     capturedBarOnClick = undefined;
+    capturedBarChartOnClick = undefined;
     capturedYAxisProps = undefined;
     capturedXAxisProps = undefined;
     mockFormatCurrency.mockImplementation((n: number) => `$${n.toFixed(2)}`);
@@ -307,6 +312,46 @@ describe('AccountBalancesBarChart', () => {
     expect(onAccountClick).toHaveBeenCalledWith('acc-1');
   });
 
+  it('fires onAccountClick from BarChart-level clicks (tooltip-highlighted column)', () => {
+    const onAccountClick = vi.fn();
+    render(
+      <AccountBalancesBarChart
+        data={[
+          { accountId: 'acc-1', accountName: 'Checking', balance: 1000 },
+          { accountId: 'acc-2', accountName: 'Savings', balance: 500 },
+        ]}
+        isLoading={false}
+        onAccountClick={onAccountClick}
+      />,
+    );
+
+    // A click in the column whitespace (above the bar) gives Recharts an
+    // activePayload but no direct Bar hit -- it must still fire the filter.
+    capturedBarChartOnClick?.({
+      activePayload: [
+        { payload: { accountId: 'acc-2', accountName: 'Savings', balance: 500, absBalance: 500 } },
+      ],
+    });
+
+    expect(onAccountClick).toHaveBeenCalledWith('acc-2');
+  });
+
+  it('ignores BarChart clicks outside any active column (no activePayload)', () => {
+    const onAccountClick = vi.fn();
+    render(
+      <AccountBalancesBarChart
+        data={[
+          { accountId: 'acc-1', accountName: 'Checking', balance: 1000 },
+        ]}
+        isLoading={false}
+        onAccountClick={onAccountClick}
+      />,
+    );
+
+    capturedBarChartOnClick?.({});
+    expect(onAccountClick).not.toHaveBeenCalled();
+  });
+
   it('does not call onAccountClick when no accountId is present on the entry', () => {
     const onAccountClick = vi.fn();
     render(
@@ -336,6 +381,7 @@ describe('AccountBalancesBarChart', () => {
     );
 
     expect(capturedBarOnClick).toBeUndefined();
+    expect(capturedBarChartOnClick).toBeUndefined();
   });
 
   it('renders each account name in the x-axis dataset', () => {

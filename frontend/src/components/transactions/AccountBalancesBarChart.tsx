@@ -207,6 +207,15 @@ export function AccountBalancesBarChart({
           <BarChart
             data={chartData}
             margin={{ top: 20, right: isMobile ? 16 : 5, left: -10, bottom: 0 }}
+            // Also fire on clicks anywhere in the tooltip-highlighted column
+            // (not just the bar rect). Recharts puts the column's data point
+            // on state.activePayload whenever the cursor is over an active
+            // tick, so users can click the whitespace above a short bar and
+            // still land on the right account.
+            onClick={onAccountClick ? (state: any) => {
+              const accountId = state?.activePayload?.[0]?.payload?.accountId;
+              if (accountId) onAccountClick(accountId);
+            } : undefined}
             style={onAccountClick ? { cursor: 'pointer' } : undefined}
           >
             <CartesianGrid
