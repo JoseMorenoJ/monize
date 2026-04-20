@@ -380,6 +380,49 @@ describe("CustomReportViewer", () => {
     );
   });
 
+  it("assigns distinct legend swatch colours when data has no colour", async () => {
+    mockGetById.mockResolvedValue({
+      id: "rpt-1",
+      name: "Uncoloured Report",
+      viewType: "PIE_CHART",
+      timeframeType: "LAST_3_MONTHS",
+      groupBy: "CATEGORY",
+      config: {
+        metric: "TOTAL_AMOUNT",
+        direction: "EXPENSES_ONLY",
+        includeTransfers: false,
+      },
+      filters: {},
+    });
+    mockExecute.mockResolvedValue({
+      viewType: "PIE_CHART",
+      groupBy: "CATEGORY",
+      data: [
+        { label: "Food", value: 500, count: 20, id: "cat-1" },
+        { label: "Transport", value: 200, count: 10, id: "cat-2" },
+        { label: "Utilities", value: 150, count: 5, id: "cat-3" },
+      ],
+      summary: { total: 850, count: 35 },
+      timeframe: {
+        label: "Last 3 months",
+        startDate: "2024-10-01",
+        endDate: "2025-01-01",
+      },
+    });
+    render(<CustomReportViewer reportId="rpt-1" />);
+    await waitFor(() => {
+      expect(screen.getByText("Food")).toBeInTheDocument();
+    });
+    const swatches = document.querySelectorAll<HTMLElement>(
+      "button .w-3.h-3.rounded-full",
+    );
+    expect(swatches.length).toBe(3);
+    const colours = Array.from(swatches).map((el) => el.style.backgroundColor);
+    // Each swatch must have a colour, and they must not all be identical.
+    colours.forEach((c) => expect(c).toBeTruthy());
+    expect(new Set(colours).size).toBe(3);
+  });
+
   it("handles execute error gracefully", async () => {
     mockGetById.mockResolvedValue({
       id: "rpt-1",
