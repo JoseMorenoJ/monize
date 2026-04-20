@@ -86,8 +86,38 @@ describe('DividendIncomeReport', () => {
     mockGetInvestmentAccounts.mockResolvedValue([]);
     render(<DividendIncomeReport />);
     await waitFor(() => {
-      expect(screen.getByText(/No dividend, interest, or capital gain transactions found/)).toBeInTheDocument();
+      expect(
+        screen.getByText(/No dividend, interest, capital gain, or sell transactions found/),
+      ).toBeInTheDocument();
     });
+  });
+
+  it('counts realized gains from SELL transactions toward Capital Gains', async () => {
+    mockGetTransactions.mockResolvedValue({
+      data: [
+        {
+          id: 'tx-sell',
+          transactionDate: '2024-08-10',
+          action: 'SELL',
+          // proceeds = 1200, cost basis = 10 * 100 = 1000, realized gain = 200
+          totalAmount: 1200,
+          quantity: 10,
+          price: 100,
+          accountId: 'acc-1',
+          security: { symbol: 'ABC', name: 'ABC Corp' },
+        },
+      ],
+      pagination: { hasMore: false },
+    });
+    mockGetInvestmentAccounts.mockResolvedValue([
+      { id: 'acc-1', name: 'TFSA', currencyCode: 'CAD', accountSubType: 'INVESTMENT_CASH' },
+    ]);
+    render(<DividendIncomeReport />);
+    await waitFor(() => {
+      expect(screen.getByText('Capital Gains')).toBeInTheDocument();
+    });
+    // Summary card and By Security cell for ABC should both display the $200 realized gain.
+    expect(screen.getAllByText('$200.00').length).toBeGreaterThan(0);
   });
 
   it('renders summary cards with data', async () => {

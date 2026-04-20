@@ -77,6 +77,21 @@ export function DividendIncomeReport() {
     return convertToDefault(amount, txCurrency);
   }, [selectedAccountId, accountCurrencyMap, defaultCurrency, convertToDefault]);
 
+  // Realized gain for a SELL transaction = proceeds - cost basis (quantity * price).
+  // Non-SELL actions return 0. Mirrors the formula used by RealizedGainsReport so
+  // the Capital Gains column here reconciles with that report.
+  const getRealizedGain = useCallback((tx: InvestmentTransaction): number => {
+    if (tx.action !== 'SELL') return 0;
+    const proceeds = Math.abs(tx.totalAmount);
+    const costBasis = tx.quantity != null && tx.price != null
+      ? Math.abs(tx.quantity) * Math.abs(tx.price)
+      : proceeds;
+    const gain = proceeds - costBasis;
+    if (selectedAccountId) return gain;
+    const txCurrency = accountCurrencyMap.get(tx.accountId) || defaultCurrency;
+    return convertToDefault(gain, txCurrency);
+  }, [selectedAccountId, accountCurrencyMap, defaultCurrency, convertToDefault]);
+
   const fmtValue = useCallback((value: number): string => {
     if (isForeign) {
       return `${formatCurrencyFull(value, displayCurrency)} ${displayCurrency}`;
@@ -109,9 +124,14 @@ export function DividendIncomeReport() {
           page++;
         }
 
-        // Filter to only income transactions
+        // Filter to only income transactions. SELL is included so its realized
+        // gain (proceeds - cost basis) contributes to the Capital Gains total.
         const incomeTransactions = allTransactions.filter(
-          (tx) => tx.action === 'DIVIDEND' || tx.action === 'INTEREST' || tx.action === 'CAPITAL_GAIN'
+          (tx) =>
+            tx.action === 'DIVIDEND' ||
+            tx.action === 'INTEREST' ||
+            tx.action === 'CAPITAL_GAIN' ||
+            tx.action === 'SELL'
         );
 
         setTransactions(incomeTransactions);
@@ -169,23 +189,30 @@ export function DividendIncomeReport() {
         monthMap.set(monthKey, bucket);
       }
 
-      const amount = getTxAmount(tx);
+      let contribution = 0;
       switch (tx.action) {
         case 'DIVIDEND':
-          bucket.dividends += amount;
+          contribution = getTxAmount(tx);
+          bucket.dividends += contribution;
           break;
         case 'INTEREST':
-          bucket.interest += amount;
+          contribution = getTxAmount(tx);
+          bucket.interest += contribution;
           break;
         case 'CAPITAL_GAIN':
-          bucket.capitalGains += amount;
+          contribution = getTxAmount(tx);
+          bucket.capitalGains += contribution;
+          break;
+        case 'SELL':
+          contribution = getRealizedGain(tx);
+          bucket.capitalGains += contribution;
           break;
       }
-      bucket.total += amount;
+      bucket.total += contribution;
     });
 
     return Array.from(monthMap.values()).sort((a, b) => a.month.localeCompare(b.month));
-  }, [transactions, dateRange, resolvedRange, getTxAmount]);
+  }, [transactions, dateRange, resolvedRange, getTxAmount, getRealizedGain]);
 
   const securityData = useMemo((): SecurityIncome[] => {
     const securityMap = new Map<string, SecurityIncome>();
@@ -207,32 +234,50 @@ export function DividendIncomeReport() {
         securityMap.set(symbol, bucket);
       }
 
-      const amount = getTxAmount(tx);
+      let contribution = 0;
       switch (tx.action) {
         case 'DIVIDEND':
-          bucket.dividends += amount;
+          contribution = getTxAmount(tx);
+          bucket.dividends += contribution;
           break;
         case 'INTEREST':
-          bucket.interest += amount;
+          contribution = getTxAmount(tx);
+          bucket.interest += contribution;
           break;
         case 'CAPITAL_GAIN':
-          bucket.capitalGains += amount;
+          contribution = getTxAmount(tx);
+          bucket.capitalGains += contribution;
+          break;
+        case 'SELL':
+          contribution = getRealizedGain(tx);
+          bucket.capitalGains += contribution;
           break;
       }
-      bucket.total += amount;
+      bucket.total += contribution;
     });
 
     return Array.from(securityMap.values()).sort((a, b) => b.total - a.total);
-  }, [transactions, getTxAmount]);
+  }, [transactions, getTxAmount, getRealizedGain]);
 
   const totals = useMemo(() => {
+    const dividends = transactions
+      .filter((t) => t.action === 'DIVIDEND')
+      .reduce((sum, t) => sum + getTxAmount(t), 0);
+    const interest = transactions
+      .filter((t) => t.action === 'INTEREST')
+      .reduce((sum, t) => sum + getTxAmount(t), 0);
+    const capitalGains = transactions.reduce((sum, t) => {
+      if (t.action === 'CAPITAL_GAIN') return sum + getTxAmount(t);
+      if (t.action === 'SELL') return sum + getRealizedGain(t);
+      return sum;
+    }, 0);
     return {
-      dividends: transactions.filter((t) => t.action === 'DIVIDEND').reduce((sum, t) => sum + getTxAmount(t), 0),
-      interest: transactions.filter((t) => t.action === 'INTEREST').reduce((sum, t) => sum + getTxAmount(t), 0),
-      capitalGains: transactions.filter((t) => t.action === 'CAPITAL_GAIN').reduce((sum, t) => sum + getTxAmount(t), 0),
-      total: transactions.reduce((sum, t) => sum + getTxAmount(t), 0),
+      dividends,
+      interest,
+      capitalGains,
+      total: dividends + interest + capitalGains,
     };
-  }, [transactions, getTxAmount]);
+  }, [transactions, getTxAmount, getRealizedGain]);
 
   const handleExportPdf = async () => {
     const { exportToPdf } = await import('@/lib/pdf-export');
@@ -362,7 +407,7 @@ export function DividendIncomeReport() {
       {transactions.length === 0 ? (
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-6">
           <p className="text-gray-500 dark:text-gray-400 text-center py-8">
-            No dividend, interest, or capital gain transactions found for this period.
+            No dividend, interest, capital gain, or sell transactions found for this period.
           </p>
         </div>
       ) : viewType === 'monthly' ? (
@@ -433,7 +478,7 @@ export function DividendIncomeReport() {
                       {security.interest > 0 ? fmtValue(security.interest) : '-'}
                     </td>
                     <td className="px-4 py-3 text-right text-sm text-purple-600 dark:text-purple-400">
-                      {security.capitalGains > 0 ? fmtValue(security.capitalGains) : '-'}
+                      {security.capitalGains !== 0 ? fmtValue(security.capitalGains) : '-'}
                     </td>
                     <td className="px-4 py-3 text-right text-sm font-medium text-gray-900 dark:text-gray-100">
                       {fmtValue(security.total)}
