@@ -337,7 +337,27 @@ describe('AccountBalancesBarChart', () => {
     expect(onAccountClick).toHaveBeenCalledWith('acc-2');
   });
 
-  it('ignores BarChart clicks outside any active column (no activePayload)', () => {
+  it('fires onAccountClick when only activeLabel is available (column whitespace)', () => {
+    const onAccountClick = vi.fn();
+    render(
+      <AccountBalancesBarChart
+        data={[
+          { accountId: 'acc-1', accountName: 'Checking', balance: 1000 },
+          { accountId: 'acc-2', accountName: 'Savings', balance: 500 },
+        ]}
+        isLoading={false}
+        onAccountClick={onAccountClick}
+      />,
+    );
+
+    // Clicks in the highlighted column sometimes populate activeLabel but
+    // not activePayload; the handler must fall back to a chartData lookup.
+    capturedBarChartOnClick?.({ activeLabel: 'Savings' });
+
+    expect(onAccountClick).toHaveBeenCalledWith('acc-2');
+  });
+
+  it('ignores BarChart clicks outside any active column (no activePayload and no activeLabel)', () => {
     const onAccountClick = vi.fn();
     render(
       <AccountBalancesBarChart

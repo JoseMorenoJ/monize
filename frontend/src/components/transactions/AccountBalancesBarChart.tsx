@@ -244,13 +244,18 @@ export function AccountBalancesBarChart({
           <BarChart
             data={chartData}
             margin={{ top: 20, right: isMobile ? 16 : 5, left: -10, bottom: 0 }}
-            // Also fire on clicks anywhere in the tooltip-highlighted column
-            // (not just the bar rect). Recharts puts the column's data point
-            // on state.activePayload whenever the cursor is over an active
-            // tick, so users can click the whitespace above a short bar and
-            // still land on the right account.
+            // Fire on clicks anywhere in the tooltip-highlighted column (not
+            // just the bar rect). Prefer state.activeLabel -- which Recharts
+            // sets to the active category whenever the cursor is in an
+            // active column -- and fall back to activePayload for the direct
+            // bar hit case.
             onClick={onAccountClick ? (state: any) => {
-              const accountId = state?.activePayload?.[0]?.payload?.accountId;
+              const activeName: string | undefined = state?.activeLabel;
+              const fromLabel = activeName
+                ? chartData.find((d) => d.accountName === activeName)?.accountId
+                : undefined;
+              const accountId =
+                fromLabel ?? state?.activePayload?.[0]?.payload?.accountId;
               if (accountId) onAccountClick(accountId);
             } : undefined}
             style={onAccountClick ? { cursor: 'pointer' } : undefined}
@@ -285,7 +290,12 @@ export function AccountBalancesBarChart({
               domain={effectiveScale === 'log' ? ['auto', 'auto'] : undefined}
               allowDataOverflow={false}
             />
-            <Tooltip content={<AccountBalanceTooltip formatCurrency={formatCurrency} />} />
+            <Tooltip
+              content={<AccountBalanceTooltip formatCurrency={formatCurrency} />}
+              // Keep the highlight rect visually present but transparent to
+              // pointer events so clicks fall through to BarChart's onClick.
+              cursor={{ fill: '#e5e7eb', fillOpacity: 0.35, style: { pointerEvents: 'none' } }}
+            />
             <Bar
               dataKey="absBalance"
               radius={[4, 4, 0, 0]}
