@@ -26,6 +26,43 @@ const AUTO_LOG_RATIO = 50;
 // so they stop overlapping each other along the axis.
 const DESKTOP_VERTICAL_AXIS_THRESHOLD = 10;
 
+// Cap vertical x-axis labels at this many characters so an extra-long account
+// name can't eat the whole chart height.
+const VERTICAL_LABEL_MAX_LEN = 20;
+
+function truncateAccountName(name: string): string {
+  return name.length > VERTICAL_LABEL_MAX_LEN
+    ? `${name.slice(0, VERTICAL_LABEL_MAX_LEN)}...`
+    : name;
+}
+
+// Custom tick used when the x-axis is rotated vertical. textAnchor='start'
+// combined with the 90deg rotation anchors the first character at the tick
+// so the label's visual left edge sits flush with the x-axis line, rather
+// than the label straddling the axis as the default centered tick does.
+function VerticalAccountTick({
+  x,
+  y,
+  payload,
+}: {
+  x?: number;
+  y?: number;
+  payload?: { value?: string };
+}) {
+  return (
+    <g transform={`translate(${x ?? 0},${y ?? 0})`}>
+      <text
+        textAnchor="start"
+        fill="#6b7280"
+        fontSize={12}
+        transform="rotate(90)"
+      >
+        {truncateAccountName(String(payload?.value ?? ''))}
+      </text>
+    </g>
+  );
+}
+
 type ScaleMode = 'auto' | 'linear' | 'log';
 type EffectiveScale = 'linear' | 'log';
 
@@ -225,18 +262,18 @@ export function AccountBalancesBarChart({
             />
             <XAxis
               dataKey="accountName"
-              tick={{ fill: '#6b7280', fontSize: isMobile ? 10 : 12 }}
+              tick={
+                verticalXAxis
+                  ? <VerticalAccountTick />
+                  : { fill: '#6b7280', fontSize: isMobile ? 10 : 12 }
+              }
               tickLine={false}
               axisLine={{ stroke: '#e5e7eb' }}
               interval={isMobile ? 'preserveStartEnd' : 0}
-              // Rotate desktop labels fully vertical once there are enough
-              // bars to start running into each other. textAnchor='start' with
-              // angle=90 anchors the FIRST character at the tick so the label
-              // hangs straight down from its bar without overlapping the axis.
-              angle={isMobile ? -35 : verticalXAxis ? 90 : 0}
-              textAnchor={isMobile ? 'end' : verticalXAxis ? 'start' : 'middle'}
+              angle={isMobile ? -35 : 0}
+              textAnchor={isMobile ? 'end' : 'middle'}
               tickMargin={isMobile ? 10 : verticalXAxis ? 8 : 0}
-              height={isMobile ? 64 : verticalXAxis ? 120 : 30}
+              height={isMobile ? 64 : verticalXAxis ? 150 : 30}
             />
             <YAxis
               tick={{ fill: '#6b7280', fontSize: 11 }}

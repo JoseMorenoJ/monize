@@ -1,3 +1,4 @@
+import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@/test/render';
 import { AccountBalancesBarChart } from './AccountBalancesBarChart';
@@ -437,14 +438,66 @@ describe('AccountBalancesBarChart', () => {
       expect(capturedXAxisProps.height).toBe(30);
     });
 
-    it('rotates desktop x-axis labels vertical once account count crosses 10', () => {
+    it('rotates desktop x-axis labels vertical once account count crosses 10 via a custom tick', () => {
       render(<AccountBalancesBarChart data={buildAccounts(11)} isLoading={false} />);
-      // angle=90 + textAnchor='start' anchors the first character at the tick
-      // and lets the rest of the name hang straight down past the axis.
-      expect(capturedXAxisProps.angle).toBe(90);
-      expect(capturedXAxisProps.textAnchor).toBe('start');
+      // A custom tick renderer handles the rotation so the first character
+      // anchors at the axis line (textAnchor='start' + rotate(90)); the
+      // XAxis itself no longer sets angle/textAnchor.
+      expect(capturedXAxisProps.tick).not.toBe(null);
+      expect(typeof capturedXAxisProps.tick).toBe('object');
+      expect(capturedXAxisProps.angle).toBe(0);
+      expect(capturedXAxisProps.textAnchor).toBe('middle');
       // Reserve enough vertical space for the rotated labels.
       expect(capturedXAxisProps.height).toBeGreaterThan(30);
+    });
+
+    it('truncates vertical x-axis labels longer than 20 characters with an ellipsis', () => {
+      render(
+        <AccountBalancesBarChart
+          data={[
+            {
+              accountId: 'a1',
+              accountName: 'A Very Long Account Name That Should Be Truncated',
+              balance: 100,
+            },
+            ...buildAccounts(10),
+          ]}
+          isLoading={false}
+        />,
+      );
+
+      // Render the custom tick directly so we can inspect the rendered text.
+      const CustomTick = capturedXAxisProps.tick as React.ReactElement;
+      const { container } = render(
+        <svg>
+          {React.cloneElement(CustomTick, {
+            x: 0,
+            y: 0,
+            payload: { value: 'A Very Long Account Name That Should Be Truncated' },
+          })}
+        </svg>,
+      );
+
+      const text = container.querySelector('text');
+      expect(text).not.toBeNull();
+      expect(text?.textContent).toBe('A Very Long Account N...');
+      expect(text?.textContent?.length).toBe(23); // 20 chars + "..."
+    });
+
+    it('leaves vertical x-axis labels under 20 characters untouched', () => {
+      render(<AccountBalancesBarChart data={buildAccounts(11)} isLoading={false} />);
+      const CustomTick = capturedXAxisProps.tick as React.ReactElement;
+      const { container } = render(
+        <svg>
+          {React.cloneElement(CustomTick, {
+            x: 0,
+            y: 0,
+            payload: { value: 'Short Name' },
+          })}
+        </svg>,
+      );
+      const text = container.querySelector('text');
+      expect(text?.textContent).toBe('Short Name');
     });
   });
 
