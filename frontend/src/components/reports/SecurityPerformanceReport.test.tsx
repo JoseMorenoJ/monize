@@ -36,6 +36,7 @@ const mockGetSecurities = vi.fn();
 const mockGetPortfolioSummary = vi.fn();
 const mockGetSecurityPrices = vi.fn();
 const mockGetTransactions = vi.fn();
+const mockGetInvestmentAccounts = vi.fn();
 
 vi.mock('@/lib/investments', () => ({
   investmentsApi: {
@@ -43,6 +44,7 @@ vi.mock('@/lib/investments', () => ({
     getPortfolioSummary: (...args: any[]) => mockGetPortfolioSummary(...args),
     getSecurityPrices: (...args: any[]) => mockGetSecurityPrices(...args),
     getTransactions: (...args: any[]) => mockGetTransactions(...args),
+    getInvestmentAccounts: (...args: any[]) => mockGetInvestmentAccounts(...args),
   },
 }));
 
@@ -83,11 +85,15 @@ const mockHoldings = [
 describe('SecurityPerformanceReport', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockGetInvestmentAccounts.mockResolvedValue([
+      { id: 'acc-1', name: 'Brokerage 1', currencyCode: 'USD' },
+    ]);
   });
 
   it('shows loading state initially', () => {
     mockGetSecurities.mockReturnValue(new Promise(() => {}));
     mockGetPortfolioSummary.mockReturnValue(new Promise(() => {}));
+    mockGetInvestmentAccounts.mockReturnValue(new Promise(() => {}));
     render(<SecurityPerformanceReport />);
     expect(document.querySelector('.animate-pulse')).toBeTruthy();
   });

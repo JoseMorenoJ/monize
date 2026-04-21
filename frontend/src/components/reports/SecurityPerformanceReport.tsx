@@ -14,11 +14,13 @@ import {
 import { format, differenceInDays } from 'date-fns';
 import { investmentsApi } from '@/lib/investments';
 import { Security, SecurityPrice, InvestmentTransaction, HoldingWithMarketValue } from '@/types/investment';
+import { Account } from '@/types/account';
 import { parseLocalDate } from '@/lib/utils';
 import { useNumberFormat } from '@/hooks/useNumberFormat';
 import { useExchangeRates } from '@/hooks/useExchangeRates';
 import { ExportDropdown } from '@/components/ui/ExportDropdown';
 import { createLogger } from '@/lib/logger';
+import { aggregateHoldingsBySecurity } from '@/lib/aggregate-holdings';
 
 const logger = createLogger('SecurityPerformanceReport');
 
@@ -41,6 +43,7 @@ export function SecurityPerformanceReport() {
   const [prices, setPrices] = useState<SecurityPrice[]>([]);
   const [transactions, setTransactions] = useState<InvestmentTransaction[]>([]);
   const [holdings, setHoldings] = useState<HoldingWithMarketValue[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [viewType, setViewType] = useState<'chart' | 'transactions' | 'dividends'>('chart');
@@ -49,12 +52,14 @@ export function SecurityPerformanceReport() {
   useEffect(() => {
     const load = async () => {
       try {
-        const [secs, summary] = await Promise.all([
+        const [secs, summary, accts] = await Promise.all([
           investmentsApi.getSecurities(),
           investmentsApi.getPortfolioSummary(),
+          investmentsApi.getInvestmentAccounts(),
         ]);
         setSecurities(secs.filter((s) => s.isActive));
         setHoldings(summary.holdings);
+        setAccounts(accts);
       } catch (error) {
         logger.error('Failed to load securities:', error);
       } finally {
@@ -65,6 +70,12 @@ export function SecurityPerformanceReport() {
   }, []);
 
   const selectedSecurity = securities.find((s) => s.id === selectedSecurityId);
+
+  const accountNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    accounts.forEach((a) => map.set(a.id, a.name.replace(/ - (Brokerage|Cash)$/, '')));
+    return map;
+  }, [accounts]);
 
   // Load detail when security selected
   useEffect(() => {
@@ -110,7 +121,13 @@ export function SecurityPerformanceReport() {
     };
     loadDetail();
   }, [selectedSecurityId, securities]);
-  const selectedHolding = holdings.find((h) => h.securityId === selectedSecurityId);
+  const selectedHolding = useMemo(() => {
+    if (!selectedSecurityId) return null;
+    const matches = holdings.filter((h) => h.securityId === selectedSecurityId);
+    if (matches.length === 0) return null;
+    const [aggregated] = aggregateHoldingsBySecurity(matches);
+    return aggregated;
+  }, [holdings, selectedSecurityId]);
 
   // Performance stats
   const stats = useMemo(() => {
@@ -145,6 +162,7 @@ export function SecurityPerformanceReport() {
       quantity: selectedHolding.quantity,
       averageCost: selectedHolding.averageCost,
       currentPrice: selectedHolding.currentPrice,
+      accountCount: selectedHolding.accountBreakdowns.length,
     };
   }, [selectedHolding, transactions]);
 
@@ -218,9 +236,10 @@ export function SecurityPerformanceReport() {
       chartContainer = chartRef.current;
     } else if (viewType === 'transactions') {
       tableData = {
-        headers: ['Date', 'Action', 'Shares', 'Price', 'Total'],
+        headers: ['Date', 'Account', 'Action', 'Shares', 'Price', 'Total'],
         rows: tradeTx.map((tx) => [
           format(parseLocalDate(tx.transactionDate), 'MMM d, yyyy'),
+          accountNameById.get(tx.accountId) || '-',
           tx.action,
           tx.quantity != null ? String(tx.quantity) : '-',
           tx.price != null ? formatCurrencyFull(tx.price, displayCurrency) : '-',
@@ -230,13 +249,14 @@ export function SecurityPerformanceReport() {
     } else {
       const totalDividends = dividendTx.reduce((sum, tx) => sum + Math.abs(tx.totalAmount), 0);
       tableData = {
-        headers: ['Date', 'Type', 'Amount'],
+        headers: ['Date', 'Account', 'Type', 'Amount'],
         rows: dividendTx.map((tx) => [
           format(parseLocalDate(tx.transactionDate), 'MMM d, yyyy'),
+          accountNameById.get(tx.accountId) || '-',
           tx.action,
           formatCurrencyFull(Math.abs(tx.totalAmount), displayCurrency),
         ]),
-        totalRow: ['Total Dividends', '', formatCurrencyFull(totalDividends, displayCurrency)],
+        totalRow: ['Total Dividends', '', '', formatCurrencyFull(totalDividends, displayCurrency)],
       };
     }
 
@@ -367,6 +387,9 @@ export function SecurityPerformanceReport() {
                 </div>
                 <div className="text-xs text-gray-400 dark:text-gray-500 mt-1">
                   {stats.quantity} shares @ {formatCurrencyFull(stats.currentPrice ?? 0, displayCurrency)}
+                  {stats.accountCount > 1 && (
+                    <span className="ml-1">across {stats.accountCount} accounts</span>
+                  )}
                 </div>
               </div>
               <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-4">
@@ -502,6 +525,7 @@ export function SecurityPerformanceReport() {
                     <thead className="bg-gray-50 dark:bg-gray-900/50">
                       <tr>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Date</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Account</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Action</th>
                         <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Shares</th>
                         <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Price</th>
@@ -513,6 +537,9 @@ export function SecurityPerformanceReport() {
                         <tr key={tx.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                           <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
                             {format(parseLocalDate(tx.transactionDate), 'MMM d, yyyy')}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
+                            {accountNameById.get(tx.accountId) || '-'}
                           </td>
                           <td className="px-4 py-3 text-sm">
                             <span className={`px-2 py-0.5 text-xs font-medium rounded ${
@@ -557,6 +584,7 @@ export function SecurityPerformanceReport() {
                     <thead className="bg-gray-50 dark:bg-gray-900/50">
                       <tr>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Date</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Account</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Type</th>
                         <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Amount</th>
                       </tr>
@@ -566,6 +594,9 @@ export function SecurityPerformanceReport() {
                         <tr key={tx.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                           <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
                             {format(parseLocalDate(tx.transactionDate), 'MMM d, yyyy')}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
+                            {accountNameById.get(tx.accountId) || '-'}
                           </td>
                           <td className="px-4 py-3 text-sm">
                             <span className="px-2 py-0.5 text-xs font-medium rounded bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
@@ -580,7 +611,7 @@ export function SecurityPerformanceReport() {
                     </tbody>
                     <tfoot className="bg-gray-50 dark:bg-gray-900/50">
                       <tr>
-                        <td className="px-4 py-3 text-sm font-bold text-gray-900 dark:text-gray-100" colSpan={2}>
+                        <td className="px-4 py-3 text-sm font-bold text-gray-900 dark:text-gray-100" colSpan={3}>
                           Total Dividends
                         </td>
                         <td className="px-4 py-3 text-sm text-right font-bold text-green-600 dark:text-green-400">
