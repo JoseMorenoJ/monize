@@ -26,6 +26,8 @@ export interface CsvColumnMappingConfig {
   subcategory?: number;
   memo?: number;
   referenceNumber?: number;
+  tags?: number;
+  reconciliationStatus?: number;
   dateFormat: string;
   reverseSign?: boolean;
   hasHeader: boolean;
@@ -50,7 +52,179 @@ const FIELD_LIMITS = {
   MEMO: 5000,
   REFERENCE_NUMBER: 100,
   CATEGORY: 255,
+  TAG: 100,
 } as const;
+
+/**
+ * Candidate separators for multi-tag CSV columns. Dash and forward slash are
+ * deliberately excluded because they are routinely embedded inside tag names
+ * (e.g. "2026/taxes", "work-travel").
+ */
+const TAG_SEPARATOR_CANDIDATES = ["|", ";", ","] as const;
+
+/**
+ * Inspect all non-empty tag values from the column and pick the separator
+ * that appears in the most rows. Returns null when no candidate appears,
+ * in which case each field is treated as a single tag.
+ *
+ * Tie-breaks favour "|" over ";" over "," (iteration order of
+ * TAG_SEPARATOR_CANDIDATES) because users who pick an unusual separator
+ * almost always mean it intentionally.
+ */
+export function detectTagSeparator(values: string[]): string | null {
+  const nonEmpty = values
+    .map((v) => (v ?? "").trim())
+    .filter((v) => v.length > 0);
+  if (nonEmpty.length === 0) return null;
+
+  let bestSeparator: string | null = null;
+  let bestCount = 0;
+  for (const sep of TAG_SEPARATOR_CANDIDATES) {
+    const count = nonEmpty.reduce(
+      (acc, v) => (v.includes(sep) ? acc + 1 : acc),
+      0,
+    );
+    if (count > bestCount) {
+      bestCount = count;
+      bestSeparator = sep;
+    }
+  }
+
+  return bestCount > 0 ? bestSeparator : null;
+}
+
+/**
+ * Split a single row's tag field into individual tag names using the
+ * pre-detected separator. Returns trimmed, truncated, de-duplicated names
+ * (case-insensitive) in the order they appear.
+ */
+export function splitTagValue(
+  value: string,
+  separator: string | null,
+): string[] {
+  const trimmed = (value ?? "").trim();
+  if (!trimmed) return [];
+  const parts = separator ? trimmed.split(separator) : [trimmed];
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const part of parts) {
+    const name = truncate(part.trim(), FIELD_LIMITS.TAG);
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(name);
+  }
+  return result;
+}
+
+export type NormalizedReconciliationStatus =
+  | "UNRECONCILED"
+  | "CLEARED"
+  | "RECONCILED"
+  | "VOID";
+
+// Lookup for the most common reconciliation status keywords seen across
+// financial exports (banks, QIF-derived CSVs, spreadsheets, etc.). Values are
+// compared case-insensitively after trimming.
+const RECONCILIATION_STATUS_KEYWORDS: Record<
+  string,
+  NormalizedReconciliationStatus
+> = {
+  // Reconciled
+  reconciled: "RECONCILED",
+  reconcile: "RECONCILED",
+  rec: "RECONCILED",
+  r: "RECONCILED",
+  matched: "RECONCILED",
+  match: "RECONCILED",
+  final: "RECONCILED",
+  finalized: "RECONCILED",
+  x: "RECONCILED",
+  // Cleared
+  cleared: "CLEARED",
+  clear: "CLEARED",
+  clr: "CLEARED",
+  c: "CLEARED",
+  posted: "CLEARED",
+  post: "CLEARED",
+  verified: "CLEARED",
+  confirm: "CLEARED",
+  confirmed: "CLEARED",
+  "*": "CLEARED",
+  "✓": "CLEARED", // check mark
+  // Void
+  void: "VOID",
+  voided: "VOID",
+  v: "VOID",
+  cancel: "VOID",
+  cancelled: "VOID",
+  canceled: "VOID",
+  deleted: "VOID",
+  removed: "VOID",
+  // Unreconciled / explicit "not yet"
+  unreconciled: "UNRECONCILED",
+  unreconcile: "UNRECONCILED",
+  uncleared: "UNRECONCILED",
+  unclear: "UNRECONCILED",
+  pending: "UNRECONCILED",
+  open: "UNRECONCILED",
+  none: "UNRECONCILED",
+  new: "UNRECONCILED",
+  unposted: "UNRECONCILED",
+  u: "UNRECONCILED",
+  n: "UNRECONCILED",
+  "-": "UNRECONCILED",
+};
+
+/**
+ * Normalize a free-text reconciliation status string from a CSV row into the
+ * TransactionStatus enum value that Monize understands. Uses a generous
+ * keyword map to handle variations across bank/spreadsheet exports. Empty
+ * values and unrecognized tokens fall back to UNRECONCILED.
+ */
+export function normalizeReconciliationStatus(
+  raw: string | undefined | null,
+): NormalizedReconciliationStatus {
+  if (raw == null) return "UNRECONCILED";
+  const trimmed = String(raw).trim();
+  if (!trimmed) return "UNRECONCILED";
+  const key = trimmed.toLowerCase();
+  if (key in RECONCILIATION_STATUS_KEYWORDS) {
+    return RECONCILIATION_STATUS_KEYWORDS[key];
+  }
+  // Substring fallbacks: many banks include the status inside a longer
+  // sentence (e.g. "Transaction posted", "Payment reconciled on 2026-01-15").
+  // Check in priority order so VOID wins over CLEARED, and RECONCILED over
+  // CLEARED (since a reconciled transaction has also been cleared).
+  if (
+    key.includes("void") ||
+    key.includes("cancel") ||
+    key.includes("delete")
+  ) {
+    return "VOID";
+  }
+  if (key.includes("reconcil") || key.includes("match")) {
+    return "RECONCILED";
+  }
+  if (
+    key.includes("clear") ||
+    key.includes("post") ||
+    key.includes("verif") ||
+    key.includes("confirm")
+  ) {
+    return "CLEARED";
+  }
+  if (
+    key.includes("pending") ||
+    key.includes("unreconcil") ||
+    key.includes("unclear") ||
+    key.includes("open")
+  ) {
+    return "UNRECONCILED";
+  }
+  return "UNRECONCILED";
+}
 
 // Strip HTML angle brackets to prevent stored XSS from CSV content.
 function stripHtml(value: string): string {
@@ -541,6 +715,15 @@ export function parseCsv(
   const rawDates: string[] = [];
   const rules = transferRules || [];
 
+  // Tag separator is detected once per import by scanning every tag value in
+  // the file, because a user's export style is consistent across rows. Doing
+  // it per-row would produce incorrect results for a dataset like
+  // ["Food, Groceries", "Home"] where only the first row contains a separator.
+  const tagSeparator =
+    config.tags !== undefined
+      ? detectTagSeparator(dataRows.map((row) => getField(row, config.tags!)))
+      : null;
+
   for (const row of dataRows) {
     // Extract and parse the date
     const rawDate = getField(row, config.date);
@@ -607,6 +790,16 @@ export function parseCsv(
       getField(row, config.referenceNumber),
       FIELD_LIMITS.REFERENCE_NUMBER,
     );
+    const tagNames =
+      config.tags !== undefined
+        ? splitTagValue(getField(row, config.tags), tagSeparator)
+        : [];
+    const normalizedStatus =
+      config.reconciliationStatus !== undefined
+        ? normalizeReconciliationStatus(
+            getField(row, config.reconciliationStatus),
+          )
+        : null;
 
     // Transfer detection
     let isTransfer = false;
@@ -698,8 +891,9 @@ export function parseCsv(
       payee,
       memo,
       number: referenceNumber,
-      cleared: false,
-      reconciled: false,
+      cleared: normalizedStatus === "CLEARED",
+      reconciled: normalizedStatus === "RECONCILED",
+      void: normalizedStatus === "VOID",
       category,
       isTransfer,
       transferAccount,
@@ -709,7 +903,7 @@ export function parseCsv(
       price: 0,
       quantity: 0,
       commission: 0,
-      tagNames: [],
+      tagNames,
     };
 
     transactions.push(transaction);

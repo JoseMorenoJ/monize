@@ -516,6 +516,39 @@ export function CsvColumnMappingStep({
               </select>
             </div>
           </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">Tags</label>
+              <select
+                value={columnMapping.tags !== undefined ? String(columnMapping.tags) : ''}
+                onChange={(e) => updateMapping('tags', e.target.value)}
+                className="w-full px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+              >
+                {columnOptions.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Multiple tags are auto-split on the detected separator (|, ;, or ,). Dashes and slashes are preserved as part of tag names.
+              </p>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">Reconciliation Status</label>
+              <select
+                value={columnMapping.reconciliationStatus !== undefined ? String(columnMapping.reconciliationStatus) : ''}
+                onChange={(e) => updateMapping('reconciliationStatus', e.target.value)}
+                className="w-full px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+              >
+                {columnOptions.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Values like &quot;cleared&quot;, &quot;reconciled&quot;, &quot;posted&quot;, &quot;void&quot;, &quot;*&quot;, or &quot;X&quot; are mapped automatically. Unknown values default to Unreconciled.
+              </p>
+            </div>
+          </div>
         </div>
 
         {/* Save/Load Mappings */}

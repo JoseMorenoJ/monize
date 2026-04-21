@@ -55,7 +55,10 @@ describe("PortfolioCalculationService.calculateRealizedGains", () => {
         PortfolioCalculationService,
         { provide: getRepositoryToken(Holding), useValue: {} },
         { provide: getRepositoryToken(SecurityPrice), useValue: {} },
-        { provide: getRepositoryToken(InvestmentTransaction), useValue: txRepo },
+        {
+          provide: getRepositoryToken(InvestmentTransaction),
+          useValue: txRepo,
+        },
         { provide: getRepositoryToken(Account), useValue: {} },
         { provide: ExchangeRateService, useValue: {} },
       ],

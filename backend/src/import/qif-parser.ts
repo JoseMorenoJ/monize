@@ -32,6 +32,13 @@ export interface QifTransaction {
   number: string;
   cleared: boolean;
   reconciled: boolean;
+  /**
+   * True when the source marked the transaction as void / cancelled / deleted.
+   * QIF itself has no void flag, so this is always false for QIF-sourced
+   * transactions but may be set by CSV imports that map a reconciliation
+   * status column.
+   */
+  void?: boolean;
   category: string;
   tagNames?: string[];
   isTransfer: boolean;

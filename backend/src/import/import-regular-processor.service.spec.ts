@@ -163,6 +163,36 @@ describe("ImportRegularProcessorService", () => {
       expect(createCall[1].status).toBe(TransactionStatus.RECONCILED);
     });
 
+    it("should set VOID status when the void flag is true", async () => {
+      const ctx = makeContext();
+      const qifTx = {
+        date: "2025-01-15",
+        amount: -25,
+        void: true,
+      };
+
+      await service.processTransaction(ctx, qifTx);
+
+      const createCall = ctx.queryRunner.manager.create.mock.calls[0];
+      expect(createCall[1].status).toBe(TransactionStatus.VOID);
+    });
+
+    it("should treat VOID as higher priority than reconciled/cleared", async () => {
+      const ctx = makeContext();
+      const qifTx = {
+        date: "2025-01-15",
+        amount: -25,
+        void: true,
+        reconciled: true,
+        cleared: true,
+      };
+
+      await service.processTransaction(ctx, qifTx);
+
+      const createCall = ctx.queryRunner.manager.create.mock.calls[0];
+      expect(createCall[1].status).toBe(TransactionStatus.VOID);
+    });
+
     it("should map category from categoryMap", async () => {
       const categoryMap = new Map<string, string | null>();
       categoryMap.set("Groceries", "cat-groceries");

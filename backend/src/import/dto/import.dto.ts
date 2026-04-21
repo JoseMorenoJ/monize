@@ -578,6 +578,26 @@ export class CsvColumnMappingConfigDto {
   @Max(100)
   referenceNumber?: number;
 
+  @ApiPropertyOptional({
+    description:
+      "Column index for tags field (multi-tag values auto-split on the detected separator: |, ;, or ,)",
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  tags?: number;
+
+  @ApiPropertyOptional({
+    description:
+      "Column index for reconciliation status field (values are mapped to Monize statuses via keyword matching)",
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  reconciliationStatus?: number;
+
   @ApiProperty({ description: "Date format for parsing" })
   @IsString()
   @Matches(/^[YDMW/\-.]+$/, {

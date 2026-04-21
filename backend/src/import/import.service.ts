@@ -933,6 +933,8 @@ export class ImportService {
       subcategory: dto.columnMapping.subcategory,
       memo: dto.columnMapping.memo,
       referenceNumber: dto.columnMapping.referenceNumber,
+      tags: dto.columnMapping.tags,
+      reconciliationStatus: dto.columnMapping.reconciliationStatus,
       dateFormat: dto.columnMapping.dateFormat as DateFormat,
       reverseSign: dto.columnMapping.reverseSign,
       hasHeader: dto.columnMapping.hasHeader,
