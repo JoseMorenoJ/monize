@@ -63,6 +63,8 @@ const DEFAULT_CSV_COLUMN_MAPPING: CsvColumnMappingConfig = {
   category: undefined,
   memo: undefined,
   referenceNumber: undefined,
+  tags: undefined,
+  reconciliationStatus: undefined,
   dateFormat: 'MM/DD/YYYY',
   hasHeader: true,
   delimiter: ',',

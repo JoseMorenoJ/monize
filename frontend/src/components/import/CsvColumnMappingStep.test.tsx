@@ -14,6 +14,8 @@ function defaultMapping(): CsvColumnMappingConfig {
     category: undefined,
     memo: undefined,
     referenceNumber: undefined,
+    tags: undefined,
+    reconciliationStatus: undefined,
     dateFormat: 'MM/DD/YYYY',
     hasHeader: true,
     delimiter: ',',
@@ -502,6 +504,121 @@ describe('CsvColumnMappingStep', () => {
       expect(props.onColumnMappingChange).toHaveBeenCalledWith(
         expect.objectContaining({ amountTypeColumn: 3 }),
       );
+    });
+  });
+
+  describe('tags and reconciliation status mapping', () => {
+    it('renders the Tags column dropdown after Memo and Reference Number', () => {
+      // Use neutral header names so the preview table doesn't collide with
+      // the mapping form labels ("Tags", "Reconciliation Status").
+      renderStep({
+        headers: ['Date', 'Amount', 'Payee', 'Memo Col', 'Ref Col', 'Tag Col', 'Status Col'],
+        sampleRows: [['2024-01-01', '100.00', 'Store', 'Note', 'REF1', 'Food; Groceries', 'Cleared']],
+      });
+
+      expect(screen.getByText('Tags')).toBeInTheDocument();
+      expect(screen.getByText('Reconciliation Status')).toBeInTheDocument();
+
+      // Verify the DOM order: Memo should come before Tags, Reference Number before Reconciliation Status.
+      const memoLabel = screen.getByText('Memo');
+      const tagsLabel = screen.getByText('Tags');
+      const refLabel = screen.getByText('Reference Number');
+      const statusLabel = screen.getByText('Reconciliation Status');
+
+      expect(memoLabel.compareDocumentPosition(tagsLabel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(refLabel.compareDocumentPosition(statusLabel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it('calls onColumnMappingChange with the tag column index when selected', () => {
+      const props = renderStep({
+        headers: ['Date', 'Amount', 'Payee', 'Tags'],
+        sampleRows: [['2024-01-01', '100.00', 'Store', 'Food, Groceries']],
+      });
+
+      const labels = screen.getAllByText('Tags');
+      // The mapping-form label (not the preview-table header) is the one that
+      // labels the select we want.
+      const tagsFieldLabel = labels[labels.length - 1];
+      const tagsSelect = tagsFieldLabel.parentElement!.querySelector('select');
+      expect(tagsSelect).toBeTruthy();
+      fireEvent.change(tagsSelect!, { target: { value: '3' } });
+
+      expect(props.onColumnMappingChange).toHaveBeenCalledWith(
+        expect.objectContaining({ tags: 3 }),
+      );
+    });
+
+    it('calls onColumnMappingChange with the status column index when selected', () => {
+      const props = renderStep({
+        headers: ['Date', 'Amount', 'Payee', 'Status'],
+        sampleRows: [['2024-01-01', '100.00', 'Store', 'Cleared']],
+      });
+
+      const statusLabel = screen.getByText('Reconciliation Status');
+      const statusSelect = statusLabel.parentElement!.querySelector('select');
+      expect(statusSelect).toBeTruthy();
+      fireEvent.change(statusSelect!, { target: { value: '3' } });
+
+      expect(props.onColumnMappingChange).toHaveBeenCalledWith(
+        expect.objectContaining({ reconciliationStatus: 3 }),
+      );
+    });
+
+    it('clears tags mapping back to undefined when "Not mapped" is chosen', () => {
+      const props = renderStep({
+        columnMapping: { ...defaultMapping(), tags: 2 },
+      });
+
+      const labels = screen.getAllByText('Tags');
+      const tagsFieldLabel = labels[labels.length - 1];
+      const tagsSelect = tagsFieldLabel.parentElement!.querySelector('select') as HTMLSelectElement;
+      expect(tagsSelect.value).toBe('2');
+
+      fireEvent.change(tagsSelect, { target: { value: '' } });
+
+      expect(props.onColumnMappingChange).toHaveBeenCalledWith(
+        expect.objectContaining({ tags: undefined }),
+      );
+    });
+
+    it('clears reconciliation status mapping back to undefined when "Not mapped" is chosen', () => {
+      const props = renderStep({
+        columnMapping: { ...defaultMapping(), reconciliationStatus: 2 },
+      });
+
+      const statusLabel = screen.getByText('Reconciliation Status');
+      const statusSelect = statusLabel.parentElement!.querySelector('select') as HTMLSelectElement;
+      expect(statusSelect.value).toBe('2');
+
+      fireEvent.change(statusSelect, { target: { value: '' } });
+
+      expect(props.onColumnMappingChange).toHaveBeenCalledWith(
+        expect.objectContaining({ reconciliationStatus: undefined }),
+      );
+    });
+
+    it('reflects saved mappings that include tags and status when loaded', () => {
+      const saved: SavedColumnMapping = {
+        id: 'm-1',
+        name: 'Has Tags',
+        columnMappings: {
+          ...defaultMapping(),
+          tags: 4,
+          reconciliationStatus: 5,
+        },
+        transferRules: [],
+        createdAt: '2024-01-01T00:00:00Z',
+        updatedAt: '2024-01-01T00:00:00Z',
+      };
+
+      const props = renderStep({ savedMappings: [saved] });
+
+      const loadSelect = screen.getByDisplayValue('Load a saved mapping...');
+      fireEvent.change(loadSelect, { target: { value: 'm-1' } });
+
+      expect(props.onLoadMapping).toHaveBeenCalledWith(saved);
+      expect(saved.columnMappings.tags).toBe(4);
+      expect(saved.columnMappings.reconciliationStatus).toBe(5);
     });
   });
 });

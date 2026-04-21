@@ -136,6 +136,8 @@ export interface CsvColumnMappingConfig {
   subcategory?: number;
   memo?: number;
   referenceNumber?: number;
+  tags?: number;
+  reconciliationStatus?: number;
   dateFormat: string;
   reverseSign?: boolean;
   hasHeader: boolean;
@@ -166,6 +168,8 @@ export function autoMatchCsvColumns(headers: string[]): Partial<CsvColumnMapping
     subcategory: ['subcategory', 'sub-category', 'sub category'],
     memo: ['memo', 'note', 'notes', 'comment', 'comments', 'remarks', 'details', 'additional info'],
     referenceNumber: ['reference', 'ref', 'check', 'check number', 'check no', 'reference number', 'ref no', 'transaction id', 'confirmation', 'receipt'],
+    tags: ['tag', 'tags', 'label', 'labels', 'keyword', 'keywords'],
+    reconciliationStatus: ['status', 'reconciliation status', 'reconciliation', 'reconciled', 'cleared', 'state'],
   };
 
   const used = new Set<number>();

@@ -89,4 +89,37 @@ describe('autoMatchCsvColumns', () => {
     expect(result.date).toBe(0);
     expect(result.memo).toBe(1);
   });
+
+  it('auto-matches tags and reconciliation status columns', () => {
+    const result = autoMatchCsvColumns([
+      'Date',
+      'Amount',
+      'Payee',
+      'Tags',
+      'Status',
+    ]);
+    expect(result.date).toBe(0);
+    expect(result.amount).toBe(1);
+    expect(result.payee).toBe(2);
+    expect(result.tags).toBe(3);
+    expect(result.reconciliationStatus).toBe(4);
+  });
+
+  it('auto-matches "Labels" header to tags and "Reconciliation" header to status', () => {
+    const result = autoMatchCsvColumns([
+      'Posting Date',
+      'Amount',
+      'Merchant',
+      'Labels',
+      'Reconciliation',
+    ]);
+    expect(result.tags).toBe(3);
+    expect(result.reconciliationStatus).toBe(4);
+  });
+
+  it('leaves tags and reconciliationStatus undefined when no matching header exists', () => {
+    const result = autoMatchCsvColumns(['Date', 'Amount', 'Payee']);
+    expect(result.tags).toBeUndefined();
+    expect(result.reconciliationStatus).toBeUndefined();
+  });
 });

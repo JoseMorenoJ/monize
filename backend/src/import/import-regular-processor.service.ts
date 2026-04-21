@@ -49,12 +49,16 @@ export class ImportRegularProcessorService {
     const baseTime = new Date();
     baseTime.setMilliseconds(baseTime.getMilliseconds() + counter);
 
-    // Determine status
-    const status = qifTx.reconciled
-      ? TransactionStatus.RECONCILED
-      : qifTx.cleared
-        ? TransactionStatus.CLEARED
-        : TransactionStatus.UNRECONCILED;
+    // Determine status. VOID (from CSV reconciliation-status mapping) takes
+    // precedence so a source-flagged cancelled row never materializes as a
+    // live balance-affecting transaction.
+    const status = qifTx.void
+      ? TransactionStatus.VOID
+      : qifTx.reconciled
+        ? TransactionStatus.RECONCILED
+        : qifTx.cleared
+          ? TransactionStatus.CLEARED
+          : TransactionStatus.UNRECONCILED;
 
     // Create transaction (use canonical payee name if alias-matched)
     const isTransfer = !isSplit && (qifTx.isTransfer || isLoanPaymentTx);

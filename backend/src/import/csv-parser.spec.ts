@@ -2,6 +2,9 @@ import {
   validateCsvContent,
   parseCsvHeaders,
   parseCsv,
+  detectTagSeparator,
+  splitTagValue,
+  normalizeReconciliationStatus,
   CsvColumnMappingConfig,
   CsvTransferRule,
 } from "./csv-parser";
@@ -1206,6 +1209,359 @@ describe("CSV Parser", () => {
         // transferAccountColumn is empty, so transfer is not detected
         expect(result.transactions[0].isTransfer).toBe(false);
       });
+    });
+
+    describe("tags column", () => {
+      it("leaves tagNames empty when the tags column is not mapped", () => {
+        const csv =
+          "Date,Amount,Payee,Tags\n01/15/2026,-50.00,Store,Food,Groceries\n";
+        const result = parseCsv(csv, baseConfig());
+        expect(result.transactions[0].tagNames).toEqual([]);
+      });
+
+      it("splits on commas when commas dominate the column (quoted fields)", () => {
+        // A comma tag-separator is only usable inside quoted cells because the
+        // CSV delimiter itself is also a comma. Quoted cells are the
+        // real-world shape of this export style.
+        const csv = [
+          "Date,Amount,Payee,Tags",
+          '01/15/2026,-50.00,Store,"Food, Groceries"',
+          "01/16/2026,-20.00,Bus,Transport",
+          '01/17/2026,-10.00,Cafe,"Coffee, Breakfast"',
+        ].join("\n");
+        const result = parseCsv(csv, baseConfig({ tags: 3 }));
+
+        expect(result.transactions[0].tagNames).toEqual(["Food", "Groceries"]);
+        expect(result.transactions[1].tagNames).toEqual(["Transport"]);
+        expect(result.transactions[2].tagNames).toEqual([
+          "Coffee",
+          "Breakfast",
+        ]);
+      });
+
+      it("splits on semicolons when semicolons dominate the column", () => {
+        const csv = [
+          "Date,Amount,Payee,Tags",
+          "01/15/2026,-50.00,Store,Food; Groceries",
+          "01/16/2026,-20.00,Shop,Home; Garden",
+        ].join("\n");
+        const result = parseCsv(csv, baseConfig({ tags: 3 }));
+
+        expect(result.transactions[0].tagNames).toEqual(["Food", "Groceries"]);
+        expect(result.transactions[1].tagNames).toEqual(["Home", "Garden"]);
+      });
+
+      it("splits on pipes when pipes dominate the column", () => {
+        const csv = [
+          "Date,Amount,Payee,Tags",
+          "01/15/2026,-50.00,Store,Food|Groceries",
+          "01/16/2026,-20.00,Shop,Home|Garden",
+        ].join("\n");
+        const result = parseCsv(csv, baseConfig({ tags: 3 }));
+
+        expect(result.transactions[0].tagNames).toEqual(["Food", "Groceries"]);
+        expect(result.transactions[1].tagNames).toEqual(["Home", "Garden"]);
+      });
+
+      it("never treats dashes as a tag separator", () => {
+        const csv = [
+          "Date,Amount,Payee,Tags",
+          "01/15/2026,-50.00,Store,work-travel",
+          "01/16/2026,-20.00,Shop,home-office",
+          "01/17/2026,-10.00,Cafe,out-of-pocket",
+        ].join("\n");
+        const result = parseCsv(csv, baseConfig({ tags: 3 }));
+
+        expect(result.transactions[0].tagNames).toEqual(["work-travel"]);
+        expect(result.transactions[1].tagNames).toEqual(["home-office"]);
+        expect(result.transactions[2].tagNames).toEqual(["out-of-pocket"]);
+      });
+
+      it("never treats forward slashes as a tag separator", () => {
+        const csv = [
+          "Date,Amount,Payee,Tags",
+          "01/15/2026,-50.00,Store,2026/taxes",
+          "01/16/2026,-20.00,Shop,personal/travel",
+        ].join("\n");
+        const result = parseCsv(csv, baseConfig({ tags: 3 }));
+
+        expect(result.transactions[0].tagNames).toEqual(["2026/taxes"]);
+        expect(result.transactions[1].tagNames).toEqual(["personal/travel"]);
+      });
+
+      it("preserves dashes and slashes inside individual tags when a real separator exists", () => {
+        const csv = [
+          "Date,Amount,Payee,Tags",
+          '01/15/2026,-50.00,Store,"work-travel, 2026/taxes"',
+          '01/16/2026,-20.00,Shop,"home-office, personal/travel"',
+        ].join("\n");
+        const result = parseCsv(csv, baseConfig({ tags: 3 }));
+
+        expect(result.transactions[0].tagNames).toEqual([
+          "work-travel",
+          "2026/taxes",
+        ]);
+        expect(result.transactions[1].tagNames).toEqual([
+          "home-office",
+          "personal/travel",
+        ]);
+      });
+
+      it("treats a single-value field as one tag when no separator appears anywhere", () => {
+        const csv = [
+          "Date,Amount,Payee,Tags",
+          "01/15/2026,-50.00,Store,Food",
+          "01/16/2026,-20.00,Shop,Home",
+        ].join("\n");
+        const result = parseCsv(csv, baseConfig({ tags: 3 }));
+
+        expect(result.transactions[0].tagNames).toEqual(["Food"]);
+        expect(result.transactions[1].tagNames).toEqual(["Home"]);
+      });
+
+      it("picks the more-frequent separator when multiple appear across rows", () => {
+        const csv = [
+          "Date,Amount,Payee,Tags",
+          // 3 rows use semicolon, 1 row uses comma -- semicolon wins.
+          "01/15/2026,-50.00,Store,Food; Groceries",
+          "01/16/2026,-20.00,Shop,Home; Garden",
+          '01/17/2026,-10.00,Cafe,"Coffee, Breakfast"',
+          "01/18/2026,-30.00,Gym,Health; Fitness",
+        ].join("\n");
+        const result = parseCsv(csv, baseConfig({ tags: 3 }));
+
+        expect(result.transactions[0].tagNames).toEqual(["Food", "Groceries"]);
+        // Row that used comma while semicolon is the detected separator is
+        // treated as a single tag with the literal comma preserved.
+        expect(result.transactions[2].tagNames).toEqual(["Coffee, Breakfast"]);
+        expect(result.transactions[3].tagNames).toEqual(["Health", "Fitness"]);
+      });
+
+      it("skips empty segments and trims surrounding whitespace", () => {
+        const csv = [
+          "Date,Amount,Payee,Tags",
+          '01/15/2026,-50.00,Store,"  Food ,, Groceries  ,  "',
+        ].join("\n");
+        const result = parseCsv(csv, baseConfig({ tags: 3 }));
+
+        expect(result.transactions[0].tagNames).toEqual(["Food", "Groceries"]);
+      });
+
+      it("de-duplicates repeated tag names case-insensitively", () => {
+        const csv = [
+          "Date,Amount,Payee,Tags",
+          '01/15/2026,-50.00,Store,"Food, FOOD, Groceries, food"',
+        ].join("\n");
+        const result = parseCsv(csv, baseConfig({ tags: 3 }));
+
+        expect(result.transactions[0].tagNames).toEqual(["Food", "Groceries"]);
+      });
+
+      it("truncates individual tag names that exceed the 100 character limit", () => {
+        const longTag = "a".repeat(150);
+        const csv = `Date,Amount,Payee,Tags\n01/15/2026,-50.00,Store,${longTag}\n`;
+        const result = parseCsv(csv, baseConfig({ tags: 3 }));
+
+        expect(result.transactions[0].tagNames).toHaveLength(1);
+        expect(result.transactions[0].tagNames![0]).toHaveLength(100);
+      });
+
+      it("ignores empty tag fields", () => {
+        const csv = [
+          "Date,Amount,Payee,Tags",
+          "01/15/2026,-50.00,Store,Food; Travel",
+          "01/16/2026,-20.00,Shop,",
+        ].join("\n");
+        const result = parseCsv(csv, baseConfig({ tags: 3 }));
+
+        expect(result.transactions[0].tagNames).toEqual(["Food", "Travel"]);
+        expect(result.transactions[1].tagNames).toEqual([]);
+      });
+
+      it("strips HTML angle brackets from tag names", () => {
+        const csv = [
+          "Date,Amount,Payee,Tags",
+          "01/15/2026,-50.00,Store,<script>alert(1)</script>; Safe",
+        ].join("\n");
+        const result = parseCsv(csv, baseConfig({ tags: 3 }));
+
+        expect(result.transactions[0].tagNames).toEqual([
+          "scriptalert(1)/script",
+          "Safe",
+        ]);
+      });
+    });
+
+    describe("reconciliation status column", () => {
+      it("leaves cleared/reconciled/void all false when no status column is mapped", () => {
+        const csv = "Date,Amount\n01/15/2026,-50.00\n";
+        const tx = parseCsv(csv, baseConfig()).transactions[0];
+        expect(tx.cleared).toBe(false);
+        expect(tx.reconciled).toBe(false);
+        expect(tx.void).toBe(false);
+      });
+
+      it("maps common CLEARED keywords", () => {
+        const csv = [
+          "Date,Amount,Status",
+          "01/15/2026,-50.00,Cleared",
+          "01/16/2026,-30.00,cleared",
+          "01/17/2026,-20.00,C",
+          "01/18/2026,-10.00,Posted",
+          "01/19/2026,-40.00,*",
+          "01/20/2026,-60.00,Verified",
+        ].join("\n");
+        const result = parseCsv(csv, baseConfig({ reconciliationStatus: 2 }));
+        for (const tx of result.transactions) {
+          expect(tx.cleared).toBe(true);
+          expect(tx.reconciled).toBe(false);
+          expect(tx.void).toBe(false);
+        }
+      });
+
+      it("maps common RECONCILED keywords", () => {
+        const csv = [
+          "Date,Amount,Status",
+          "01/15/2026,-50.00,Reconciled",
+          "01/16/2026,-30.00,reconciled",
+          "01/17/2026,-20.00,R",
+          "01/18/2026,-10.00,X",
+          "01/19/2026,-40.00,matched",
+          "01/20/2026,-60.00,Finalized",
+        ].join("\n");
+        const result = parseCsv(csv, baseConfig({ reconciliationStatus: 2 }));
+        for (const tx of result.transactions) {
+          expect(tx.reconciled).toBe(true);
+          expect(tx.cleared).toBe(false);
+          expect(tx.void).toBe(false);
+        }
+      });
+
+      it("maps common VOID keywords", () => {
+        const csv = [
+          "Date,Amount,Status",
+          "01/15/2026,-50.00,Void",
+          "01/16/2026,-30.00,voided",
+          "01/17/2026,-20.00,Cancelled",
+          "01/18/2026,-10.00,canceled",
+          "01/19/2026,-40.00,Deleted",
+        ].join("\n");
+        const result = parseCsv(csv, baseConfig({ reconciliationStatus: 2 }));
+        for (const tx of result.transactions) {
+          expect(tx.void).toBe(true);
+          expect(tx.cleared).toBe(false);
+          expect(tx.reconciled).toBe(false);
+        }
+      });
+
+      it("treats explicit unreconciled keywords as UNRECONCILED", () => {
+        const csv = [
+          "Date,Amount,Status",
+          "01/15/2026,-50.00,Pending",
+          "01/16/2026,-30.00,Unreconciled",
+          "01/17/2026,-20.00,Uncleared",
+          "01/18/2026,-10.00,Open",
+        ].join("\n");
+        const result = parseCsv(csv, baseConfig({ reconciliationStatus: 2 }));
+        for (const tx of result.transactions) {
+          expect(tx.cleared).toBe(false);
+          expect(tx.reconciled).toBe(false);
+          expect(tx.void).toBe(false);
+        }
+      });
+
+      it("falls back to UNRECONCILED for empty or unknown values", () => {
+        const csv = [
+          "Date,Amount,Status",
+          "01/15/2026,-50.00,",
+          "01/16/2026,-30.00,weirdstring",
+        ].join("\n");
+        const result = parseCsv(csv, baseConfig({ reconciliationStatus: 2 }));
+        for (const tx of result.transactions) {
+          expect(tx.cleared).toBe(false);
+          expect(tx.reconciled).toBe(false);
+          expect(tx.void).toBe(false);
+        }
+      });
+
+      it("matches keywords inside longer descriptive strings", () => {
+        const csv = [
+          "Date,Amount,Status",
+          "01/15/2026,-50.00,Payment reconciled on 2026-01-20",
+          "01/16/2026,-30.00,Transaction posted to account",
+          "01/17/2026,-20.00,Voided by user",
+        ].join("\n");
+        const result = parseCsv(csv, baseConfig({ reconciliationStatus: 2 }));
+        expect(result.transactions[0].reconciled).toBe(true);
+        expect(result.transactions[1].cleared).toBe(true);
+        expect(result.transactions[2].void).toBe(true);
+      });
+
+      it("is case-insensitive and trims whitespace", () => {
+        const csv = [
+          "Date,Amount,Status",
+          "01/15/2026,-50.00,  RECONCILED  ",
+          "01/16/2026,-30.00,   cLeArEd",
+        ].join("\n");
+        const result = parseCsv(csv, baseConfig({ reconciliationStatus: 2 }));
+        expect(result.transactions[0].reconciled).toBe(true);
+        expect(result.transactions[1].cleared).toBe(true);
+      });
+    });
+  });
+
+  describe("detectTagSeparator (exported helper)", () => {
+    it("returns null for an empty list", () => {
+      expect(detectTagSeparator([])).toBeNull();
+    });
+
+    it("returns null when no candidate separator appears", () => {
+      expect(detectTagSeparator(["Food", "Home", "Travel"])).toBeNull();
+    });
+
+    it("returns the most frequent candidate", () => {
+      expect(detectTagSeparator(["a,b", "c;d", "e;f", "g;h"])).toBe(";");
+    });
+
+    it("prefers pipe, then semicolon, then comma on ties", () => {
+      // All three present once
+      expect(detectTagSeparator(["a|b", "c;d", "e,f"])).toBe("|");
+      // Semicolon vs comma tie -- semicolon wins (earlier in list)
+      expect(detectTagSeparator(["a;b", "c,d"])).toBe(";");
+    });
+
+    it("never picks a dash or slash", () => {
+      expect(detectTagSeparator(["a-b", "c-d", "e-f"])).toBeNull();
+      expect(detectTagSeparator(["a/b", "c/d"])).toBeNull();
+    });
+
+    it("splits and trims individual tags", () => {
+      expect(splitTagValue("  Food ,, Groceries  ", ",")).toEqual([
+        "Food",
+        "Groceries",
+      ]);
+    });
+
+    it("returns empty array for empty input", () => {
+      expect(splitTagValue("", ",")).toEqual([]);
+      expect(splitTagValue("   ", null)).toEqual([]);
+    });
+
+    it("returns a single tag when separator is null", () => {
+      expect(splitTagValue("Food", null)).toEqual(["Food"]);
+      expect(splitTagValue("work-travel", null)).toEqual(["work-travel"]);
+    });
+
+    it("normalizes reconciliation status to the right enum value", () => {
+      expect(normalizeReconciliationStatus("Reconciled")).toBe("RECONCILED");
+      expect(normalizeReconciliationStatus("cleared")).toBe("CLEARED");
+      expect(normalizeReconciliationStatus("VOID")).toBe("VOID");
+      expect(normalizeReconciliationStatus("")).toBe("UNRECONCILED");
+      expect(normalizeReconciliationStatus(null)).toBe("UNRECONCILED");
+      expect(normalizeReconciliationStatus(undefined)).toBe("UNRECONCILED");
+      expect(normalizeReconciliationStatus("anything weird")).toBe(
+        "UNRECONCILED",
+      );
     });
   });
 });
