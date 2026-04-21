@@ -160,9 +160,9 @@ export function AccountBalancesBarChart({
   const effectiveScale: EffectiveScale =
     scaleMode === 'auto' ? (autoPrefersLog ? 'log' : 'linear') : scaleMode;
 
-  // Mobile keeps its existing -35° slant; on desktop, switch to fully vertical
-  // labels once the bar count crosses the crowding threshold.
-  const verticalXAxis = !isMobile && chartData.length > DESKTOP_VERTICAL_AXIS_THRESHOLD;
+  // Mobile always uses fully vertical labels (matching desktop's dense view);
+  // desktop switches to vertical once the bar count crosses the crowding threshold.
+  const verticalXAxis = isMobile || chartData.length > DESKTOP_VERTICAL_AXIS_THRESHOLD;
 
   const summary = useMemo(() => {
     if (chartData.length === 0) return null;
@@ -270,15 +270,15 @@ export function AccountBalancesBarChart({
               tick={
                 verticalXAxis
                   ? <VerticalAccountTick />
-                  : { fill: '#6b7280', fontSize: isMobile ? 10 : 12 }
+                  : { fill: '#6b7280', fontSize: 12 }
               }
               tickLine={false}
               axisLine={{ stroke: '#e5e7eb' }}
-              interval={isMobile ? 'preserveStartEnd' : 0}
-              angle={isMobile ? -35 : 0}
-              textAnchor={isMobile ? 'end' : 'middle'}
-              tickMargin={isMobile ? 10 : verticalXAxis ? 8 : 0}
-              height={isMobile ? 64 : verticalXAxis ? 120 : 30}
+              interval={0}
+              angle={0}
+              textAnchor="middle"
+              tickMargin={verticalXAxis ? 8 : 0}
+              height={verticalXAxis ? 120 : 30}
             />
             <YAxis
               tick={{ fill: '#6b7280', fontSize: 11 }}
