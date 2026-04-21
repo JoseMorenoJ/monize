@@ -48,6 +48,12 @@ vi.mock('@/hooks/useNumberFormat', () => ({
   }),
 }));
 
+// Control the mobile breakpoint deterministically from tests.
+const mockIsMobile = vi.fn(() => false);
+vi.mock('@/hooks/useIsMobile', () => ({
+  useIsMobile: () => mockIsMobile(),
+}));
+
 describe('AccountBalancesBarChart', () => {
   beforeEach(() => {
     capturedBarOnClick = undefined;
@@ -57,6 +63,7 @@ describe('AccountBalancesBarChart', () => {
     mockFormatCurrency.mockImplementation((n: number) => `$${n.toFixed(2)}`);
     mockFormatCurrency.mockClear();
     mockFormatCurrencyAxis.mockClear();
+    mockIsMobile.mockReturnValue(false);
   });
 
   it('renders loading state with title and pulse skeleton', () => {
@@ -518,6 +525,18 @@ describe('AccountBalancesBarChart', () => {
       );
       const text = container.querySelector('text');
       expect(text?.textContent).toBe('Short Name');
+    });
+
+    it('uses vertical x-axis labels on mobile regardless of account count', () => {
+      mockIsMobile.mockReturnValue(true);
+      render(<AccountBalancesBarChart data={buildAccounts(3)} isLoading={false} />);
+      // Mobile should use the same custom-tick vertical format as the dense
+      // desktop view, not the previous slanted label style.
+      expect(typeof capturedXAxisProps.tick).toBe('object');
+      expect(capturedXAxisProps.angle).toBe(0);
+      expect(capturedXAxisProps.textAnchor).toBe('middle');
+      expect(capturedXAxisProps.interval).toBe(0);
+      expect(capturedXAxisProps.height).toBeGreaterThan(30);
     });
   });
 
