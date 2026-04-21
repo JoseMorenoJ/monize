@@ -16,6 +16,7 @@ import { useNumberFormat } from '@/hooks/useNumberFormat';
 import { useExchangeRates } from '@/hooks/useExchangeRates';
 import { ExportDropdown } from '@/components/ui/ExportDropdown';
 import { createLogger } from '@/lib/logger';
+import { aggregateHoldingsBySecurity, AggregatedHolding } from '@/lib/aggregate-holdings';
 
 const logger = createLogger('SecurityTypeAllocationReport');
 
@@ -44,7 +45,7 @@ interface TypeAllocation {
   percentage: number;
   count: number;
   color: string;
-  holdings: HoldingWithMarketValue[];
+  holdings: AggregatedHolding[];
 }
 
 function getColor(type: string, index: number): string {
@@ -121,20 +122,21 @@ export function SecurityTypeAllocationReport() {
   };
 
   const allocationData = useMemo((): TypeAllocation[] => {
-    const typeMap = new Map<string, { totalValue: number; count: number; holdings: HoldingWithMarketValue[] }>();
+    // Aggregate holdings by security first so the same symbol held across
+    // multiple accounts appears as a single row under its security type.
+    const aggregated = aggregateHoldingsBySecurity(holdings);
 
-    holdings.forEach((h) => {
+    const typeMap = new Map<string, { totalValue: number; holdings: AggregatedHolding[] }>();
+    aggregated.forEach((h) => {
       const type = h.securityType || 'OTHER';
-      const marketValue = h.marketValue ?? 0;
-      const converted = convertToDefault(marketValue, h.currencyCode);
+      const converted = convertToDefault(h.marketValue ?? 0, h.currencyCode);
 
       let existing = typeMap.get(type);
       if (!existing) {
-        existing = { totalValue: 0, count: 0, holdings: [] };
+        existing = { totalValue: 0, holdings: [] };
         typeMap.set(type, existing);
       }
       existing.totalValue += converted;
-      existing.count += 1;
       existing.holdings.push(h);
     });
 
@@ -147,9 +149,13 @@ export function SecurityTypeAllocationReport() {
         label: TYPE_LABELS[type] || type,
         totalValue: data.totalValue,
         percentage: totalValue > 0 ? (data.totalValue / totalValue) * 100 : 0,
-        count: data.count,
+        count: data.holdings.length,
         color: getColor(type, colorIndex++),
-        holdings: data.holdings,
+        holdings: data.holdings.sort(
+          (a, b) =>
+            convertToDefault(b.marketValue ?? 0, b.currencyCode) -
+            convertToDefault(a.marketValue ?? 0, a.currencyCode),
+        ),
       }))
       .sort((a, b) => b.totalValue - a.totalValue);
   }, [holdings, convertToDefault]);
@@ -375,9 +381,14 @@ export function SecurityTypeAllocationReport() {
                     </td>
                   </tr>
                   {expandedType === item.type && item.holdings.map((h) => (
-                    <tr key={h.id} className="bg-gray-50/50 dark:bg-gray-900/20">
+                    <tr key={h.securityId} className="bg-gray-50/50 dark:bg-gray-900/20">
                       <td className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 pl-10">
                         {h.symbol} - {h.name}
+                        {h.accountBreakdowns.length > 1 && (
+                          <span className="ml-2 text-xs text-gray-400 dark:text-gray-500">
+                            ({h.accountBreakdowns.length} accounts)
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-2 text-sm text-right text-gray-600 dark:text-gray-400">
                         {formatCurrencyFull(convertToDefault(h.marketValue ?? 0, h.currencyCode), defaultCurrency)}

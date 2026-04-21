@@ -83,6 +83,8 @@ describe('InvestmentPerformanceReport', () => {
       holdings: [
         {
           id: 'h-1',
+          securityId: 'sec-vfv',
+          accountId: 'acc-1',
           symbol: 'VFV',
           name: 'Vanguard S&P 500',
           quantity: 100,
@@ -90,6 +92,7 @@ describe('InvestmentPerformanceReport', () => {
           currentPrice: 100,
           marketValue: 10000,
           costBasis: 9000,
+          costBasisAccountCurrency: 9000,
           gainLoss: 1000,
           gainLossPercent: 11.11,
           currencyCode: 'CAD',
@@ -128,6 +131,8 @@ describe('InvestmentPerformanceReport', () => {
       holdings: [
         {
           id: 'h-1',
+          securityId: 'sec-xic',
+          accountId: 'acc-1',
           symbol: 'XIC',
           name: 'iShares S&P/TSX',
           quantity: 50,
@@ -135,6 +140,7 @@ describe('InvestmentPerformanceReport', () => {
           currentPrice: 35,
           marketValue: 1750,
           costBasis: 1500,
+          costBasisAccountCurrency: 1500,
           gainLoss: 250,
           gainLossPercent: 16.67,
           currencyCode: 'CAD',

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Tooltip,
   ResponsiveContainer,
@@ -17,16 +17,18 @@ import { useExchangeRates } from '@/hooks/useExchangeRates';
 import { CHART_COLOURS } from '@/lib/chart-colours';
 import { ExportDropdown } from '@/components/ui/ExportDropdown';
 import { createLogger } from '@/lib/logger';
+import { aggregateHoldingsBySecurity, AggregatedHolding } from '@/lib/aggregate-holdings';
 
 const logger = createLogger('InvestmentPerformanceReport');
 
 export function InvestmentPerformanceReport() {
-  const { formatCurrencyCompact: formatCurrency, formatCurrency: formatCurrencyFull } = useNumberFormat();
+  const { formatCurrency: formatCurrencyFull } = useNumberFormat();
   const { defaultCurrency } = useExchangeRates();
   const chartRef = useRef<HTMLDivElement>(null);
   const [portfolio, setPortfolio] = useState<PortfolioSummary | null>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState<string>('');
+  const [expandedSecurityId, setExpandedSecurityId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [viewType, setViewType] = useState<'performance' | 'allocation'>('performance');
 
@@ -91,7 +93,7 @@ export function InvestmentPerformanceReport() {
     if (isForeignSummary) {
       return `${formatCurrencyFull(value, summaryCurrency)} ${summaryCurrency}`;
     }
-    return formatCurrency(value);
+    return formatCurrencyFull(value);
   };
 
   const fmtHolding = (value: number | null, currencyCode: string) => {
@@ -99,19 +101,33 @@ export function InvestmentPerformanceReport() {
     if (currencyCode && currencyCode !== defaultCurrency) {
       return `${formatCurrencyFull(value, currencyCode)} ${currencyCode}`;
     }
-    return formatCurrency(value);
+    return formatCurrencyFull(value);
   };
 
-  const holdingsData = useMemo(() => {
+  const accountNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    accounts.forEach((a) => map.set(a.id, a.name.replace(/ - (Brokerage|Cash)$/, '')));
+    return map;
+  }, [accounts]);
+
+  const aggregatedHoldings = useMemo((): AggregatedHolding[] => {
     if (!portfolio) return [];
-    return portfolio.holdings
+    return aggregateHoldingsBySecurity(portfolio.holdings).sort((a, b) => {
+      if (a.marketValue === null && b.marketValue === null) return 0;
+      if (a.marketValue === null) return 1;
+      if (b.marketValue === null) return -1;
+      return b.marketValue - a.marketValue;
+    });
+  }, [portfolio]);
+
+  const holdingsData = useMemo(() => {
+    return aggregatedHoldings
       .filter((h) => h.marketValue && h.marketValue > 0)
-      .sort((a, b) => (b.marketValue || 0) - (a.marketValue || 0))
       .map((h, index) => ({
         ...h,
         color: CHART_COLOURS[index % CHART_COLOURS.length],
       }));
-  }, [portfolio]);
+  }, [aggregatedHoldings]);
 
   const allocationData = useMemo(() => {
     if (!portfolio) return [];
@@ -129,10 +145,10 @@ export function InvestmentPerformanceReport() {
           <p className="font-medium text-gray-900 dark:text-gray-100">{data.name}</p>
           <p className="text-sm text-gray-600 dark:text-gray-400">{data.symbol}</p>
           <p className="text-sm text-gray-900 dark:text-gray-100 mt-1">
-            Value: {formatCurrency(data.marketValue || 0)}
+            Value: {fmtHolding(data.marketValue, data.currencyCode)}
           </p>
           <p className={`text-sm ${(data.gainLoss || 0) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-            Gain/Loss: {formatCurrency(data.gainLoss || 0)} ({formatPercent(data.gainLossPercent || 0)})
+            Gain/Loss: {fmtHolding(data.gainLoss, data.currencyCode)} ({formatPercent(data.gainLossPercent || 0)})
           </p>
         </div>
       );
@@ -151,7 +167,7 @@ export function InvestmentPerformanceReport() {
     ] : undefined;
 
     const headers = ['Security', 'Shares', 'Avg Cost', 'Price', 'Market Value', 'Gain/Loss', 'Return'];
-    const rows = portfolio ? portfolio.holdings.map((h) => [
+    const rows = aggregatedHoldings.map((h) => [
       `${h.symbol} - ${h.name}`,
       h.quantity.toFixed(4),
       fmtHolding(h.averageCost, h.currencyCode),
@@ -159,11 +175,11 @@ export function InvestmentPerformanceReport() {
       fmtHolding(h.marketValue, h.currencyCode),
       fmtHolding(h.gainLoss, h.currencyCode),
       h.gainLossPercent !== null ? formatPercent(h.gainLossPercent) : 'N/A',
-    ]) : [];
+    ]);
 
     const legendItems = holdingsData.map((h) => ({
       color: h.color,
-      label: `${h.symbol} - ${formatCurrency(h.marketValue || 0)}`,
+      label: `${h.symbol} - ${fmtHolding(h.marketValue, h.currencyCode)}`,
     }));
 
     await exportToPdf({
@@ -183,7 +199,7 @@ export function InvestmentPerformanceReport() {
         <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-3">
           <p className="font-medium text-gray-900 dark:text-gray-100">{data.name}</p>
           <p className="text-sm text-gray-600 dark:text-gray-400">
-            {formatCurrency(data.value)} ({data.percentage.toFixed(1)}%)
+            {formatCurrencyFull(data.value)} ({data.percentage.toFixed(1)}%)
           </p>
         </div>
       );
@@ -355,36 +371,89 @@ export function InvestmentPerformanceReport() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                  {portfolio.holdings.map((holding) => (
-                    <tr key={holding.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                      <td className="px-4 py-3">
-                        <div className="font-medium text-gray-900 dark:text-gray-100">
-                          {holding.symbol}
-                        </div>
-                        <div className="text-sm text-gray-500 dark:text-gray-400">
-                          {holding.name}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-right text-sm text-gray-900 dark:text-gray-100">
-                        {holding.quantity.toFixed(4)}
-                      </td>
-                      <td className="px-4 py-3 text-right text-sm text-gray-900 dark:text-gray-100">
-                        {fmtHolding(holding.averageCost, holding.currencyCode)}
-                      </td>
-                      <td className="px-4 py-3 text-right text-sm text-gray-900 dark:text-gray-100">
-                        {fmtHolding(holding.currentPrice, holding.currencyCode)}
-                      </td>
-                      <td className="px-4 py-3 text-right text-sm font-medium text-gray-900 dark:text-gray-100">
-                        {fmtHolding(holding.marketValue, holding.currencyCode)}
-                      </td>
-                      <td className={`px-4 py-3 text-right text-sm ${(holding.gainLoss || 0) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                        {fmtHolding(holding.gainLoss, holding.currencyCode)}
-                      </td>
-                      <td className={`px-4 py-3 text-right text-sm font-medium ${(holding.gainLossPercent || 0) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                        {holding.gainLossPercent !== null ? formatPercent(holding.gainLossPercent) : 'N/A'}
-                      </td>
-                    </tr>
-                  ))}
+                  {aggregatedHoldings.map((holding) => {
+                    const isExpandable = holding.accountBreakdowns.length > 1;
+                    const isExpanded = expandedSecurityId === holding.securityId;
+                    return (
+                      <React.Fragment key={holding.securityId}>
+                        <tr
+                          className={`hover:bg-gray-50 dark:hover:bg-gray-700/50 ${isExpandable ? 'cursor-pointer' : ''}`}
+                          onClick={isExpandable ? () => setExpandedSecurityId(isExpanded ? null : holding.securityId) : undefined}
+                        >
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              <div>
+                                <div className="font-medium text-gray-900 dark:text-gray-100">
+                                  {holding.symbol}
+                                </div>
+                                <div className="text-sm text-gray-500 dark:text-gray-400">
+                                  {holding.name}
+                                  {isExpandable && (
+                                    <span className="ml-2 text-xs text-gray-400 dark:text-gray-500">
+                                      ({holding.accountBreakdowns.length} accounts)
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              {isExpandable && (
+                                <svg
+                                  className={`w-4 h-4 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  stroke="currentColor"
+                                >
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                </svg>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-right text-sm text-gray-900 dark:text-gray-100">
+                            {holding.quantity.toFixed(4)}
+                          </td>
+                          <td className="px-4 py-3 text-right text-sm text-gray-900 dark:text-gray-100">
+                            {fmtHolding(holding.averageCost, holding.currencyCode)}
+                          </td>
+                          <td className="px-4 py-3 text-right text-sm text-gray-900 dark:text-gray-100">
+                            {fmtHolding(holding.currentPrice, holding.currencyCode)}
+                          </td>
+                          <td className="px-4 py-3 text-right text-sm font-medium text-gray-900 dark:text-gray-100">
+                            {fmtHolding(holding.marketValue, holding.currencyCode)}
+                          </td>
+                          <td className={`px-4 py-3 text-right text-sm ${(holding.gainLoss || 0) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                            {fmtHolding(holding.gainLoss, holding.currencyCode)}
+                          </td>
+                          <td className={`px-4 py-3 text-right text-sm font-medium ${(holding.gainLossPercent || 0) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                            {holding.gainLossPercent !== null ? formatPercent(holding.gainLossPercent) : 'N/A'}
+                          </td>
+                        </tr>
+                        {isExpanded && holding.accountBreakdowns.map((sub) => (
+                          <tr key={sub.id} className="bg-gray-50/70 dark:bg-gray-900/20">
+                            <td className="px-4 py-2 pl-10 text-sm text-gray-600 dark:text-gray-400">
+                              {accountNameById.get(sub.accountId) || 'Unknown account'}
+                            </td>
+                            <td className="px-4 py-2 text-right text-sm text-gray-600 dark:text-gray-400">
+                              {sub.quantity.toFixed(4)}
+                            </td>
+                            <td className="px-4 py-2 text-right text-sm text-gray-600 dark:text-gray-400">
+                              {fmtHolding(sub.averageCost, sub.currencyCode)}
+                            </td>
+                            <td className="px-4 py-2 text-right text-sm text-gray-600 dark:text-gray-400">
+                              {fmtHolding(sub.currentPrice, sub.currencyCode)}
+                            </td>
+                            <td className="px-4 py-2 text-right text-sm text-gray-600 dark:text-gray-400">
+                              {fmtHolding(sub.marketValue, sub.currencyCode)}
+                            </td>
+                            <td className={`px-4 py-2 text-right text-sm ${(sub.gainLoss || 0) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                              {fmtHolding(sub.gainLoss, sub.currencyCode)}
+                            </td>
+                            <td className={`px-4 py-2 text-right text-sm ${(sub.gainLossPercent || 0) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                              {sub.gainLossPercent !== null ? formatPercent(sub.gainLossPercent) : 'N/A'}
+                            </td>
+                          </tr>
+                        ))}
+                      </React.Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -442,7 +511,7 @@ export function InvestmentPerformanceReport() {
                   </div>
                   <div className="text-right">
                     <div className="font-medium text-gray-900 dark:text-gray-100">
-                      {formatCurrency(item.value)}
+                      {formatCurrencyFull(item.value)}
                     </div>
                     <div className="text-sm text-gray-500 dark:text-gray-400">
                       {item.percentage.toFixed(1)}%
