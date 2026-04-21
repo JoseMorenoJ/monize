@@ -953,9 +953,10 @@ describe("BillReminderService", () => {
 
         it("handles nextDueDate as ISO string from database", async () => {
           // When TypeORM returns a date column as a string (common for date type)
+          const dueDateStr = daysFromNow(1).toISOString().split("T")[0];
           const bill = makeBill({
             userId: userId1,
-            nextDueDate: "2026-04-20" as any,
+            nextDueDate: dueDateStr as any,
             reminderDaysBefore: 999,
           });
 
@@ -966,7 +967,7 @@ describe("BillReminderService", () => {
           await service.sendBillReminders();
 
           const htmlArg = emailService.sendMail.mock.calls[0][2];
-          expect(htmlArg).toContain("2026-04-20");
+          expect(htmlArg).toContain(dueDateStr);
         });
       });
     });
