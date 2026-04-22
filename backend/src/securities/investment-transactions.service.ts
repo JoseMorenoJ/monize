@@ -445,6 +445,20 @@ export class InvestmentTransactionsService {
       await queryRunner.release();
     }
 
+    // SPLIT mutations compound on the existing holding state, so a stray
+    // residue from a bad import would survive an incremental update. Rebuild
+    // holdings from the full transaction history to guarantee the user's
+    // shares match what the ledger says.
+    if (createDto.action === InvestmentAction.SPLIT) {
+      await this.holdingsService
+        .rebuildFromTransactions(userId)
+        .catch((err) =>
+          this.logger.warn(
+            `Holdings rebuild after SPLIT create failed: ${err.message}`,
+          ),
+        );
+    }
+
     this.triggerRecalcWithCashAccount(
       createDto.accountId,
       userId,
@@ -978,6 +992,23 @@ export class InvestmentTransactionsService {
       await queryRunner.release();
     }
 
+    // If a SPLIT was touched (either before or after the edit), rebuild
+    // holdings from history -- the incremental reverse/re-apply assumes
+    // the original transaction was correctly applied, which isn't true
+    // for splits that came in from older buggy imports.
+    if (
+      oldAction === InvestmentAction.SPLIT ||
+      transaction.action === InvestmentAction.SPLIT
+    ) {
+      await this.holdingsService
+        .rebuildFromTransactions(userId)
+        .catch((err) =>
+          this.logger.warn(
+            `Holdings rebuild after SPLIT update failed: ${err.message}`,
+          ),
+        );
+    }
+
     this.triggerRecalcWithCashAccount(updateDto.accountId ?? accountId, userId);
 
     // Update transaction-derived prices for the new security/date
@@ -1211,6 +1242,16 @@ export class InvestmentTransactionsService {
       throw error;
     } finally {
       await queryRunner.release();
+    }
+
+    if (transaction.action === InvestmentAction.SPLIT) {
+      await this.holdingsService
+        .rebuildFromTransactions(userId)
+        .catch((err) =>
+          this.logger.warn(
+            `Holdings rebuild after SPLIT remove failed: ${err.message}`,
+          ),
+        );
     }
 
     this.triggerRecalcWithCashAccount(

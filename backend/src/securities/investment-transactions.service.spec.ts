@@ -229,6 +229,11 @@ describe("InvestmentTransactionsService", () => {
       reverseSplit: jest.fn().mockResolvedValue(undefined),
       findByAccountAndSecurity: jest.fn().mockResolvedValue(null),
       removeAllForUser: jest.fn().mockResolvedValue(5),
+      rebuildFromTransactions: jest.fn().mockResolvedValue({
+        holdingsCreated: 0,
+        holdingsUpdated: 0,
+        holdingsDeleted: 0,
+      }),
       validateNoNegativeHoldingsHistory: jest.fn().mockResolvedValue(undefined),
     };
 
@@ -1061,6 +1066,39 @@ describe("InvestmentTransactionsService", () => {
       );
       // SPLIT must not write a cash transaction.
       expect(holdingsService.updateHolding).not.toHaveBeenCalled();
+    });
+
+    it("rebuilds holdings from history after creating a SPLIT", async () => {
+      accountsService.findOne.mockResolvedValue(mockInvestmentAccount);
+      investmentTransactionsRepository.createQueryBuilder.mockReturnValue(
+        createMockQueryBuilder({ ...mockBuyTransaction, action: "SPLIT" }),
+      );
+      await service.create(userId, {
+        accountId,
+        action: InvestmentAction.SPLIT,
+        securityId,
+        transactionDate: "2025-01-15",
+        quantity: 2,
+      });
+      expect(holdingsService.rebuildFromTransactions).toHaveBeenCalledWith(
+        userId,
+      );
+    });
+
+    it("does NOT trigger a holdings rebuild for non-SPLIT creates", async () => {
+      accountsService.findOne.mockResolvedValue(mockInvestmentAccount);
+      investmentTransactionsRepository.createQueryBuilder.mockReturnValue(
+        createMockQueryBuilder(mockBuyTransaction),
+      );
+      await service.create(userId, {
+        accountId,
+        action: InvestmentAction.BUY,
+        securityId,
+        transactionDate: "2025-01-15",
+        quantity: 10,
+        price: 150,
+      });
+      expect(holdingsService.rebuildFromTransactions).not.toHaveBeenCalled();
     });
 
     it("supports reverse splits (ratio < 1) for SPLIT", async () => {
@@ -2320,6 +2358,11 @@ describe("InvestmentTransactionsService", () => {
       );
       // Reversing a SPLIT must NOT remove cash transactions or call updateHolding.
       expect(holdingsService.updateHolding).not.toHaveBeenCalled();
+      // Rebuild holdings from history so any incremental drift from the
+      // original (possibly buggy) apply is corrected.
+      expect(holdingsService.rebuildFromTransactions).toHaveBeenCalledWith(
+        userId,
+      );
     });
 
     it("skips cash transaction deletion when no transactionId is linked", async () => {

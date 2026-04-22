@@ -369,5 +369,36 @@ describe('InvestmentTransactionList', () => {
       const row = screen.getByText('2:1').closest('tr')!;
       expect(row).toHaveTextContent('-');
     });
+
+    it('renders "-" when the stored quantity is null (no ratio set)', () => {
+      const tx = makeTx({
+        id: 's-null',
+        action: 'SPLIT',
+        quantity: null,
+        price: null,
+        totalAmount: 0,
+      });
+      render(<InvestmentTransactionList transactions={[tx] as any[]} isLoading={false} />);
+      // Shares column should not render an inferred ratio.
+      expect(screen.queryByText(/^\d+:\d+$/)).not.toBeInTheDocument();
+    });
+
+    it('renders "-" for suspicious imported quantities (e.g. 5 from older buggy QIF)', () => {
+      const tx = makeTx({
+        id: 's-bad',
+        action: 'SPLIT',
+        quantity: 5, // Residue from older buggy import; not a user-authored ratio.
+        price: null,
+        totalAmount: 0,
+      });
+      render(<InvestmentTransactionList transactions={[tx] as any[]} isLoading={false} />);
+      expect(screen.queryByText('5:1')).not.toBeInTheDocument();
+    });
+
+    it('still renders forward splits up to 4:1 since they are common user-set ratios', () => {
+      const tx = makeTx({ id: 's-3', action: 'SPLIT', quantity: 3, price: 0, totalAmount: 0 });
+      render(<InvestmentTransactionList transactions={[tx] as any[]} isLoading={false} />);
+      expect(screen.getByText('3:1')).toBeInTheDocument();
+    });
   });
 });

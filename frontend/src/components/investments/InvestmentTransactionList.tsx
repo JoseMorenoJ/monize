@@ -33,14 +33,31 @@ interface InvestmentTransactionListProps {
 }
 
 /**
- * Render a SPLIT transaction's stored ratio (new shares per old share)
- * as human-readable "N:M" notation so the Shares column doesn't show a
- * misleading share count for splits. Examples: 2 -> "2:1", 0.5 -> "1:2",
- * 1.5 -> "3:2". Falls back to a plain decimal when the ratio doesn't
- * round cleanly to a small-denominator fraction.
+ * Decide whether a SPLIT transaction's stored quantity looks like a ratio a
+ * user (or the current QIF parser) would actually have set. Older buggy
+ * imports left stray integers like 5, 10, 20, 30 in the quantity column;
+ * those would render as misleading "5:1" / "20:1" splits if shown verbatim.
+ * Mirror the SPLIT form's logic so the list and the editor agree on which
+ * quantities count as "set" and which are blank.
  */
-function formatSplitRatio(ratio: number): string {
-  if (!Number.isFinite(ratio) || ratio <= 0) return '-';
+function isPlausibleSplitRatio(quantity: number | null | undefined): boolean {
+  if (quantity === null || quantity === undefined) return false;
+  const q = Number(quantity);
+  if (!Number.isFinite(q) || q <= 0) return false;
+  if (!Number.isInteger(q)) return true; // 1.5, 0.5, 0.333...
+  return q === 2 || q === 3 || q === 4;
+}
+
+/**
+ * Render a SPLIT transaction's stored ratio (new shares per old share)
+ * as human-readable "N:M" notation. Examples: 2 -> "2:1", 0.5 -> "1:2",
+ * 1.5 -> "3:2". Returns "-" when the stored quantity is missing or doesn't
+ * look like an actual user-set ratio so the list never advertises a split
+ * the user didn't author.
+ */
+function formatSplitRatio(quantity: number | null | undefined): string {
+  if (!isPlausibleSplitRatio(quantity)) return '-';
+  const ratio = Number(quantity);
   const trim = (n: number) =>
     Number.isInteger(n) ? String(n) : String(Number(n.toFixed(4)));
   // Probe small denominators for the most natural ratio rendering.
@@ -164,7 +181,7 @@ const InvestmentTransactionRow = memo(function InvestmentTransactionRow({
       </td>
       <td className={`${cellPadding} whitespace-nowrap text-right text-sm text-gray-900 dark:text-gray-100 hidden sm:table-cell`}>
         {tx.action === 'SPLIT'
-          ? formatSplitRatio(Number(tx.quantity ?? 0))
+          ? formatSplitRatio(tx.quantity)
           : formatQuantity(tx.quantity ?? 0)}
       </td>
       <td className={`${cellPadding} whitespace-nowrap text-right text-sm text-gray-900 dark:text-gray-100 hidden md:table-cell`}>
