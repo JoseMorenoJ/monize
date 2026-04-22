@@ -682,7 +682,7 @@ describe('InvestmentTransactionForm', () => {
       });
     }
 
-    it('renders New shares / Old shares inputs (defaulting to 2-for-1)', async () => {
+    it('renders New shares / Old shares inputs blank for a new split (no assumed default)', async () => {
       await selectSplitAction();
 
       await waitFor(() => {
@@ -691,7 +691,109 @@ describe('InvestmentTransactionForm', () => {
       expect(screen.getByText('Old shares')).toBeInTheDocument();
       const newShares = screen.getByLabelText('New shares') as HTMLInputElement;
       const oldShares = screen.getByLabelText('Old shares') as HTMLInputElement;
-      expect(parseFloat(newShares.value)).toBe(2);
+      // The form must not pre-fill any ratio -- the user has to set it.
+      expect(newShares.value).toBe('');
+      expect(oldShares.value).toBe('');
+    });
+
+    it('blocks submit until the user fills in the split ratio', async () => {
+      await selectSplitAction();
+      await waitFor(() => {
+        expect(screen.getByText('New shares')).toBeInTheDocument();
+      });
+
+      await act(async () => {
+        fireEvent.change(screen.getByLabelText('Brokerage Account'), {
+          target: { value: 'a1' },
+        });
+      });
+      await waitFor(() => {
+        expect(screen.getByLabelText('Security')).toBeInTheDocument();
+      });
+      await act(async () => {
+        fireEvent.change(screen.getByLabelText('Security'), {
+          target: { value: 'sec-1' },
+        });
+      });
+
+      await act(async () => {
+        fireEvent.click(screen.getByText('Create Transaction'));
+      });
+
+      await waitFor(() => {
+        expect(toast.error).toHaveBeenCalledWith('Split ratio must be greater than zero');
+      });
+      expect(investmentsApi.createTransaction).not.toHaveBeenCalled();
+    });
+
+    it('leaves split inputs blank when editing a transaction with no usable ratio (e.g. quantity = 5 from a buggy import)', async () => {
+      const importedTx = {
+        id: 'tx-imported',
+        accountId: 'a1',
+        action: 'SPLIT' as const,
+        transactionDate: '2022-11-07',
+        securityId: 'sec-1',
+        security: {
+          id: 'sec-1',
+          symbol: 'AAPL',
+          name: 'Apple Inc.',
+          securityType: 'STOCK',
+          currencyCode: 'USD',
+        } as any,
+        quantity: 5, // Suspicious residue from older buggy QIF imports.
+        price: 0,
+        commission: 0,
+        totalAmount: 0,
+        description: '',
+      } as any;
+
+      await act(async () => {
+        render(<InvestmentTransactionForm accounts={accounts} transaction={importedTx} />);
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText('New shares')).toBeInTheDocument();
+      });
+      const newShares = screen.getByLabelText('New shares') as HTMLInputElement;
+      const oldShares = screen.getByLabelText('Old shares') as HTMLInputElement;
+      expect(newShares.value).toBe('');
+      expect(oldShares.value).toBe('');
+      expect(
+        screen.getByText(/No split ratio is set on this transaction/i),
+      ).toBeInTheDocument();
+    });
+
+    it('pre-fills the split inputs when editing a transaction with a sensible ratio (e.g. 0.5)', async () => {
+      const editedTx = {
+        id: 'tx-edited',
+        accountId: 'a1',
+        action: 'SPLIT' as const,
+        transactionDate: '2022-11-07',
+        securityId: 'sec-1',
+        security: {
+          id: 'sec-1',
+          symbol: 'AAPL',
+          name: 'Apple Inc.',
+          securityType: 'STOCK',
+          currencyCode: 'USD',
+        } as any,
+        quantity: 0.5,
+        price: 0,
+        commission: 0,
+        totalAmount: 0,
+        description: '',
+      } as any;
+
+      await act(async () => {
+        render(<InvestmentTransactionForm accounts={accounts} transaction={editedTx} />);
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText('New shares')).toBeInTheDocument();
+      });
+      const newShares = screen.getByLabelText('New shares') as HTMLInputElement;
+      const oldShares = screen.getByLabelText('Old shares') as HTMLInputElement;
+      expect(parseFloat(newShares.value)).toBe(0.5);
       expect(parseFloat(oldShares.value)).toBe(1);
     });
 

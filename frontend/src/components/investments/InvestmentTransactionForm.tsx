@@ -91,9 +91,7 @@ const quantityOnlyActions: InvestmentAction[] = ['ADD_SHARES', 'REMOVE_SHARES'];
 const amountOnlyActions: InvestmentAction[] = ['DIVIDEND', 'INTEREST', 'CAPITAL_GAIN', 'TRANSFER_IN', 'TRANSFER_OUT'];
 
 // Actions that can have an external funding account (where funds come from/go to)
-const fundingAccountActions: InvestmentAction[] = ['BUY', 'SELL'];
-
-// Actions that post a cash transaction against the cash/funding account.
+const fundingAccountActions: InvestmentAction[] = ['BUY', 'SELL'];// Actions that post a cash transaction against the cash/funding account.
 // Only these need exchange rate handling when security and cash currencies differ.
 const cashPostingActions: InvestmentAction[] = [
   'BUY',
@@ -102,6 +100,32 @@ const cashPostingActions: InvestmentAction[] = [
   'INTEREST',
   'CAPITAL_GAIN',
 ];
+
+/**
+ * Decide what to pre-fill the SPLIT form's "new shares" field with for an
+ * already-stored transaction. We deliberately avoid showing a ratio when
+ * the stored quantity looks like noise from an older buggy import (e.g. a
+ * raw Quicken-tenths value such as 5, 10, 20, 30) so the form never
+ * "assumes" a split for the user. Recognised user-friendly ratios -- a
+ * positive non-integer (1.5, 0.5, 0.333...) or a small forward integer
+ * (2/3/4) -- are treated as intentional and re-displayed as-is.
+ */
+function deriveSplitNewSharesDefault(
+  storedQuantity: number | null | undefined,
+): number | undefined {
+  if (storedQuantity === null || storedQuantity === undefined) return undefined;
+  const q = Number(storedQuantity);
+  if (!Number.isFinite(q) || q <= 0) return undefined;
+  if (!Number.isInteger(q)) return q; // e.g. 1.5, 0.5
+  if (q === 2 || q === 3 || q === 4) return q;
+  return undefined;
+}
+
+function deriveSplitOldSharesDefault(
+  storedQuantity: number | null | undefined,
+): number | undefined {
+  return deriveSplitNewSharesDefault(storedQuantity) === undefined ? undefined : 1;
+}
 
 export function InvestmentTransactionForm({
   accounts,
@@ -165,12 +189,21 @@ export function InvestmentTransactionForm({
           commission: transaction.commission ?? 0,
           exchangeRate: transaction.exchangeRate ?? 1,
           description: transaction.description || '',
+          // For SPLIT, only pre-fill the new/old shares from a stored ratio
+          // when the ratio looks like a value the user (or the current QIF
+          // parser) actually entered: a positive non-integer or one of a
+          // small set of plausible integer ratios (2, 3, 4). Anything else
+          // (zero, null, or a suspicious integer like 5/10/20 -- common
+          // residue from older buggy split imports) is left blank so the
+          // user has to fill it in explicitly. We never assume a default.
           splitNewShares:
             transaction.action === 'SPLIT'
-              ? Number(transaction.quantity ?? 0) || undefined
+              ? deriveSplitNewSharesDefault(transaction.quantity)
               : undefined,
           splitOldShares:
-            transaction.action === 'SPLIT' ? 1 : undefined,
+            transaction.action === 'SPLIT'
+              ? deriveSplitOldSharesDefault(transaction.quantity)
+              : undefined,
         }
       : {
           accountId: defaultAccountId || '',
@@ -182,8 +215,8 @@ export function InvestmentTransactionForm({
           commission: undefined,
           exchangeRate: undefined,
           description: '',
-          splitNewShares: 2,
-          splitOldShares: 1,
+          splitNewShares: undefined,
+          splitOldShares: undefined,
         },
   });
 
@@ -615,6 +648,12 @@ export function InvestmentTransactionForm({
           <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
             Split ratio
           </div>
+          {transaction && !watchedSplitNewShares && !watchedSplitOldShares && (
+            <div className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
+              No split ratio is set on this transaction. Enter the ratio as it was
+              announced before saving — Monize won&apos;t assume one for you.
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-4">
             <NumericInput
               label="New shares"
