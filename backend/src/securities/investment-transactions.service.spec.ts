@@ -225,7 +225,15 @@ describe("InvestmentTransactionsService", () => {
     holdingsService = {
       updateHolding: jest.fn().mockResolvedValue(undefined),
       adjustQuantity: jest.fn().mockResolvedValue(undefined),
+      applySplit: jest.fn().mockResolvedValue(undefined),
+      reverseSplit: jest.fn().mockResolvedValue(undefined),
+      findByAccountAndSecurity: jest.fn().mockResolvedValue(null),
       removeAllForUser: jest.fn().mockResolvedValue(5),
+      rebuildFromTransactions: jest.fn().mockResolvedValue({
+        holdingsCreated: 0,
+        holdingsUpdated: 0,
+        holdingsDeleted: 0,
+      }),
       validateNoNegativeHoldingsHistory: jest.fn().mockResolvedValue(undefined),
     };
 
@@ -1003,6 +1011,116 @@ describe("InvestmentTransactionsService", () => {
 
       await expect(service.create(userId, noSecDto)).rejects.toThrow(
         BadRequestException,
+      );
+    });
+
+    it("throws BadRequestException when SPLIT has no quantity", async () => {
+      accountsService.findOne.mockResolvedValue(mockInvestmentAccount);
+      const dto = {
+        accountId,
+        action: InvestmentAction.SPLIT,
+        securityId,
+        transactionDate: "2025-01-15",
+      };
+
+      await expect(service.create(userId, dto)).rejects.toThrow(
+        "Split ratio (quantity) must be greater than zero",
+      );
+    });
+
+    it("throws BadRequestException when SPLIT quantity is zero", async () => {
+      accountsService.findOne.mockResolvedValue(mockInvestmentAccount);
+      const dto = {
+        accountId,
+        action: InvestmentAction.SPLIT,
+        securityId,
+        transactionDate: "2025-01-15",
+        quantity: 0,
+      };
+
+      await expect(service.create(userId, dto)).rejects.toThrow(
+        "Split ratio (quantity) must be greater than zero",
+      );
+    });
+
+    it("calls holdingsService.applySplit with the supplied ratio for SPLIT", async () => {
+      accountsService.findOne.mockResolvedValue(mockInvestmentAccount);
+      investmentTransactionsRepository.createQueryBuilder.mockReturnValue(
+        createMockQueryBuilder({ ...mockBuyTransaction, action: "SPLIT" }),
+      );
+      const dto = {
+        accountId,
+        action: InvestmentAction.SPLIT,
+        securityId,
+        transactionDate: "2025-01-15",
+        quantity: 2,
+      };
+
+      await service.create(userId, dto);
+
+      expect(holdingsService.applySplit).toHaveBeenCalledWith(
+        accountId,
+        securityId,
+        2,
+        expect.anything(),
+      );
+      // SPLIT must not write a cash transaction.
+      expect(holdingsService.updateHolding).not.toHaveBeenCalled();
+    });
+
+    it("rebuilds holdings from history after creating a SPLIT", async () => {
+      accountsService.findOne.mockResolvedValue(mockInvestmentAccount);
+      investmentTransactionsRepository.createQueryBuilder.mockReturnValue(
+        createMockQueryBuilder({ ...mockBuyTransaction, action: "SPLIT" }),
+      );
+      await service.create(userId, {
+        accountId,
+        action: InvestmentAction.SPLIT,
+        securityId,
+        transactionDate: "2025-01-15",
+        quantity: 2,
+      });
+      expect(holdingsService.rebuildFromTransactions).toHaveBeenCalledWith(
+        userId,
+      );
+    });
+
+    it("does NOT trigger a holdings rebuild for non-SPLIT creates", async () => {
+      accountsService.findOne.mockResolvedValue(mockInvestmentAccount);
+      investmentTransactionsRepository.createQueryBuilder.mockReturnValue(
+        createMockQueryBuilder(mockBuyTransaction),
+      );
+      await service.create(userId, {
+        accountId,
+        action: InvestmentAction.BUY,
+        securityId,
+        transactionDate: "2025-01-15",
+        quantity: 10,
+        price: 150,
+      });
+      expect(holdingsService.rebuildFromTransactions).not.toHaveBeenCalled();
+    });
+
+    it("supports reverse splits (ratio < 1) for SPLIT", async () => {
+      accountsService.findOne.mockResolvedValue(mockInvestmentAccount);
+      investmentTransactionsRepository.createQueryBuilder.mockReturnValue(
+        createMockQueryBuilder({ ...mockBuyTransaction, action: "SPLIT" }),
+      );
+      const dto = {
+        accountId,
+        action: InvestmentAction.SPLIT,
+        securityId,
+        transactionDate: "2025-01-15",
+        quantity: 0.5,
+      };
+
+      await service.create(userId, dto);
+
+      expect(holdingsService.applySplit).toHaveBeenCalledWith(
+        accountId,
+        securityId,
+        0.5,
+        expect.anything(),
       );
     });
 
@@ -2213,6 +2331,37 @@ describe("InvestmentTransactionsService", () => {
         securityId,
         3,
         expect.anything(),
+      );
+    });
+
+    it("reverses SPLIT by calling reverseSplit on holdings", async () => {
+      const splitTx = {
+        ...mockBuyTransaction,
+        id: "inv-tx-split",
+        action: InvestmentAction.SPLIT,
+        transactionId: null,
+        quantity: 2,
+        price: 0,
+      };
+      const mockQB = createMockQueryBuilder(splitTx);
+      investmentTransactionsRepository.createQueryBuilder.mockReturnValue(
+        mockQB,
+      );
+
+      await service.remove(userId, splitTx.id);
+
+      expect(holdingsService.reverseSplit).toHaveBeenCalledWith(
+        accountId,
+        securityId,
+        2,
+        expect.anything(),
+      );
+      // Reversing a SPLIT must NOT remove cash transactions or call updateHolding.
+      expect(holdingsService.updateHolding).not.toHaveBeenCalled();
+      // Rebuild holdings from history so any incremental drift from the
+      // original (possibly buggy) apply is corrected.
+      expect(holdingsService.rebuildFromTransactions).toHaveBeenCalledWith(
+        userId,
       );
     });
 

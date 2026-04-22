@@ -32,6 +32,46 @@ interface InvestmentTransactionListProps {
   viewToggle?: React.ReactNode;
 }
 
+/**
+ * Decide whether a SPLIT transaction's stored quantity looks like a ratio a
+ * user (or the current QIF parser) would actually have set. Older buggy
+ * imports left stray integers like 5, 10, 20, 30 in the quantity column;
+ * those would render as misleading "5:1" / "20:1" splits if shown verbatim.
+ * Mirror the SPLIT form's logic so the list and the editor agree on which
+ * quantities count as "set" and which are blank.
+ */
+function isPlausibleSplitRatio(quantity: number | null | undefined): boolean {
+  if (quantity === null || quantity === undefined) return false;
+  const q = Number(quantity);
+  if (!Number.isFinite(q) || q <= 0) return false;
+  if (!Number.isInteger(q)) return true; // 1.5, 0.5, 0.333...
+  return q === 2 || q === 3 || q === 4;
+}
+
+/**
+ * Render a SPLIT transaction's stored ratio (new shares per old share)
+ * as human-readable "N:M" notation. Examples: 2 -> "2:1", 0.5 -> "1:2",
+ * 1.5 -> "3:2". Returns "-" when the stored quantity is missing or doesn't
+ * look like an actual user-set ratio so the list never advertises a split
+ * the user didn't author.
+ */
+function formatSplitRatio(quantity: number | null | undefined): string {
+  if (!isPlausibleSplitRatio(quantity)) return '-';
+  const ratio = Number(quantity);
+  const trim = (n: number) =>
+    Number.isInteger(n) ? String(n) : String(Number(n.toFixed(4)));
+  // Probe small denominators for the most natural ratio rendering.
+  for (const denom of [1, 2, 3, 4, 5, 6, 8, 10]) {
+    const numer = ratio * denom;
+    if (Math.abs(numer - Math.round(numer)) < 1e-6) {
+      const n = Math.round(numer);
+      if (n > 0) return `${trim(n)}:${denom}`;
+    }
+  }
+  if (ratio >= 1) return `${trim(ratio)}:1`;
+  return `1:${trim(1 / ratio)}`;
+}
+
 const ACTION_LABELS: Record<string, { label: string; shortLabel: string; color: string }> = {
   BUY: { label: 'Buy', shortLabel: 'Buy', color: 'text-green-600 dark:text-green-400' },
   SELL: { label: 'Sell', shortLabel: 'Sell', color: 'text-red-600 dark:text-red-400' },
@@ -140,12 +180,20 @@ const InvestmentTransactionRow = memo(function InvestmentTransactionRow({
         )}
       </td>
       <td className={`${cellPadding} whitespace-nowrap text-right text-sm text-gray-900 dark:text-gray-100 hidden sm:table-cell`}>
-        {formatQuantity(tx.quantity ?? 0)}
+        {tx.action === 'SPLIT'
+          ? formatSplitRatio(tx.quantity)
+          : formatQuantity(tx.quantity ?? 0)}
       </td>
       <td className={`${cellPadding} whitespace-nowrap text-right text-sm text-gray-900 dark:text-gray-100 hidden md:table-cell`}>
-        {formatCurrency(tx.price ?? 0, tx.security?.currencyCode, 4)}
-        {tx.security?.currencyCode && tx.security.currencyCode !== defaultCurrency && (
-          <span className="ml-1">{tx.security.currencyCode}</span>
+        {tx.action === 'SPLIT' && !tx.price ? (
+          '-'
+        ) : (
+          <>
+            {formatCurrency(tx.price ?? 0, tx.security?.currencyCode, 4)}
+            {tx.security?.currencyCode && tx.security.currencyCode !== defaultCurrency && (
+              <span className="ml-1">{tx.security.currencyCode}</span>
+            )}
+          </>
         )}
       </td>
       <td className={`${cellPadding} whitespace-nowrap text-right text-sm font-medium text-gray-900 dark:text-gray-100`}>

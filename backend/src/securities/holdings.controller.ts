@@ -57,6 +57,47 @@ export class HoldingsController {
     return this.holdingsService.getHoldingsSummary(req.user.id, accountId);
   }
 
+  @Get("at")
+  @ApiOperation({
+    summary: "Get holding state for (account, security) as of a given date",
+    description:
+      "Replays the user's investment transactions strictly earlier than `asOfDate` and returns the resulting quantity and average cost. Pass `excludeTransactionId` to omit a specific transaction (e.g. when previewing the holding state just before editing a SPLIT).",
+  })
+  @ApiQuery({ name: "accountId", required: true })
+  @ApiQuery({ name: "securityId", required: true })
+  @ApiQuery({
+    name: "asOfDate",
+    required: true,
+    description: "ISO date string (YYYY-MM-DD)",
+  })
+  @ApiQuery({ name: "excludeTransactionId", required: false })
+  @ApiResponse({
+    status: 200,
+    description: "Holding state at the requested date",
+    schema: {
+      type: "object",
+      properties: {
+        quantity: { type: "number" },
+        averageCost: { type: "number" },
+      },
+    },
+  })
+  getHoldingAt(
+    @Request() req,
+    @Query("accountId", ParseUUIDPipe) accountId: string,
+    @Query("securityId", ParseUUIDPipe) securityId: string,
+    @Query("asOfDate") asOfDate: string,
+    @Query("excludeTransactionId") excludeTransactionId?: string,
+  ): Promise<{ quantity: number; averageCost: number }> {
+    return this.holdingsService.getHoldingAt(
+      req.user.id,
+      accountId,
+      securityId,
+      asOfDate,
+      excludeTransactionId,
+    );
+  }
+
   @Get(":id")
   @ApiOperation({ summary: "Get a holding by ID" })
   @ApiResponse({ status: 200, description: "Holding details", type: Holding })

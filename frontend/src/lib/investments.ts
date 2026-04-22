@@ -70,6 +70,39 @@ export const investmentsApi = {
     return response.data;
   },
 
+  // Rebuild all holdings from transaction history. Useful for fixing data
+  // after imports or split-ratio corrections leave holdings out of sync
+  // with the transaction log.
+  rebuildHoldings: async (): Promise<{
+    holdingsCreated: number;
+    holdingsUpdated: number;
+    holdingsDeleted: number;
+  }> => {
+    const response = await apiClient.post<{
+      holdingsCreated: number;
+      holdingsUpdated: number;
+      holdingsDeleted: number;
+    }>('/holdings/rebuild');
+    invalidateCache('investments:');
+    return response.data;
+  },
+
+  // Holding state for (account, security) replayed as of a date. Used by
+  // the SPLIT form to show the user what their position looked like just
+  // before the split was applied, rather than the live holdings.
+  getHoldingAt: async (params: {
+    accountId: string;
+    securityId: string;
+    asOfDate: string;
+    excludeTransactionId?: string;
+  }): Promise<{ quantity: number; averageCost: number }> => {
+    const response = await apiClient.get<{
+      quantity: number;
+      averageCost: number;
+    }>('/holdings/at', { params });
+    return response.data;
+  },
+
   // Get investment transactions with pagination
   getTransactions: async (params?: {
     accountIds?: string;

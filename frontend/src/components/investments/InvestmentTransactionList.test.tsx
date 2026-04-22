@@ -336,4 +336,69 @@ describe('InvestmentTransactionList', () => {
     fireEvent.click(screen.getByText('AAPL'));
     expect(onEdit).toHaveBeenCalledWith(expect.objectContaining({ id: 't1' }));
   });
+
+  describe('SPLIT rendering', () => {
+    it('renders the split ratio as "N:1" instead of the raw quantity', () => {
+      const tx = makeTx({ id: 's1', action: 'SPLIT', quantity: 2, price: 0, totalAmount: 0 });
+      render(<InvestmentTransactionList transactions={[tx] as any[]} isLoading={false} />);
+      expect(screen.getByText('2:1')).toBeInTheDocument();
+    });
+
+    it('renders a 1:2 reverse split as "1:2"', () => {
+      const tx = makeTx({ id: 's2', action: 'SPLIT', quantity: 0.5, price: 0, totalAmount: 0 });
+      render(<InvestmentTransactionList transactions={[tx] as any[]} isLoading={false} />);
+      expect(screen.getByText('1:2')).toBeInTheDocument();
+    });
+
+    it('renders a 3-for-2 split as "3:2"', () => {
+      const tx = makeTx({ id: 's3', action: 'SPLIT', quantity: 1.5, price: 0, totalAmount: 0 });
+      render(<InvestmentTransactionList transactions={[tx] as any[]} isLoading={false} />);
+      expect(screen.getByText('3:2')).toBeInTheDocument();
+    });
+
+    it('shows "-" in the price column when no post-split price was set', () => {
+      const tx = makeTx({
+        id: 's4',
+        action: 'SPLIT',
+        quantity: 2,
+        price: null,
+        totalAmount: 0,
+      });
+      render(<InvestmentTransactionList transactions={[tx] as any[]} isLoading={false} />);
+      // The Shares column shows the ratio; the Price column shows "-".
+      const row = screen.getByText('2:1').closest('tr')!;
+      expect(row).toHaveTextContent('-');
+    });
+
+    it('renders "-" when the stored quantity is null (no ratio set)', () => {
+      const tx = makeTx({
+        id: 's-null',
+        action: 'SPLIT',
+        quantity: null,
+        price: null,
+        totalAmount: 0,
+      });
+      render(<InvestmentTransactionList transactions={[tx] as any[]} isLoading={false} />);
+      // Shares column should not render an inferred ratio.
+      expect(screen.queryByText(/^\d+:\d+$/)).not.toBeInTheDocument();
+    });
+
+    it('renders "-" for suspicious imported quantities (e.g. 5 from older buggy QIF)', () => {
+      const tx = makeTx({
+        id: 's-bad',
+        action: 'SPLIT',
+        quantity: 5, // Residue from older buggy import; not a user-authored ratio.
+        price: null,
+        totalAmount: 0,
+      });
+      render(<InvestmentTransactionList transactions={[tx] as any[]} isLoading={false} />);
+      expect(screen.queryByText('5:1')).not.toBeInTheDocument();
+    });
+
+    it('still renders forward splits up to 4:1 since they are common user-set ratios', () => {
+      const tx = makeTx({ id: 's-3', action: 'SPLIT', quantity: 3, price: 0, totalAmount: 0 });
+      render(<InvestmentTransactionList transactions={[tx] as any[]} isLoading={false} />);
+      expect(screen.getByText('3:1')).toBeInTheDocument();
+    });
+  });
 });

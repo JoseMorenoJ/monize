@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@/test/render';
+import { render, screen, fireEvent, waitFor, act } from '@/test/render';
 import { InvestmentTransactionForm } from './InvestmentTransactionForm';
 import { investmentsApi } from '@/lib/investments';
 import toast from 'react-hot-toast';
@@ -50,6 +50,8 @@ vi.mock('@/lib/investments', () => ({
     getSecurities: vi.fn().mockResolvedValue([
       { id: 'sec-1', symbol: 'AAPL', name: 'Apple Inc.', securityType: 'STOCK', currencyCode: 'USD' },
     ]),
+    getHoldings: vi.fn().mockResolvedValue([]),
+    getHoldingAt: vi.fn().mockResolvedValue({ quantity: 0, averageCost: 0 }),
     createSecurity: vi.fn().mockResolvedValue({ id: 'new-sec', symbol: 'TEST', name: 'Test Corp' }),
     createTransaction: vi.fn().mockResolvedValue({}),
     updateTransaction: vi.fn().mockResolvedValue({}),
@@ -663,6 +665,301 @@ describe('InvestmentTransactionForm', () => {
       const [, payload] = vi.mocked(investmentsApi.updateTransaction).mock
         .calls[0] as [string, { exchangeRate?: number }];
       expect(payload.exchangeRate).toBeCloseTo(1.5, 4);
+    });
+  });
+
+  describe('SPLIT action', () => {
+    async function selectSplitAction() {
+      await act(async () => {
+        render(<InvestmentTransactionForm accounts={accounts} />);
+      });
+      await waitFor(() => {
+        expect(screen.getByLabelText('Transaction Type')).toBeInTheDocument();
+      });
+      await act(async () => {
+        fireEvent.change(screen.getByLabelText('Transaction Type'), {
+          target: { value: 'SPLIT' },
+        });
+      });
+    }
+
+    it('renders New shares / Old shares inputs blank for a new split (no assumed default)', async () => {
+      await selectSplitAction();
+
+      await waitFor(() => {
+        expect(screen.getByText('New shares')).toBeInTheDocument();
+      });
+      expect(screen.getByText('Old shares')).toBeInTheDocument();
+      const newShares = screen.getByLabelText('New shares') as HTMLInputElement;
+      const oldShares = screen.getByLabelText('Old shares') as HTMLInputElement;
+      // The form must not pre-fill any ratio -- the user has to set it.
+      expect(newShares.value).toBe('');
+      expect(oldShares.value).toBe('');
+    });
+
+    it('blocks submit until the user fills in the split ratio', async () => {
+      await selectSplitAction();
+      await waitFor(() => {
+        expect(screen.getByText('New shares')).toBeInTheDocument();
+      });
+
+      await act(async () => {
+        fireEvent.change(screen.getByLabelText('Brokerage Account'), {
+          target: { value: 'a1' },
+        });
+      });
+      await waitFor(() => {
+        expect(screen.getByLabelText('Security')).toBeInTheDocument();
+      });
+      await act(async () => {
+        fireEvent.change(screen.getByLabelText('Security'), {
+          target: { value: 'sec-1' },
+        });
+      });
+
+      await act(async () => {
+        fireEvent.click(screen.getByText('Create Transaction'));
+      });
+
+      await waitFor(() => {
+        expect(toast.error).toHaveBeenCalledWith('Split ratio must be greater than zero');
+      });
+      expect(investmentsApi.createTransaction).not.toHaveBeenCalled();
+    });
+
+    it('leaves split inputs blank when editing a transaction with no usable ratio (e.g. quantity = 5 from a buggy import)', async () => {
+      const importedTx = {
+        id: 'tx-imported',
+        accountId: 'a1',
+        action: 'SPLIT' as const,
+        transactionDate: '2022-11-07',
+        securityId: 'sec-1',
+        security: {
+          id: 'sec-1',
+          symbol: 'AAPL',
+          name: 'Apple Inc.',
+          securityType: 'STOCK',
+          currencyCode: 'USD',
+        } as any,
+        quantity: 5, // Suspicious residue from older buggy QIF imports.
+        price: 0,
+        commission: 0,
+        totalAmount: 0,
+        description: '',
+      } as any;
+
+      await act(async () => {
+        render(<InvestmentTransactionForm accounts={accounts} transaction={importedTx} />);
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText('New shares')).toBeInTheDocument();
+      });
+      const newShares = screen.getByLabelText('New shares') as HTMLInputElement;
+      const oldShares = screen.getByLabelText('Old shares') as HTMLInputElement;
+      expect(newShares.value).toBe('');
+      expect(oldShares.value).toBe('');
+      expect(
+        screen.getByText(/No split ratio is set on this transaction/i),
+      ).toBeInTheDocument();
+    });
+
+    it('pre-fills the split inputs when editing a transaction with a sensible ratio (e.g. 0.5)', async () => {
+      const editedTx = {
+        id: 'tx-edited',
+        accountId: 'a1',
+        action: 'SPLIT' as const,
+        transactionDate: '2022-11-07',
+        securityId: 'sec-1',
+        security: {
+          id: 'sec-1',
+          symbol: 'AAPL',
+          name: 'Apple Inc.',
+          securityType: 'STOCK',
+          currencyCode: 'USD',
+        } as any,
+        quantity: 0.5,
+        price: 0,
+        commission: 0,
+        totalAmount: 0,
+        description: '',
+      } as any;
+
+      await act(async () => {
+        render(<InvestmentTransactionForm accounts={accounts} transaction={editedTx} />);
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText('New shares')).toBeInTheDocument();
+      });
+      const newShares = screen.getByLabelText('New shares') as HTMLInputElement;
+      const oldShares = screen.getByLabelText('Old shares') as HTMLInputElement;
+      expect(parseFloat(newShares.value)).toBe(0.5);
+      expect(parseFloat(oldShares.value)).toBe(1);
+    });
+
+    it('shows the optional new price per share field', async () => {
+      await selectSplitAction();
+      await waitFor(() => {
+        expect(
+          screen.getByText(/New price per share, after split/i),
+        ).toBeInTheDocument();
+      });
+    });
+
+    it('does not render Quantity (Shares), Commission, or Total Amount fields for SPLIT', async () => {
+      await selectSplitAction();
+      await waitFor(() => {
+        expect(screen.getByText('New shares')).toBeInTheDocument();
+      });
+      expect(screen.queryByText('Quantity (Shares)')).not.toBeInTheDocument();
+      expect(screen.queryByText(/Commission \/ Fees/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Total Amount/)).not.toBeInTheDocument();
+    });
+
+    it('submits the computed ratio (newShares / oldShares) as quantity', async () => {
+      await selectSplitAction();
+      await waitFor(() => {
+        expect(screen.getByText('New shares')).toBeInTheDocument();
+      });
+
+      await act(async () => {
+        fireEvent.change(screen.getByLabelText('Brokerage Account'), {
+          target: { value: 'a1' },
+        });
+      });
+      await waitFor(() => {
+        expect(screen.getByLabelText('Security')).toBeInTheDocument();
+      });
+      await act(async () => {
+        fireEvent.change(screen.getByLabelText('Security'), {
+          target: { value: 'sec-1' },
+        });
+      });
+
+      const newShares = screen.getByLabelText('New shares') as HTMLInputElement;
+      const oldShares = screen.getByLabelText('Old shares') as HTMLInputElement;
+      await act(async () => {
+        fireEvent.change(newShares, { target: { value: '3' } });
+        fireEvent.change(oldShares, { target: { value: '2' } });
+      });
+
+      await act(async () => {
+        fireEvent.click(screen.getByText('Create Transaction'));
+      });
+
+      await waitFor(() => {
+        expect(investmentsApi.createTransaction).toHaveBeenCalled();
+      });
+      const payload = vi.mocked(investmentsApi.createTransaction).mock.calls[0][0] as any;
+      expect(payload.action).toBe('SPLIT');
+      expect(payload.quantity).toBeCloseTo(1.5, 6);
+      expect(payload.commission).toBeUndefined();
+      expect(payload.fundingAccountId).toBeUndefined();
+    });
+
+    it('supports reverse splits (newShares < oldShares submits ratio < 1)', async () => {
+      await selectSplitAction();
+      await waitFor(() => {
+        expect(screen.getByText('New shares')).toBeInTheDocument();
+      });
+
+      await act(async () => {
+        fireEvent.change(screen.getByLabelText('Brokerage Account'), {
+          target: { value: 'a1' },
+        });
+      });
+      await waitFor(() => {
+        expect(screen.getByLabelText('Security')).toBeInTheDocument();
+      });
+      await act(async () => {
+        fireEvent.change(screen.getByLabelText('Security'), {
+          target: { value: 'sec-1' },
+        });
+      });
+
+      const newShares = screen.getByLabelText('New shares') as HTMLInputElement;
+      const oldShares = screen.getByLabelText('Old shares') as HTMLInputElement;
+      await act(async () => {
+        fireEvent.change(newShares, { target: { value: '1' } });
+        fireEvent.change(oldShares, { target: { value: '2' } });
+      });
+
+      await act(async () => {
+        fireEvent.click(screen.getByText('Create Transaction'));
+      });
+
+      await waitFor(() => {
+        expect(investmentsApi.createTransaction).toHaveBeenCalled();
+      });
+      const payload = vi.mocked(investmentsApi.createTransaction).mock.calls[0][0] as any;
+      expect(payload.quantity).toBe(0.5);
+    });
+
+    it('shows a holding preview using as-of-date holdings (not the live state)', async () => {
+      const asOfMock = vi.mocked(investmentsApi.getHoldingAt);
+      asOfMock.mockImplementation(() =>
+        Promise.resolve({ quantity: 100, averageCost: 150 }),
+      );
+
+      // Render in edit mode so account, security, and SPLIT action are all
+      // wired up from initial state without relying on async select changes.
+      const splitTx = {
+        id: 'tx-split',
+        accountId: 'a1',
+        action: 'SPLIT' as const,
+        transactionDate: '2026-01-15',
+        securityId: 'sec-1',
+        security: {
+          id: 'sec-1',
+          symbol: 'AAPL',
+          name: 'Apple Inc.',
+          securityType: 'STOCK',
+          currencyCode: 'USD',
+        } as any,
+        quantity: 2,
+        price: 0,
+        commission: 0,
+        totalAmount: 0,
+        description: '',
+      } as any;
+
+      try {
+        await act(async () => {
+          render(
+            <InvestmentTransactionForm
+              accounts={accounts}
+              transaction={splitTx}
+            />,
+          );
+        });
+
+        await waitFor(
+          () => {
+            expect(screen.getByText(/Holding preview/i)).toBeInTheDocument();
+          },
+          { timeout: 3000 },
+        );
+
+        // The form must request the as-of state for the split's own date,
+        // excluding the split transaction itself so the "Before" reflects
+        // shares held going into the split, not after.
+        expect(asOfMock).toHaveBeenCalledWith(
+          expect.objectContaining({
+            accountId: 'a1',
+            securityId: 'sec-1',
+            asOfDate: '2026-01-15',
+            excludeTransactionId: 'tx-split',
+          }),
+        );
+
+        // 100 shares @ $150 -> 200 shares @ $75 after a 2-for-1 split.
+        expect(screen.getByText(/100\.0000/)).toBeInTheDocument();
+        expect(screen.getByText(/200\.0000/)).toBeInTheDocument();
+        expect(screen.getByText(/75\.0000/)).toBeInTheDocument();
+      } finally {
+        asOfMock.mockResolvedValue({ quantity: 0, averageCost: 0 });
+      }
     });
   });
 

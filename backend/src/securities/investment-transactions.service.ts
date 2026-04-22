@@ -378,6 +378,15 @@ export class InvestmentTransactionsService {
       );
     }
 
+    if (
+      createDto.action === InvestmentAction.SPLIT &&
+      (!createDto.quantity || Number(createDto.quantity) <= 0)
+    ) {
+      throw new BadRequestException(
+        "Split ratio (quantity) must be greater than zero",
+      );
+    }
+
     if (createDto.securityId) {
       await this.securitiesService.findOne(userId, createDto.securityId);
     }
@@ -434,6 +443,20 @@ export class InvestmentTransactionsService {
       throw error;
     } finally {
       await queryRunner.release();
+    }
+
+    // SPLIT mutations compound on the existing holding state, so a stray
+    // residue from a bad import would survive an incremental update. Rebuild
+    // holdings from the full transaction history to guarantee the user's
+    // shares match what the ledger says.
+    if (createDto.action === InvestmentAction.SPLIT) {
+      await this.holdingsService
+        .rebuildFromTransactions(userId)
+        .catch((err) =>
+          this.logger.warn(
+            `Holdings rebuild after SPLIT create failed: ${err.message}`,
+          ),
+        );
     }
 
     this.triggerRecalcWithCashAccount(
@@ -607,28 +630,18 @@ export class InvestmentTransactionsService {
         break;
 
       case InvestmentAction.SPLIT:
-        // H13: Apply stock split ratio to adjust holdings quantity
+        // Stock split: scale quantity by the ratio and divide averageCost by
+        // the same ratio so total cost basis is preserved. The optional
+        // `price` carries the post-split per-share market price for
+        // reporting; the cost basis comes from the existing holding, not
+        // from `price`.
         if (securityId && quantity) {
-          const splitRatio = Number(quantity);
-          const holding = await this.holdingsService.findByAccountAndSecurity(
+          await this.holdingsService.applySplit(
             accountId,
             securityId,
+            Number(quantity),
             queryRunner,
           );
-          if (holding) {
-            const currentQty = Number(holding.quantity);
-            const newQty = currentQty * splitRatio;
-            const additionalShares = newQty - currentQty;
-            if (Math.abs(additionalShares) > 0.00000001) {
-              await this.holdingsService.adjustQuantity(
-                userId,
-                accountId,
-                securityId,
-                additionalShares,
-                queryRunner,
-              );
-            }
-          }
         }
         break;
 
@@ -902,6 +915,17 @@ export class InvestmentTransactionsService {
         } as any);
       }
 
+      if (
+        transaction.action === InvestmentAction.SPLIT &&
+        (transaction.quantity === null ||
+          transaction.quantity === undefined ||
+          Number(transaction.quantity) <= 0)
+      ) {
+        throw new BadRequestException(
+          "Split ratio (quantity) must be greater than zero",
+        );
+      }
+
       // Exchange rate resolution precedence for update():
       //   1. DTO override wins.
       //   2. If the account, funding account, or security changed, re-resolve
@@ -966,6 +990,23 @@ export class InvestmentTransactionsService {
       throw error;
     } finally {
       await queryRunner.release();
+    }
+
+    // If a SPLIT was touched (either before or after the edit), rebuild
+    // holdings from history -- the incremental reverse/re-apply assumes
+    // the original transaction was correctly applied, which isn't true
+    // for splits that came in from older buggy imports.
+    if (
+      oldAction === InvestmentAction.SPLIT ||
+      transaction.action === InvestmentAction.SPLIT
+    ) {
+      await this.holdingsService
+        .rebuildFromTransactions(userId)
+        .catch((err) =>
+          this.logger.warn(
+            `Holdings rebuild after SPLIT update failed: ${err.message}`,
+          ),
+        );
     }
 
     this.triggerRecalcWithCashAccount(updateDto.accountId ?? accountId, userId);
@@ -1147,6 +1188,17 @@ export class InvestmentTransactionsService {
           );
         }
         break;
+
+      case InvestmentAction.SPLIT:
+        if (securityId && quantity) {
+          await this.holdingsService.reverseSplit(
+            accountId,
+            securityId,
+            Number(quantity),
+            queryRunner,
+          );
+        }
+        break;
     }
   }
 
@@ -1190,6 +1242,16 @@ export class InvestmentTransactionsService {
       throw error;
     } finally {
       await queryRunner.release();
+    }
+
+    if (transaction.action === InvestmentAction.SPLIT) {
+      await this.holdingsService
+        .rebuildFromTransactions(userId)
+        .catch((err) =>
+          this.logger.warn(
+            `Holdings rebuild after SPLIT remove failed: ${err.message}`,
+          ),
+        );
     }
 
     this.triggerRecalcWithCashAccount(

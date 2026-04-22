@@ -86,6 +86,90 @@ export class HoldingsService {
     });
   }
 
+  /**
+   * Compute the holding state for (account, security) as of the start of
+   * `asOfDate` -- i.e. after replaying every investment transaction strictly
+   * earlier than that date, optionally skipping a single transaction by id
+   * (used by the SPLIT form so editing a past split shows holdings as they
+   * were just before that split was applied, not the current live state).
+   *
+   * Returns { quantity, averageCost } even when no holding row exists yet.
+   * Mirrors the action handling used by `rebuildFromTransactions` so the two
+   * paths stay in sync.
+   */
+  async getHoldingAt(
+    userId: string,
+    accountId: string,
+    securityId: string,
+    asOfDate: string,
+    excludeTransactionId?: string,
+  ): Promise<{ quantity: number; averageCost: number }> {
+    // Verify the user owns the account before exposing transaction history.
+    await this.accountsService.findOne(userId, accountId);
+
+    const where: {
+      userId: string;
+      accountId: string;
+      securityId: string;
+    } = { userId, accountId, securityId };
+
+    const transactions = await this.investmentTransactionsRepository.find({
+      where,
+      order: {
+        transactionDate: "ASC",
+        createdAt: "ASC",
+      },
+    });
+
+    let qty = 0;
+    let totalCost = 0;
+    for (const tx of transactions) {
+      if (tx.transactionDate >= asOfDate) break;
+      if (excludeTransactionId && tx.id === excludeTransactionId) continue;
+      const txQty = Number(tx.quantity) || 0;
+      const txPrice = Number(tx.price) || 0;
+      switch (tx.action) {
+        case InvestmentAction.BUY:
+        case InvestmentAction.REINVEST:
+        case InvestmentAction.TRANSFER_IN:
+          totalCost += txQty * txPrice;
+          qty += txQty;
+          break;
+        case InvestmentAction.SELL:
+        case InvestmentAction.TRANSFER_OUT: {
+          const sellQty = Math.min(txQty, qty);
+          if (qty > 0) {
+            const avg = totalCost / qty;
+            totalCost -= sellQty * avg;
+          }
+          qty -= txQty;
+          break;
+        }
+        case InvestmentAction.ADD_SHARES:
+          qty += txQty;
+          break;
+        case InvestmentAction.REMOVE_SHARES:
+          qty -= txQty;
+          break;
+        case InvestmentAction.SPLIT:
+          if (txQty > 0) {
+            qty *= txQty;
+          }
+          break;
+        default:
+          // DIVIDEND / INTEREST / CAPITAL_GAIN don't move shares.
+          break;
+      }
+    }
+
+    if (Math.abs(qty) < 1e-8) {
+      qty = 0;
+      totalCost = 0;
+    }
+    const averageCost = qty > 0 ? totalCost / qty : 0;
+    return { quantity: qty, averageCost };
+  }
+
   async createOrUpdate(
     userId: string,
     accountId: string,
@@ -179,6 +263,61 @@ export class HoldingsService {
       queryRunner,
       allowNegative,
     );
+  }
+
+  /**
+   * Apply a stock split to an existing holding: multiply quantity by the
+   * ratio (new shares per old share) and divide averageCost by the same
+   * ratio so total cost basis is preserved. A 2-for-1 split (ratio = 2)
+   * doubles shares and halves the per-share cost; a 1-for-2 reverse split
+   * (ratio = 0.5) halves shares and doubles the per-share cost.
+   *
+   * No-op when no holding exists for the security in this account.
+   */
+  async applySplit(
+    accountId: string,
+    securityId: string,
+    ratio: number,
+    queryRunner?: QueryRunner,
+  ): Promise<Holding | null> {
+    if (!ratio || ratio <= 0) {
+      throw new BadRequestException("Split ratio must be greater than zero");
+    }
+
+    const repo = queryRunner
+      ? queryRunner.manager.getRepository(Holding)
+      : this.holdingsRepository;
+
+    const holding = await this.findByAccountAndSecurity(
+      accountId,
+      securityId,
+      queryRunner,
+    );
+    if (!holding) return null;
+
+    const currentQty = Number(holding.quantity);
+    const currentAvg = Number(holding.averageCost || 0);
+    holding.quantity = currentQty * ratio;
+    holding.averageCost = currentAvg / ratio;
+    return repo.save(holding);
+  }
+
+  /**
+   * Reverse a previously applied stock split: divide quantity by the
+   * ratio and multiply averageCost by the same ratio. Used by the
+   * investment-transaction update/remove flows to undo a SPLIT before
+   * re-applying or deleting it.
+   */
+  async reverseSplit(
+    accountId: string,
+    securityId: string,
+    ratio: number,
+    queryRunner?: QueryRunner,
+  ): Promise<Holding | null> {
+    if (!ratio || ratio <= 0) {
+      throw new BadRequestException("Split ratio must be greater than zero");
+    }
+    return this.applySplit(accountId, securityId, 1 / ratio, queryRunner);
   }
 
   /**
@@ -425,6 +564,7 @@ export class HoldingsService {
       InvestmentAction.TRANSFER_OUT,
       InvestmentAction.ADD_SHARES,
       InvestmentAction.REMOVE_SHARES,
+      InvestmentAction.SPLIT,
     ];
 
     // Actions that adjust quantity only (no cost basis change)
@@ -469,7 +609,15 @@ export class HoldingsService {
       }
       const holding = accountHoldings.get(tx.securityId)!;
 
-      if (quantityOnlyActions.includes(tx.action)) {
+      if (tx.action === InvestmentAction.SPLIT) {
+        // Stock split: scale quantity by the ratio and preserve total cost
+        // basis. totalCost is left untouched because the per-share cost is
+        // implicitly recomputed from totalCost / quantity below.
+        const ratio = quantity;
+        if (ratio > 0) {
+          holding.quantity *= ratio;
+        }
+      } else if (quantityOnlyActions.includes(tx.action)) {
         // ADD_SHARES / REMOVE_SHARES: adjust quantity only, no cost basis change
         holding.quantity += quantityChange;
       } else if (quantityChange > 0) {
