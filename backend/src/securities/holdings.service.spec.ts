@@ -1167,6 +1167,63 @@ describe("HoldingsService", () => {
       );
     });
 
+    // User-reported scenario: 1100 shares, two consecutive 1-for-2 reverse
+    // splits (stored as ratio 0.5 each), then a sell of 275 shares. The
+    // rebuild should land on exactly zero remaining shares.
+    it("handles two 1-for-2 reverse splits followed by a full sell (no residue)", async () => {
+      accountsRepository.find.mockResolvedValue([mockAccount]);
+
+      const transactions = [
+        {
+          accountId: "acc-1",
+          securityId: "sec-1",
+          action: InvestmentAction.BUY,
+          quantity: 1100,
+          price: 10,
+          transactionDate: "2022-01-01",
+          createdAt: new Date("2022-01-01"),
+        },
+        {
+          accountId: "acc-1",
+          securityId: "sec-1",
+          action: InvestmentAction.SPLIT,
+          quantity: 0.5, // 2-to-1 reverse: 1100 -> 550
+          price: 0,
+          transactionDate: "2022-07-01",
+          createdAt: new Date("2022-07-01"),
+        },
+        {
+          accountId: "acc-1",
+          securityId: "sec-1",
+          action: InvestmentAction.SPLIT,
+          quantity: 0.5, // 2-to-1 reverse: 550 -> 275
+          price: 0,
+          transactionDate: "2022-11-01",
+          createdAt: new Date("2022-11-01"),
+        },
+        {
+          accountId: "acc-1",
+          securityId: "sec-1",
+          action: InvestmentAction.SELL,
+          quantity: 275,
+          price: 40,
+          transactionDate: "2022-12-01",
+          createdAt: new Date("2022-12-01"),
+        },
+      ];
+      investmentTransactionsRepository.find.mockResolvedValue(transactions);
+
+      const result = await service.rebuildFromTransactions("user-1");
+
+      // 1100 shares -> *0.5 = 550 -> *0.5 = 275 -> -275 = 0.
+      // No holding should be emitted (zero quantity is filtered out).
+      expect(result.holdingsCreated).toBe(0);
+      const holdingCreates = mockQrRepo.create.mock.calls.map(
+        (call: any) => call[0],
+      );
+      expect(holdingCreates).toEqual([]);
+    });
+
     it("handles ADD_SHARES as quantity-only change (no cost basis change)", async () => {
       accountsRepository.find.mockResolvedValue([mockAccount]);
 

@@ -70,6 +70,23 @@ export const investmentsApi = {
     return response.data;
   },
 
+  // Rebuild all holdings from transaction history. Useful for fixing data
+  // after imports or split-ratio corrections leave holdings out of sync
+  // with the transaction log.
+  rebuildHoldings: async (): Promise<{
+    holdingsCreated: number;
+    holdingsUpdated: number;
+    holdingsDeleted: number;
+  }> => {
+    const response = await apiClient.post<{
+      holdingsCreated: number;
+      holdingsUpdated: number;
+      holdingsDeleted: number;
+    }>('/holdings/rebuild');
+    invalidateCache('investments:');
+    return response.data;
+  },
+
   // Get investment transactions with pagination
   getTransactions: async (params?: {
     accountIds?: string;

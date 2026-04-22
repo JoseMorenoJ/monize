@@ -121,6 +121,7 @@ export function parseQif(
   let accountType = "Bank";
   let accountName = "";
   let currentTransaction: Partial<QifTransaction> | null = null;
+  let currentQRaw: string | null = null;
   let currentSplits: QifSplit[] = [];
   let currentSplit: Partial<QifSplit> | null = null;
   let openingBalance: number | null = null;
@@ -243,6 +244,7 @@ export function parseQif(
         quantity: 0,
         commission: 0,
       };
+      currentQRaw = null;
       currentSplits = [];
       currentSplit = null;
     }
@@ -363,7 +365,8 @@ export function parseQif(
         currentTransaction.price = parseQifAmount(value) ?? 0;
         break;
 
-      case "Q": // Quantity (number of shares, or split ratio "N:M" for StkSplit)
+      case "Q": // Quantity (number of shares, or split ratio for StkSplit)
+        currentQRaw = value;
         currentTransaction.quantity = parseQifQuantity(value) ?? 0;
         break;
 
@@ -375,6 +378,17 @@ export function parseQif(
         // Save last split if exists
         if (currentSplit && currentSplit.category !== undefined) {
           currentSplits.push(currentSplit as QifSplit);
+        }
+
+        // For StkSplit, Quicken writes the ratio as (ratio*10) in Q with no
+        // decimal point. We can't detect this when Q is read because N (the
+        // action) may come later, so re-parse Q here once we know the action.
+        if (
+          currentQRaw !== null &&
+          currentTransaction.action?.toLowerCase() === "stksplit"
+        ) {
+          currentTransaction.quantity =
+            parseQifQuantity(currentQRaw, true) ?? 0;
         }
 
         if (currentTransaction.date) {
@@ -400,6 +414,7 @@ export function parseQif(
         }
 
         currentTransaction = null;
+        currentQRaw = null;
         currentSplits = [];
         currentSplit = null;
         break;
@@ -408,6 +423,12 @@ export function parseQif(
 
   // Handle last transaction if file doesn't end with ^
   if (currentTransaction && currentTransaction.date) {
+    if (
+      currentQRaw !== null &&
+      currentTransaction.action?.toLowerCase() === "stksplit"
+    ) {
+      currentTransaction.quantity = parseQifQuantity(currentQRaw, true) ?? 0;
+    }
     if (currentSplit && currentSplit.category !== undefined) {
       currentSplits.push(currentSplit as QifSplit);
     }
@@ -577,15 +598,32 @@ function parseQifAmount(amountStr: string): number | null {
 }
 
 /**
- * Parse a QIF investment "Q" (quantity) field. For most actions this is a
- * plain number of shares, but for stock splits some Quicken exports encode
- * the ratio as "N:M" or "N/M" (new:old) -- e.g. "2:1" for a 2-for-1 split.
- * Returns the resolved decimal ratio, or null when the value can't be
- * parsed as either form.
+ * Parse a QIF investment "Q" (quantity) field. Format varies by action and
+ * QIF writer:
+ *
+ *   - For share-count fields (Buy, Sell, etc.), Q is a plain number of
+ *     shares, possibly fractional.
+ *   - For StkSplit, Quicken's QIF writer encodes the new-shares-per-old
+ *     ratio multiplied by 10 as an integer. So a 2-for-1 forward split is
+ *     stored as `Q20` (ratio 2.0), a 1-for-3 forward split as `Q30` (3.0),
+ *     a 2-to-1 reverse split as `Q5` (0.5), and a 5-to-1 reverse as `Q2`
+ *     (0.2). See Monize's docs for the reference.
+ *   - Other QIF writers sometimes use "N:M" or "N/M" ratio notation for
+ *     splits (e.g. "2:1" for 2-for-1) or a plain decimal (e.g. "2.0").
+ *
+ * Returns the resolved decimal ratio (for splits) or share count (for
+ * everything else), or null when the value can't be parsed.
+ *
+ * `isSplit` toggles the Quicken tenths-decoding so we don't accidentally
+ * divide a plain share count by 10 on Buy/Sell rows.
  */
-function parseQifQuantity(value: string): number | null {
-  const ratioMatch = value.match(
-    /^\s*(-?\d+(?:\.\d+)?)\s*[:/]\s*(-?\d+(?:\.\d+)?)\s*$/,
+function parseQifQuantity(
+  value: string,
+  isSplit: boolean = false,
+): number | null {
+  const trimmed = value.trim();
+  const ratioMatch = trimmed.match(
+    /^(-?\d+(?:\.\d+)?)\s*[:/]\s*(-?\d+(?:\.\d+)?)$/,
   );
   if (ratioMatch) {
     const numerator = parseFloat(ratioMatch[1]);
@@ -595,7 +633,17 @@ function parseQifQuantity(value: string): number | null {
     }
     return null;
   }
-  return parseQifAmount(value);
+  const parsed = parseQifAmount(trimmed);
+  if (parsed === null) return null;
+  // Quicken's integer-only StkSplit encoding: the Q field holds the ratio
+  // scaled by 10, with no decimal point. When we see a split whose Q value
+  // looks like a bare integer (no decimal, no sign), divide by 10 to get
+  // the real ratio. Signed or decimal values are treated as literal ratios
+  // so manually-written QIF with "Q0.5" or "Q2.0" keeps its natural meaning.
+  if (isSplit && /^\d+$/.test(trimmed)) {
+    return parsed / 10;
+  }
+  return parsed;
 }
 
 function parseCategoryOrTransfer(value: string): {
@@ -776,6 +824,7 @@ export function parseQifFull(
 
   // Per-block state
   let currentTransaction: Partial<QifTransaction> | null = null;
+  let currentQRaw: string | null = null;
   let currentSplits: QifSplit[] = [];
   let currentSplit: Partial<QifSplit> | null = null;
   let blockCategoriesSet = new Set<string>();
@@ -803,6 +852,13 @@ export function parseQifFull(
         currentSplits.push(currentSplit as QifSplit);
       }
 
+      if (
+        currentQRaw !== null &&
+        currentTransaction.action?.toLowerCase() === "stksplit"
+      ) {
+        currentTransaction.quantity = parseQifQuantity(currentQRaw, true) ?? 0;
+      }
+
       const isOB =
         currentTransaction.payee?.toLowerCase() === "opening balance" ||
         (currentTransaction.isTransfer &&
@@ -827,6 +883,7 @@ export function parseQifFull(
 
     // Reset per-block state
     currentTransaction = null;
+    currentQRaw = null;
     currentSplits = [];
     currentSplit = null;
     blockCategoriesSet = new Set();
@@ -1074,6 +1131,7 @@ export function parseQifFull(
         quantity: 0,
         commission: 0,
       };
+      currentQRaw = null;
       currentSplits = [];
       currentSplit = null;
     }
@@ -1191,7 +1249,8 @@ export function parseQifFull(
         break;
 
       case "Q":
-        currentTransaction.quantity = parseQifAmount(value) ?? 0;
+        currentQRaw = value;
+        currentTransaction.quantity = parseQifQuantity(value) ?? 0;
         break;
 
       case "O":
@@ -1201,6 +1260,16 @@ export function parseQifFull(
       case "^": {
         if (currentSplit && currentSplit.category !== undefined) {
           currentSplits.push(currentSplit as QifSplit);
+        }
+
+        // Re-interpret StkSplit Q now that we've seen the action (see parseQif
+        // for the full rationale).
+        if (
+          currentQRaw !== null &&
+          currentTransaction.action?.toLowerCase() === "stksplit"
+        ) {
+          currentTransaction.quantity =
+            parseQifQuantity(currentQRaw, true) ?? 0;
         }
 
         if (currentTransaction.date) {
@@ -1226,6 +1295,7 @@ export function parseQifFull(
         }
 
         currentTransaction = null;
+        currentQRaw = null;
         currentSplits = [];
         currentSplit = null;
         break;
