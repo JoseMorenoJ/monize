@@ -336,4 +336,38 @@ describe('InvestmentTransactionList', () => {
     fireEvent.click(screen.getByText('AAPL'));
     expect(onEdit).toHaveBeenCalledWith(expect.objectContaining({ id: 't1' }));
   });
+
+  describe('SPLIT rendering', () => {
+    it('renders the split ratio as "N:1" instead of the raw quantity', () => {
+      const tx = makeTx({ id: 's1', action: 'SPLIT', quantity: 2, price: 0, totalAmount: 0 });
+      render(<InvestmentTransactionList transactions={[tx] as any[]} isLoading={false} />);
+      expect(screen.getByText('2:1')).toBeInTheDocument();
+    });
+
+    it('renders a 1:2 reverse split as "1:2"', () => {
+      const tx = makeTx({ id: 's2', action: 'SPLIT', quantity: 0.5, price: 0, totalAmount: 0 });
+      render(<InvestmentTransactionList transactions={[tx] as any[]} isLoading={false} />);
+      expect(screen.getByText('1:2')).toBeInTheDocument();
+    });
+
+    it('renders a 3-for-2 split as "3:2"', () => {
+      const tx = makeTx({ id: 's3', action: 'SPLIT', quantity: 1.5, price: 0, totalAmount: 0 });
+      render(<InvestmentTransactionList transactions={[tx] as any[]} isLoading={false} />);
+      expect(screen.getByText('3:2')).toBeInTheDocument();
+    });
+
+    it('shows "-" in the price column when no post-split price was set', () => {
+      const tx = makeTx({
+        id: 's4',
+        action: 'SPLIT',
+        quantity: 2,
+        price: null,
+        totalAmount: 0,
+      });
+      render(<InvestmentTransactionList transactions={[tx] as any[]} isLoading={false} />);
+      // The Shares column shows the ratio; the Price column shows "-".
+      const row = screen.getByText('2:1').closest('tr')!;
+      expect(row).toHaveTextContent('-');
+    });
+  });
 });

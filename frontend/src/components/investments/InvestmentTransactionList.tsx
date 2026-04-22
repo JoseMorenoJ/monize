@@ -32,6 +32,29 @@ interface InvestmentTransactionListProps {
   viewToggle?: React.ReactNode;
 }
 
+/**
+ * Render a SPLIT transaction's stored ratio (new shares per old share)
+ * as human-readable "N:M" notation so the Shares column doesn't show a
+ * misleading share count for splits. Examples: 2 -> "2:1", 0.5 -> "1:2",
+ * 1.5 -> "3:2". Falls back to a plain decimal when the ratio doesn't
+ * round cleanly to a small-denominator fraction.
+ */
+function formatSplitRatio(ratio: number): string {
+  if (!Number.isFinite(ratio) || ratio <= 0) return '-';
+  const trim = (n: number) =>
+    Number.isInteger(n) ? String(n) : String(Number(n.toFixed(4)));
+  // Probe small denominators for the most natural ratio rendering.
+  for (const denom of [1, 2, 3, 4, 5, 6, 8, 10]) {
+    const numer = ratio * denom;
+    if (Math.abs(numer - Math.round(numer)) < 1e-6) {
+      const n = Math.round(numer);
+      if (n > 0) return `${trim(n)}:${denom}`;
+    }
+  }
+  if (ratio >= 1) return `${trim(ratio)}:1`;
+  return `1:${trim(1 / ratio)}`;
+}
+
 const ACTION_LABELS: Record<string, { label: string; shortLabel: string; color: string }> = {
   BUY: { label: 'Buy', shortLabel: 'Buy', color: 'text-green-600 dark:text-green-400' },
   SELL: { label: 'Sell', shortLabel: 'Sell', color: 'text-red-600 dark:text-red-400' },
@@ -140,12 +163,20 @@ const InvestmentTransactionRow = memo(function InvestmentTransactionRow({
         )}
       </td>
       <td className={`${cellPadding} whitespace-nowrap text-right text-sm text-gray-900 dark:text-gray-100 hidden sm:table-cell`}>
-        {formatQuantity(tx.quantity ?? 0)}
+        {tx.action === 'SPLIT'
+          ? formatSplitRatio(Number(tx.quantity ?? 0))
+          : formatQuantity(tx.quantity ?? 0)}
       </td>
       <td className={`${cellPadding} whitespace-nowrap text-right text-sm text-gray-900 dark:text-gray-100 hidden md:table-cell`}>
-        {formatCurrency(tx.price ?? 0, tx.security?.currencyCode, 4)}
-        {tx.security?.currencyCode && tx.security.currencyCode !== defaultCurrency && (
-          <span className="ml-1">{tx.security.currencyCode}</span>
+        {tx.action === 'SPLIT' && !tx.price ? (
+          '-'
+        ) : (
+          <>
+            {formatCurrency(tx.price ?? 0, tx.security?.currencyCode, 4)}
+            {tx.security?.currencyCode && tx.security.currencyCode !== defaultCurrency && (
+              <span className="ml-1">{tx.security.currencyCode}</span>
+            )}
+          </>
         )}
       </td>
       <td className={`${cellPadding} whitespace-nowrap text-right text-sm font-medium text-gray-900 dark:text-gray-100`}>
