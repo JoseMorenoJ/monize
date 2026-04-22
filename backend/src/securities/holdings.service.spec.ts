@@ -309,6 +309,161 @@ describe("HoldingsService", () => {
     });
   });
 
+  describe("getHoldingAt", () => {
+    it("replays only transactions strictly earlier than asOfDate", async () => {
+      investmentTransactionsRepository.find.mockResolvedValue([
+        {
+          id: "tx-1",
+          action: InvestmentAction.BUY,
+          quantity: 100,
+          price: 10,
+          transactionDate: "2025-01-15",
+          createdAt: new Date("2025-01-15"),
+        },
+        {
+          id: "tx-2",
+          action: InvestmentAction.BUY,
+          quantity: 50,
+          price: 20,
+          transactionDate: "2025-03-01", // on/after asOfDate, must be skipped
+          createdAt: new Date("2025-03-01"),
+        },
+      ]);
+
+      const result = await service.getHoldingAt(
+        "user-1",
+        "acc-1",
+        "sec-1",
+        "2025-03-01",
+      );
+
+      // Only the Jan BUY counts: 100 @ $10
+      expect(result.quantity).toBe(100);
+      expect(result.averageCost).toBe(10);
+    });
+
+    it("excludes the supplied transaction id (used by SPLIT edit preview)", async () => {
+      investmentTransactionsRepository.find.mockResolvedValue([
+        {
+          id: "tx-buy",
+          action: InvestmentAction.BUY,
+          quantity: 1100,
+          price: 10,
+          transactionDate: "2022-01-01",
+          createdAt: new Date("2022-01-01"),
+        },
+        {
+          id: "tx-split-target",
+          action: InvestmentAction.SPLIT,
+          quantity: 0.5,
+          price: 0,
+          transactionDate: "2022-07-01",
+          createdAt: new Date("2022-07-01"),
+        },
+      ]);
+
+      // Asking for state as-of the split's own date, excluding the split
+      // itself: should reflect the BUY only.
+      const result = await service.getHoldingAt(
+        "user-1",
+        "acc-1",
+        "sec-1",
+        "2022-07-01",
+        "tx-split-target",
+      );
+
+      expect(result.quantity).toBe(1100);
+      expect(result.averageCost).toBe(10);
+    });
+
+    it("composes BUY + SPLIT correctly when SPLIT is before asOfDate", async () => {
+      investmentTransactionsRepository.find.mockResolvedValue([
+        {
+          id: "tx-buy",
+          action: InvestmentAction.BUY,
+          quantity: 1100,
+          price: 10,
+          transactionDate: "2022-01-01",
+          createdAt: new Date("2022-01-01"),
+        },
+        {
+          id: "tx-split",
+          action: InvestmentAction.SPLIT,
+          quantity: 0.5,
+          price: 0,
+          transactionDate: "2022-07-01",
+          createdAt: new Date("2022-07-01"),
+        },
+      ]);
+
+      // Asking for state as-of a later date, including the split: 1100*0.5
+      const result = await service.getHoldingAt(
+        "user-1",
+        "acc-1",
+        "sec-1",
+        "2022-12-01",
+      );
+
+      expect(result.quantity).toBe(550);
+      expect(result.averageCost).toBe(20); // total cost preserved
+    });
+
+    it("returns zero quantity / zero cost when there are no prior transactions", async () => {
+      investmentTransactionsRepository.find.mockResolvedValue([]);
+
+      const result = await service.getHoldingAt(
+        "user-1",
+        "acc-1",
+        "sec-1",
+        "2025-01-01",
+      );
+
+      expect(result.quantity).toBe(0);
+      expect(result.averageCost).toBe(0);
+    });
+
+    it("ignores DIVIDEND/INTEREST/CAPITAL_GAIN", async () => {
+      investmentTransactionsRepository.find.mockResolvedValue([
+        {
+          id: "tx-buy",
+          action: InvestmentAction.BUY,
+          quantity: 10,
+          price: 100,
+          transactionDate: "2025-01-01",
+          createdAt: new Date("2025-01-01"),
+        },
+        {
+          id: "tx-div",
+          action: InvestmentAction.DIVIDEND,
+          quantity: 1,
+          price: 5,
+          transactionDate: "2025-02-01",
+          createdAt: new Date("2025-02-01"),
+        },
+      ]);
+
+      const result = await service.getHoldingAt(
+        "user-1",
+        "acc-1",
+        "sec-1",
+        "2025-03-01",
+      );
+
+      expect(result.quantity).toBe(10);
+      expect(result.averageCost).toBe(100);
+    });
+
+    it("requires the user to own the account", async () => {
+      accountsService.findOne.mockRejectedValue(
+        new NotFoundException("Account not found"),
+      );
+
+      await expect(
+        service.getHoldingAt("user-1", "other-acc", "sec-1", "2025-01-01"),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
   describe("findByAccountAndSecurity", () => {
     it("returns holding when found", async () => {
       holdingsRepository.findOne.mockResolvedValue(mockHolding);

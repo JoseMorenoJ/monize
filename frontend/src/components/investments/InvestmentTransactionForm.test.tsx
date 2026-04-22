@@ -51,6 +51,7 @@ vi.mock('@/lib/investments', () => ({
       { id: 'sec-1', symbol: 'AAPL', name: 'Apple Inc.', securityType: 'STOCK', currencyCode: 'USD' },
     ]),
     getHoldings: vi.fn().mockResolvedValue([]),
+    getHoldingAt: vi.fn().mockResolvedValue({ quantity: 0, averageCost: 0 }),
     createSecurity: vi.fn().mockResolvedValue({ id: 'new-sec', symbol: 'TEST', name: 'Test Corp' }),
     createTransaction: vi.fn().mockResolvedValue({}),
     updateTransaction: vi.fn().mockResolvedValue({}),
@@ -895,27 +896,10 @@ describe('InvestmentTransactionForm', () => {
       expect(payload.quantity).toBe(0.5);
     });
 
-    it('shows a holding preview when a matching holding exists', async () => {
-      const holdingsMock = vi.mocked(investmentsApi.getHoldings);
-      holdingsMock.mockImplementation(() =>
-        Promise.resolve([
-          {
-            id: 'h1',
-            accountId: 'a1',
-            securityId: 'sec-1',
-            quantity: 100,
-            averageCost: 150,
-            security: {
-              id: 'sec-1',
-              symbol: 'AAPL',
-              name: 'Apple Inc.',
-              securityType: 'STOCK',
-              currencyCode: 'USD',
-            } as any,
-            createdAt: '',
-            updatedAt: '',
-          },
-        ] as any),
+    it('shows a holding preview using as-of-date holdings (not the live state)', async () => {
+      const asOfMock = vi.mocked(investmentsApi.getHoldingAt);
+      asOfMock.mockImplementation(() =>
+        Promise.resolve({ quantity: 100, averageCost: 150 }),
       );
 
       // Render in edit mode so account, security, and SPLIT action are all
@@ -956,12 +940,25 @@ describe('InvestmentTransactionForm', () => {
           },
           { timeout: 3000 },
         );
+
+        // The form must request the as-of state for the split's own date,
+        // excluding the split transaction itself so the "Before" reflects
+        // shares held going into the split, not after.
+        expect(asOfMock).toHaveBeenCalledWith(
+          expect.objectContaining({
+            accountId: 'a1',
+            securityId: 'sec-1',
+            asOfDate: '2026-01-15',
+            excludeTransactionId: 'tx-split',
+          }),
+        );
+
         // 100 shares @ $150 -> 200 shares @ $75 after a 2-for-1 split.
         expect(screen.getByText(/100\.0000/)).toBeInTheDocument();
         expect(screen.getByText(/200\.0000/)).toBeInTheDocument();
         expect(screen.getByText(/75\.0000/)).toBeInTheDocument();
       } finally {
-        holdingsMock.mockResolvedValue([]);
+        asOfMock.mockResolvedValue({ quantity: 0, averageCost: 0 });
       }
     });
   });

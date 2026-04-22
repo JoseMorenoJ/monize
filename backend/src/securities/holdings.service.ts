@@ -86,6 +86,90 @@ export class HoldingsService {
     });
   }
 
+  /**
+   * Compute the holding state for (account, security) as of the start of
+   * `asOfDate` -- i.e. after replaying every investment transaction strictly
+   * earlier than that date, optionally skipping a single transaction by id
+   * (used by the SPLIT form so editing a past split shows holdings as they
+   * were just before that split was applied, not the current live state).
+   *
+   * Returns { quantity, averageCost } even when no holding row exists yet.
+   * Mirrors the action handling used by `rebuildFromTransactions` so the two
+   * paths stay in sync.
+   */
+  async getHoldingAt(
+    userId: string,
+    accountId: string,
+    securityId: string,
+    asOfDate: string,
+    excludeTransactionId?: string,
+  ): Promise<{ quantity: number; averageCost: number }> {
+    // Verify the user owns the account before exposing transaction history.
+    await this.accountsService.findOne(userId, accountId);
+
+    const where: {
+      userId: string;
+      accountId: string;
+      securityId: string;
+    } = { userId, accountId, securityId };
+
+    const transactions = await this.investmentTransactionsRepository.find({
+      where,
+      order: {
+        transactionDate: "ASC",
+        createdAt: "ASC",
+      },
+    });
+
+    let qty = 0;
+    let totalCost = 0;
+    for (const tx of transactions) {
+      if (tx.transactionDate >= asOfDate) break;
+      if (excludeTransactionId && tx.id === excludeTransactionId) continue;
+      const txQty = Number(tx.quantity) || 0;
+      const txPrice = Number(tx.price) || 0;
+      switch (tx.action) {
+        case InvestmentAction.BUY:
+        case InvestmentAction.REINVEST:
+        case InvestmentAction.TRANSFER_IN:
+          totalCost += txQty * txPrice;
+          qty += txQty;
+          break;
+        case InvestmentAction.SELL:
+        case InvestmentAction.TRANSFER_OUT: {
+          const sellQty = Math.min(txQty, qty);
+          if (qty > 0) {
+            const avg = totalCost / qty;
+            totalCost -= sellQty * avg;
+          }
+          qty -= txQty;
+          break;
+        }
+        case InvestmentAction.ADD_SHARES:
+          qty += txQty;
+          break;
+        case InvestmentAction.REMOVE_SHARES:
+          qty -= txQty;
+          break;
+        case InvestmentAction.SPLIT:
+          if (txQty > 0) {
+            qty *= txQty;
+          }
+          break;
+        default:
+          // DIVIDEND / INTEREST / CAPITAL_GAIN don't move shares.
+          break;
+      }
+    }
+
+    if (Math.abs(qty) < 1e-8) {
+      qty = 0;
+      totalCost = 0;
+    }
+    const averageCost = qty > 0 ? totalCost / qty : 0;
+    return { quantity: qty, averageCost };
+  }
+
   async createOrUpdate(
     userId: string,
     accountId: string,

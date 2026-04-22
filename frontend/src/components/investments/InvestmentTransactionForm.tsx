@@ -21,7 +21,6 @@ import {
   InvestmentTransaction,
   Security,
   CreateSecurityData,
-  Holding,
 } from '@/types/investment';
 import { getCurrencySymbol, roundToDecimals } from '@/lib/format';
 import { getErrorMessage } from '@/lib/errors';
@@ -143,7 +142,13 @@ export function InvestmentTransactionForm({
   const [securities, setSecurities] = useState<Security[]>([]);
   const [securitiesLoaded, setSecuritiesLoaded] = useState(false);
   const [showSecurityModal, setShowSecurityModal] = useState(false);
-  const [holdings, setHoldings] = useState<Holding[]>([]);
+  // Holding state replayed up to the SPLIT's transaction date, used for the
+  // "Before" line in the holding preview. Null means "no holding history at
+  // that date" (don't render the preview).
+  const [splitHoldingAt, setSplitHoldingAt] = useState<{
+    quantity: number;
+    averageCost: number;
+  } | null>(null);
 
   // Filter to only show brokerage accounts (sorted)
   const brokerageAccounts = useMemo(
@@ -230,6 +235,7 @@ export function InvestmentTransactionForm({
   const watchedPrice = Number(watch('price')) || 0;
   const watchedCommission = Number(watch('commission')) || 0;
   const watchedExchangeRate = Number(watch('exchangeRate')) || 0;
+  const watchedTransactionDate = watch('transactionDate');
   const watchedSplitNewShares = Number(watch('splitNewShares')) || 0;
   const watchedSplitOldShares = Number(watch('splitOldShares')) || 0;
   const splitRatio =
@@ -378,18 +384,6 @@ export function InvestmentTransactionForm({
     loadSecurities();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Load holdings on demand for the SPLIT preview. Only fetched when the
-  // user actually selects the SPLIT action so we don't pay the cost for
-  // every form open.
-  useEffect(() => {
-    if (watchedAction !== 'SPLIT') return;
-    if (holdings.length > 0) return;
-    investmentsApi
-      .getHoldings()
-      .then((data) => setHoldings(data))
-      .catch((error) => logger.error('Failed to load holdings:', error));
-  }, [watchedAction, holdings.length]);
-
   // Mirror the new/old-shares ratio into the underlying `quantity` field that
   // gets posted to the API. Done as an effect so manual edits to either input
   // immediately update the value the form will submit.
@@ -399,17 +393,48 @@ export function InvestmentTransactionForm({
     setValue('quantity', splitRatio, { shouldDirty: true, shouldValidate: false });
   }, [watchedAction, splitRatio, setValue]);
 
-  const splitHolding = useMemo(() => {
-    if (watchedAction !== 'SPLIT' || !watchedAccountId || !watchedSecurityId) {
-      return null;
+  // Pull the holding state as it was just before this split's transaction
+  // date, so the preview's "Before" reflects what the user actually held at
+  // that point in time -- not the live holdings (which already include this
+  // split and any subsequent activity). Re-fetched whenever the inputs that
+  // would change the answer change.
+  useEffect(() => {
+    if (
+      watchedAction !== 'SPLIT' ||
+      !watchedAccountId ||
+      !watchedSecurityId ||
+      !watchedTransactionDate
+    ) {
+      setSplitHoldingAt(null);
+      return;
     }
-    return (
-      holdings.find(
-        (h) =>
-          h.accountId === watchedAccountId && h.securityId === watchedSecurityId,
-      ) ?? null
-    );
-  }, [holdings, watchedAction, watchedAccountId, watchedSecurityId]);
+    let cancelled = false;
+    investmentsApi
+      .getHoldingAt({
+        accountId: watchedAccountId,
+        securityId: watchedSecurityId,
+        asOfDate: watchedTransactionDate,
+        excludeTransactionId: transaction?.id,
+      })
+      .then((data) => {
+        if (!cancelled) setSplitHoldingAt(data);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setSplitHoldingAt(null);
+          logger.error('Failed to load as-of holdings:', error);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    watchedAction,
+    watchedAccountId,
+    watchedSecurityId,
+    watchedTransactionDate,
+    transaction?.id,
+  ]);
 
   // Re-sync form values when editing and securities are loaded
   useEffect(() => {
@@ -510,16 +535,17 @@ export function InvestmentTransactionForm({
   const canHaveFundingAccount = fundingAccountActions.includes(watchedAction);
 
   const splitPreview = useMemo(() => {
-    if (!isSplit || !splitHolding || splitRatio <= 0) return null;
-    const currentQty = Number(splitHolding.quantity);
-    const currentAvg = Number(splitHolding.averageCost ?? 0);
+    if (!isSplit || !splitHoldingAt || splitRatio <= 0) return null;
+    const currentQty = Number(splitHoldingAt.quantity);
+    if (currentQty <= 0) return null;
+    const currentAvg = Number(splitHoldingAt.averageCost ?? 0);
     return {
       currentQty,
       currentAvg,
       newQty: currentQty * splitRatio,
       newAvg: splitRatio > 0 ? currentAvg / splitRatio : 0,
     };
-  }, [isSplit, splitHolding, splitRatio]);
+  }, [isSplit, splitHoldingAt, splitRatio]);
 
   return (
     <>
@@ -698,7 +724,7 @@ export function InvestmentTransactionForm({
                 Holding preview
               </div>
               <div>
-                Before:{' '}
+                Before (as of {watchedTransactionDate}):{' '}
                 <span className="font-mono">
                   {splitPreview.currentQty.toFixed(4)}
                 </span>{' '}
@@ -722,14 +748,16 @@ export function InvestmentTransactionForm({
                 avg cost
               </div>
               <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                Total cost basis is preserved across the split.
+                Total cost basis is preserved across the split. Subsequent
+                transactions will be replayed automatically.
               </div>
             </div>
           )}
           {!splitPreview && watchedSecurityId && (
             <div className="text-xs text-gray-500 dark:text-gray-400">
-              No existing holding for this security in this account; the split will
-              be recorded but holdings won&apos;t change until shares are added.
+              No shares of this security were held in this account on{' '}
+              {watchedTransactionDate}; the split will be recorded but won&apos;t
+              change holdings until shares are added on or before that date.
             </div>
           )}
         </div>

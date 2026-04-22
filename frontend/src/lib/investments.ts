@@ -87,6 +87,22 @@ export const investmentsApi = {
     return response.data;
   },
 
+  // Holding state for (account, security) replayed as of a date. Used by
+  // the SPLIT form to show the user what their position looked like just
+  // before the split was applied, rather than the live holdings.
+  getHoldingAt: async (params: {
+    accountId: string;
+    securityId: string;
+    asOfDate: string;
+    excludeTransactionId?: string;
+  }): Promise<{ quantity: number; averageCost: number }> => {
+    const response = await apiClient.get<{
+      quantity: number;
+      averageCost: number;
+    }>('/holdings/at', { params });
+    return response.data;
+  },
+
   // Get investment transactions with pagination
   getTransactions: async (params?: {
     accountIds?: string;
