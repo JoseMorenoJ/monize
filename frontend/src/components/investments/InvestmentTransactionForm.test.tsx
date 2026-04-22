@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@/test/render';
+import { render, screen, fireEvent, waitFor, act } from '@/test/render';
 import { InvestmentTransactionForm } from './InvestmentTransactionForm';
 import { investmentsApi } from '@/lib/investments';
 import toast from 'react-hot-toast';
@@ -669,12 +669,16 @@ describe('InvestmentTransactionForm', () => {
 
   describe('SPLIT action', () => {
     async function selectSplitAction() {
-      render(<InvestmentTransactionForm accounts={accounts} />);
+      await act(async () => {
+        render(<InvestmentTransactionForm accounts={accounts} />);
+      });
       await waitFor(() => {
         expect(screen.getByLabelText('Transaction Type')).toBeInTheDocument();
       });
-      fireEvent.change(screen.getByLabelText('Transaction Type'), {
-        target: { value: 'SPLIT' },
+      await act(async () => {
+        fireEvent.change(screen.getByLabelText('Transaction Type'), {
+          target: { value: 'SPLIT' },
+        });
       });
     }
 
@@ -716,24 +720,30 @@ describe('InvestmentTransactionForm', () => {
         expect(screen.getByText('New shares')).toBeInTheDocument();
       });
 
-      // Pick the brokerage account and a security so the form is valid.
-      fireEvent.change(screen.getByLabelText('Brokerage Account'), {
-        target: { value: 'a1' },
+      await act(async () => {
+        fireEvent.change(screen.getByLabelText('Brokerage Account'), {
+          target: { value: 'a1' },
+        });
       });
       await waitFor(() => {
         expect(screen.getByLabelText('Security')).toBeInTheDocument();
       });
-      fireEvent.change(screen.getByLabelText('Security'), {
-        target: { value: 'sec-1' },
+      await act(async () => {
+        fireEvent.change(screen.getByLabelText('Security'), {
+          target: { value: 'sec-1' },
+        });
       });
 
-      // Set a 3-for-2 split (ratio = 1.5).
       const newShares = screen.getByLabelText('New shares') as HTMLInputElement;
       const oldShares = screen.getByLabelText('Old shares') as HTMLInputElement;
-      fireEvent.change(newShares, { target: { value: '3' } });
-      fireEvent.change(oldShares, { target: { value: '2' } });
+      await act(async () => {
+        fireEvent.change(newShares, { target: { value: '3' } });
+        fireEvent.change(oldShares, { target: { value: '2' } });
+      });
 
-      fireEvent.click(screen.getByText('Create Transaction'));
+      await act(async () => {
+        fireEvent.click(screen.getByText('Create Transaction'));
+      });
 
       await waitFor(() => {
         expect(investmentsApi.createTransaction).toHaveBeenCalled();
@@ -751,22 +761,30 @@ describe('InvestmentTransactionForm', () => {
         expect(screen.getByText('New shares')).toBeInTheDocument();
       });
 
-      fireEvent.change(screen.getByLabelText('Brokerage Account'), {
-        target: { value: 'a1' },
+      await act(async () => {
+        fireEvent.change(screen.getByLabelText('Brokerage Account'), {
+          target: { value: 'a1' },
+        });
       });
       await waitFor(() => {
         expect(screen.getByLabelText('Security')).toBeInTheDocument();
       });
-      fireEvent.change(screen.getByLabelText('Security'), {
-        target: { value: 'sec-1' },
+      await act(async () => {
+        fireEvent.change(screen.getByLabelText('Security'), {
+          target: { value: 'sec-1' },
+        });
       });
 
       const newShares = screen.getByLabelText('New shares') as HTMLInputElement;
       const oldShares = screen.getByLabelText('Old shares') as HTMLInputElement;
-      fireEvent.change(newShares, { target: { value: '1' } });
-      fireEvent.change(oldShares, { target: { value: '2' } });
+      await act(async () => {
+        fireEvent.change(newShares, { target: { value: '1' } });
+        fireEvent.change(oldShares, { target: { value: '2' } });
+      });
 
-      fireEvent.click(screen.getByText('Create Transaction'));
+      await act(async () => {
+        fireEvent.click(screen.getByText('Create Transaction'));
+      });
 
       await waitFor(() => {
         expect(investmentsApi.createTransaction).toHaveBeenCalled();
@@ -821,12 +839,14 @@ describe('InvestmentTransactionForm', () => {
       } as any;
 
       try {
-        render(
-          <InvestmentTransactionForm
-            accounts={accounts}
-            transaction={splitTx}
-          />,
-        );
+        await act(async () => {
+          render(
+            <InvestmentTransactionForm
+              accounts={accounts}
+              transaction={splitTx}
+            />,
+          );
+        });
 
         await waitFor(
           () => {

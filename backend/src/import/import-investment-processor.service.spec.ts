@@ -716,7 +716,10 @@ describe("ImportInvestmentProcessorService", () => {
         .map((call: any) => call[0])
         .find(
           (arg: any) =>
-            arg && "averageCost" in arg && "quantity" in arg && "securityId" in arg,
+            arg &&
+            "averageCost" in arg &&
+            "quantity" in arg &&
+            "securityId" in arg,
         );
       expect(savedHolding).toBeUndefined();
     });

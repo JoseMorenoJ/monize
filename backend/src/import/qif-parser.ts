@@ -590,11 +590,7 @@ function parseQifQuantity(value: string): number | null {
   if (ratioMatch) {
     const numerator = parseFloat(ratioMatch[1]);
     const denominator = parseFloat(ratioMatch[2]);
-    if (
-      !isNaN(numerator) &&
-      !isNaN(denominator) &&
-      denominator !== 0
-    ) {
+    if (!isNaN(numerator) && !isNaN(denominator) && denominator !== 0) {
       return numerator / denominator;
     }
     return null;
