@@ -50,6 +50,7 @@ vi.mock('@/lib/investments', () => ({
     getSecurities: vi.fn().mockResolvedValue([
       { id: 'sec-1', symbol: 'AAPL', name: 'Apple Inc.', securityType: 'STOCK', currencyCode: 'USD' },
     ]),
+    getHoldings: vi.fn().mockResolvedValue([]),
     createSecurity: vi.fn().mockResolvedValue({ id: 'new-sec', symbol: 'TEST', name: 'Test Corp' }),
     createTransaction: vi.fn().mockResolvedValue({}),
     updateTransaction: vi.fn().mockResolvedValue({}),
@@ -663,6 +664,183 @@ describe('InvestmentTransactionForm', () => {
       const [, payload] = vi.mocked(investmentsApi.updateTransaction).mock
         .calls[0] as [string, { exchangeRate?: number }];
       expect(payload.exchangeRate).toBeCloseTo(1.5, 4);
+    });
+  });
+
+  describe('SPLIT action', () => {
+    async function selectSplitAction() {
+      render(<InvestmentTransactionForm accounts={accounts} />);
+      await waitFor(() => {
+        expect(screen.getByLabelText('Transaction Type')).toBeInTheDocument();
+      });
+      fireEvent.change(screen.getByLabelText('Transaction Type'), {
+        target: { value: 'SPLIT' },
+      });
+    }
+
+    it('renders New shares / Old shares inputs (defaulting to 2-for-1)', async () => {
+      await selectSplitAction();
+
+      await waitFor(() => {
+        expect(screen.getByText('New shares')).toBeInTheDocument();
+      });
+      expect(screen.getByText('Old shares')).toBeInTheDocument();
+      const newShares = screen.getByLabelText('New shares') as HTMLInputElement;
+      const oldShares = screen.getByLabelText('Old shares') as HTMLInputElement;
+      expect(parseFloat(newShares.value)).toBe(2);
+      expect(parseFloat(oldShares.value)).toBe(1);
+    });
+
+    it('shows the optional new price per share field', async () => {
+      await selectSplitAction();
+      await waitFor(() => {
+        expect(
+          screen.getByText(/New price per share, after split/i),
+        ).toBeInTheDocument();
+      });
+    });
+
+    it('does not render Quantity (Shares), Commission, or Total Amount fields for SPLIT', async () => {
+      await selectSplitAction();
+      await waitFor(() => {
+        expect(screen.getByText('New shares')).toBeInTheDocument();
+      });
+      expect(screen.queryByText('Quantity (Shares)')).not.toBeInTheDocument();
+      expect(screen.queryByText(/Commission \/ Fees/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Total Amount/)).not.toBeInTheDocument();
+    });
+
+    it('submits the computed ratio (newShares / oldShares) as quantity', async () => {
+      await selectSplitAction();
+      await waitFor(() => {
+        expect(screen.getByText('New shares')).toBeInTheDocument();
+      });
+
+      // Pick the brokerage account and a security so the form is valid.
+      fireEvent.change(screen.getByLabelText('Brokerage Account'), {
+        target: { value: 'a1' },
+      });
+      await waitFor(() => {
+        expect(screen.getByLabelText('Security')).toBeInTheDocument();
+      });
+      fireEvent.change(screen.getByLabelText('Security'), {
+        target: { value: 'sec-1' },
+      });
+
+      // Set a 3-for-2 split (ratio = 1.5).
+      const newShares = screen.getByLabelText('New shares') as HTMLInputElement;
+      const oldShares = screen.getByLabelText('Old shares') as HTMLInputElement;
+      fireEvent.change(newShares, { target: { value: '3' } });
+      fireEvent.change(oldShares, { target: { value: '2' } });
+
+      fireEvent.click(screen.getByText('Create Transaction'));
+
+      await waitFor(() => {
+        expect(investmentsApi.createTransaction).toHaveBeenCalled();
+      });
+      const payload = vi.mocked(investmentsApi.createTransaction).mock.calls[0][0] as any;
+      expect(payload.action).toBe('SPLIT');
+      expect(payload.quantity).toBeCloseTo(1.5, 6);
+      expect(payload.commission).toBeUndefined();
+      expect(payload.fundingAccountId).toBeUndefined();
+    });
+
+    it('supports reverse splits (newShares < oldShares submits ratio < 1)', async () => {
+      await selectSplitAction();
+      await waitFor(() => {
+        expect(screen.getByText('New shares')).toBeInTheDocument();
+      });
+
+      fireEvent.change(screen.getByLabelText('Brokerage Account'), {
+        target: { value: 'a1' },
+      });
+      await waitFor(() => {
+        expect(screen.getByLabelText('Security')).toBeInTheDocument();
+      });
+      fireEvent.change(screen.getByLabelText('Security'), {
+        target: { value: 'sec-1' },
+      });
+
+      const newShares = screen.getByLabelText('New shares') as HTMLInputElement;
+      const oldShares = screen.getByLabelText('Old shares') as HTMLInputElement;
+      fireEvent.change(newShares, { target: { value: '1' } });
+      fireEvent.change(oldShares, { target: { value: '2' } });
+
+      fireEvent.click(screen.getByText('Create Transaction'));
+
+      await waitFor(() => {
+        expect(investmentsApi.createTransaction).toHaveBeenCalled();
+      });
+      const payload = vi.mocked(investmentsApi.createTransaction).mock.calls[0][0] as any;
+      expect(payload.quantity).toBe(0.5);
+    });
+
+    it('shows a holding preview when a matching holding exists', async () => {
+      const holdingsMock = vi.mocked(investmentsApi.getHoldings);
+      holdingsMock.mockImplementation(() =>
+        Promise.resolve([
+          {
+            id: 'h1',
+            accountId: 'a1',
+            securityId: 'sec-1',
+            quantity: 100,
+            averageCost: 150,
+            security: {
+              id: 'sec-1',
+              symbol: 'AAPL',
+              name: 'Apple Inc.',
+              securityType: 'STOCK',
+              currencyCode: 'USD',
+            } as any,
+            createdAt: '',
+            updatedAt: '',
+          },
+        ] as any),
+      );
+
+      // Render in edit mode so account, security, and SPLIT action are all
+      // wired up from initial state without relying on async select changes.
+      const splitTx = {
+        id: 'tx-split',
+        accountId: 'a1',
+        action: 'SPLIT' as const,
+        transactionDate: '2026-01-15',
+        securityId: 'sec-1',
+        security: {
+          id: 'sec-1',
+          symbol: 'AAPL',
+          name: 'Apple Inc.',
+          securityType: 'STOCK',
+          currencyCode: 'USD',
+        } as any,
+        quantity: 2,
+        price: 0,
+        commission: 0,
+        totalAmount: 0,
+        description: '',
+      } as any;
+
+      try {
+        render(
+          <InvestmentTransactionForm
+            accounts={accounts}
+            transaction={splitTx}
+          />,
+        );
+
+        await waitFor(
+          () => {
+            expect(screen.getByText(/Holding preview/i)).toBeInTheDocument();
+          },
+          { timeout: 3000 },
+        );
+        // 100 shares @ $150 -> 200 shares @ $75 after a 2-for-1 split.
+        expect(screen.getByText(/100\.0000/)).toBeInTheDocument();
+        expect(screen.getByText(/200\.0000/)).toBeInTheDocument();
+        expect(screen.getByText(/75\.0000/)).toBeInTheDocument();
+      } finally {
+        holdingsMock.mockResolvedValue([]);
+      }
     });
   });
 

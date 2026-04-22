@@ -182,6 +182,61 @@ export class HoldingsService {
   }
 
   /**
+   * Apply a stock split to an existing holding: multiply quantity by the
+   * ratio (new shares per old share) and divide averageCost by the same
+   * ratio so total cost basis is preserved. A 2-for-1 split (ratio = 2)
+   * doubles shares and halves the per-share cost; a 1-for-2 reverse split
+   * (ratio = 0.5) halves shares and doubles the per-share cost.
+   *
+   * No-op when no holding exists for the security in this account.
+   */
+  async applySplit(
+    accountId: string,
+    securityId: string,
+    ratio: number,
+    queryRunner?: QueryRunner,
+  ): Promise<Holding | null> {
+    if (!ratio || ratio <= 0) {
+      throw new BadRequestException("Split ratio must be greater than zero");
+    }
+
+    const repo = queryRunner
+      ? queryRunner.manager.getRepository(Holding)
+      : this.holdingsRepository;
+
+    const holding = await this.findByAccountAndSecurity(
+      accountId,
+      securityId,
+      queryRunner,
+    );
+    if (!holding) return null;
+
+    const currentQty = Number(holding.quantity);
+    const currentAvg = Number(holding.averageCost || 0);
+    holding.quantity = currentQty * ratio;
+    holding.averageCost = currentAvg / ratio;
+    return repo.save(holding);
+  }
+
+  /**
+   * Reverse a previously applied stock split: divide quantity by the
+   * ratio and multiply averageCost by the same ratio. Used by the
+   * investment-transaction update/remove flows to undo a SPLIT before
+   * re-applying or deleting it.
+   */
+  async reverseSplit(
+    accountId: string,
+    securityId: string,
+    ratio: number,
+    queryRunner?: QueryRunner,
+  ): Promise<Holding | null> {
+    if (!ratio || ratio <= 0) {
+      throw new BadRequestException("Split ratio must be greater than zero");
+    }
+    return this.applySplit(accountId, securityId, 1 / ratio, queryRunner);
+  }
+
+  /**
    * Adjust holding quantity without affecting average cost.
    * Used for ADD_SHARES / REMOVE_SHARES to fix minor discrepancies.
    */
@@ -425,6 +480,7 @@ export class HoldingsService {
       InvestmentAction.TRANSFER_OUT,
       InvestmentAction.ADD_SHARES,
       InvestmentAction.REMOVE_SHARES,
+      InvestmentAction.SPLIT,
     ];
 
     // Actions that adjust quantity only (no cost basis change)
@@ -469,7 +525,15 @@ export class HoldingsService {
       }
       const holding = accountHoldings.get(tx.securityId)!;
 
-      if (quantityOnlyActions.includes(tx.action)) {
+      if (tx.action === InvestmentAction.SPLIT) {
+        // Stock split: scale quantity by the ratio and preserve total cost
+        // basis. totalCost is left untouched because the per-share cost is
+        // implicitly recomputed from totalCost / quantity below.
+        const ratio = quantity;
+        if (ratio > 0) {
+          holding.quantity *= ratio;
+        }
+      } else if (quantityOnlyActions.includes(tx.action)) {
         // ADD_SHARES / REMOVE_SHARES: adjust quantity only, no cost basis change
         holding.quantity += quantityChange;
       } else if (quantityChange > 0) {

@@ -21,6 +21,7 @@ import {
   InvestmentTransaction,
   Security,
   CreateSecurityData,
+  Holding,
 } from '@/types/investment';
 import { getCurrencySymbol, roundToDecimals } from '@/lib/format';
 import { getErrorMessage } from '@/lib/errors';
@@ -44,6 +45,9 @@ const investmentTransactionSchema = z.object({
   commission: z.coerce.number().min(0).optional(),
   exchangeRate: z.coerce.number().gt(0).optional(),
   description: z.string().optional(),
+  // SPLIT-only fields, combined into `quantity` (the ratio) on submit.
+  splitNewShares: z.coerce.number().gt(0).optional(),
+  splitOldShares: z.coerce.number().gt(0).optional(),
 });
 
 type InvestmentTransactionFormData = z.infer<typeof investmentTransactionSchema>;
@@ -115,6 +119,7 @@ export function InvestmentTransactionForm({
   const [securities, setSecurities] = useState<Security[]>([]);
   const [securitiesLoaded, setSecuritiesLoaded] = useState(false);
   const [showSecurityModal, setShowSecurityModal] = useState(false);
+  const [holdings, setHoldings] = useState<Holding[]>([]);
 
   // Filter to only show brokerage accounts (sorted)
   const brokerageAccounts = useMemo(
@@ -160,6 +165,12 @@ export function InvestmentTransactionForm({
           commission: transaction.commission ?? 0,
           exchangeRate: transaction.exchangeRate ?? 1,
           description: transaction.description || '',
+          splitNewShares:
+            transaction.action === 'SPLIT'
+              ? Number(transaction.quantity ?? 0) || undefined
+              : undefined,
+          splitOldShares:
+            transaction.action === 'SPLIT' ? 1 : undefined,
         }
       : {
           accountId: defaultAccountId || '',
@@ -171,6 +182,8 @@ export function InvestmentTransactionForm({
           commission: undefined,
           exchangeRate: undefined,
           description: '',
+          splitNewShares: 2,
+          splitOldShares: 1,
         },
   });
 
@@ -184,6 +197,10 @@ export function InvestmentTransactionForm({
   const watchedPrice = Number(watch('price')) || 0;
   const watchedCommission = Number(watch('commission')) || 0;
   const watchedExchangeRate = Number(watch('exchangeRate')) || 0;
+  const watchedSplitNewShares = Number(watch('splitNewShares')) || 0;
+  const watchedSplitOldShares = Number(watch('splitOldShares')) || 0;
+  const splitRatio =
+    watchedSplitOldShares > 0 ? watchedSplitNewShares / watchedSplitOldShares : 0;
 
   const allAccountsSource = allAccounts || accounts;
   const { getRate: getMarketRate } = useExchangeRates();
@@ -328,6 +345,39 @@ export function InvestmentTransactionForm({
     loadSecurities();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Load holdings on demand for the SPLIT preview. Only fetched when the
+  // user actually selects the SPLIT action so we don't pay the cost for
+  // every form open.
+  useEffect(() => {
+    if (watchedAction !== 'SPLIT') return;
+    if (holdings.length > 0) return;
+    investmentsApi
+      .getHoldings()
+      .then((data) => setHoldings(data))
+      .catch((error) => logger.error('Failed to load holdings:', error));
+  }, [watchedAction, holdings.length]);
+
+  // Mirror the new/old-shares ratio into the underlying `quantity` field that
+  // gets posted to the API. Done as an effect so manual edits to either input
+  // immediately update the value the form will submit.
+  useEffect(() => {
+    if (watchedAction !== 'SPLIT') return;
+    if (!Number.isFinite(splitRatio) || splitRatio <= 0) return;
+    setValue('quantity', splitRatio, { shouldDirty: true, shouldValidate: false });
+  }, [watchedAction, splitRatio, setValue]);
+
+  const splitHolding = useMemo(() => {
+    if (watchedAction !== 'SPLIT' || !watchedAccountId || !watchedSecurityId) {
+      return null;
+    }
+    return (
+      holdings.find(
+        (h) =>
+          h.accountId === watchedAccountId && h.securityId === watchedSecurityId,
+      ) ?? null
+    );
+  }, [holdings, watchedAction, watchedAccountId, watchedSecurityId]);
+
   // Re-sync form values when editing and securities are loaded
   useEffect(() => {
     if (transaction && securities.length > 0) {
@@ -356,6 +406,21 @@ export function InvestmentTransactionForm({
     try {
       const action = data.action as InvestmentAction;
       const postsCash = cashPostingActions.includes(action);
+      const isSplit = action === 'SPLIT';
+      // For splits the new/old-shares inputs are the source of truth; the
+      // hidden `quantity` field is kept in sync via effect, but we recompute
+      // here so a stale or skipped effect can't post a wrong ratio.
+      const splitNew = Number(data.splitNewShares);
+      const splitOld = Number(data.splitOldShares);
+      const ratio =
+        Number.isFinite(splitNew) && Number.isFinite(splitOld) && splitOld > 0
+          ? splitNew / splitOld
+          : 0;
+      if (isSplit && ratio <= 0) {
+        toast.error('Split ratio must be greater than zero');
+        setIsLoading(false);
+        return;
+      }
       const payload = {
         accountId: data.accountId,
         action,
@@ -366,13 +431,17 @@ export function InvestmentTransactionForm({
         fundingAccountId: fundingAccountActions.includes(action) && data.fundingAccountId
           ? data.fundingAccountId
           : undefined,
-        quantity: (quantityPriceActions.includes(action) || quantityOnlyActions.includes(action))
-          ? data.quantity
-          : undefined,
+        quantity: isSplit
+          ? ratio
+          : (quantityPriceActions.includes(action) || quantityOnlyActions.includes(action))
+            ? data.quantity
+            : undefined,
         price: quantityOnlyActions.includes(action)
           ? undefined
-          : data.price,
-        commission: quantityOnlyActions.includes(action)
+          : isSplit
+            ? (data.price && data.price > 0 ? data.price : undefined)
+            : data.price,
+        commission: quantityOnlyActions.includes(action) || isSplit
           ? undefined
           : data.commission,
         // Only send the exchange rate for actions that post a cash transaction.
@@ -404,7 +473,20 @@ export function InvestmentTransactionForm({
   const needsQuantityPrice = quantityPriceActions.includes(watchedAction);
   const isQuantityOnly = quantityOnlyActions.includes(watchedAction);
   const isAmountOnly = amountOnlyActions.includes(watchedAction);
+  const isSplit = watchedAction === 'SPLIT';
   const canHaveFundingAccount = fundingAccountActions.includes(watchedAction);
+
+  const splitPreview = useMemo(() => {
+    if (!isSplit || !splitHolding || splitRatio <= 0) return null;
+    const currentQty = Number(splitHolding.quantity);
+    const currentAvg = Number(splitHolding.averageCost ?? 0);
+    return {
+      currentQty,
+      currentAvg,
+      newQty: currentQty * splitRatio,
+      newAvg: splitRatio > 0 ? currentAvg / splitRatio : 0,
+    };
+  }, [isSplit, splitHolding, splitRatio]);
 
   return (
     <>
@@ -527,6 +609,93 @@ export function InvestmentTransactionForm({
         />
       )}
 
+      {/* Stock split - new shares vs old shares + optional new price */}
+      {isSplit && (
+        <div className="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800/40">
+          <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            Split ratio
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <NumericInput
+              label="New shares"
+              value={watchedSplitNewShares || undefined}
+              onChange={(value) =>
+                setValue('splitNewShares', value, { shouldDirty: true, shouldValidate: true })
+              }
+              decimalPlaces={8}
+              min={0}
+              error={errors.splitNewShares?.message}
+            />
+            <NumericInput
+              label="Old shares"
+              value={watchedSplitOldShares || undefined}
+              onChange={(value) =>
+                setValue('splitOldShares', value, { shouldDirty: true, shouldValidate: true })
+              }
+              decimalPlaces={8}
+              min={0}
+              error={errors.splitOldShares?.message}
+            />
+          </div>
+          <div className="text-xs text-gray-600 dark:text-gray-400">
+            Enter the ratio as it was announced. For a 2-for-1 split use 2 new and 1 old;
+            for a 1-for-2 reverse split use 1 new and 2 old. Effective ratio:{' '}
+            <span className="font-mono font-semibold text-gray-800 dark:text-gray-200">
+              {splitRatio > 0 ? splitRatio.toFixed(6) : '–'}
+            </span>
+          </div>
+          <NumericInput
+            label={`New price per share, after split (${transactionCurrency}, optional)`}
+            prefix={currencySymbol}
+            value={watchedPrice || undefined}
+            onChange={(value) => setValue('price', value, { shouldValidate: true })}
+            decimalPlaces={6}
+            min={0}
+            error={errors.price?.message}
+          />
+          {splitPreview && (
+            <div className="rounded border border-gray-200 bg-white p-3 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300">
+              <div className="font-medium text-gray-900 dark:text-gray-100">
+                Holding preview
+              </div>
+              <div>
+                Before:{' '}
+                <span className="font-mono">
+                  {splitPreview.currentQty.toFixed(4)}
+                </span>{' '}
+                shares @{' '}
+                <span className="font-mono">
+                  {currencySymbol}
+                  {splitPreview.currentAvg.toFixed(4)}
+                </span>{' '}
+                avg cost
+              </div>
+              <div>
+                After:{' '}
+                <span className="font-mono">
+                  {splitPreview.newQty.toFixed(4)}
+                </span>{' '}
+                shares @{' '}
+                <span className="font-mono">
+                  {currencySymbol}
+                  {splitPreview.newAvg.toFixed(4)}
+                </span>{' '}
+                avg cost
+              </div>
+              <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Total cost basis is preserved across the split.
+              </div>
+            </div>
+          )}
+          {!splitPreview && watchedSecurityId && (
+            <div className="text-xs text-gray-500 dark:text-gray-400">
+              No existing holding for this security in this account; the split will
+              be recorded but holdings won&apos;t change until shares are added.
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Amount - for dividend/interest/capital gain/transfers */}
       {isAmountOnly && (
         <CurrencyInput
@@ -540,7 +709,7 @@ export function InvestmentTransactionForm({
       )}
 
       {/* Commission - rendered inline with qty/price when conversion is shown */}
-      {((needsQuantityPrice && !needsConversion) || watchedAction === 'SPLIT') && (
+      {needsQuantityPrice && !needsConversion && (
         <CurrencyInput
           label={`Commission / Fees (${transactionCurrency})`}
           prefix={currencySymbol}

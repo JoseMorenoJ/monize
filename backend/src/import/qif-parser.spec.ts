@@ -253,6 +253,61 @@ T-1509.99
       expect(tx.commission).toBe(9.99);
     });
 
+    it("parses StkSplit with a single-decimal Q ratio (e.g. 2 for 2-for-1)", () => {
+      const qif = `!Type:Invst
+D01/15/2026
+NStkSplit
+YAAPL
+Q2
+T0.00
+^`;
+      const result = parseQif(qif);
+      const tx = result.transactions[0];
+      expect(tx.action).toBe("StkSplit");
+      expect(tx.security).toBe("AAPL");
+      expect(tx.quantity).toBe(2);
+    });
+
+    it("parses StkSplit with N:M ratio notation in the Q field", () => {
+      const qif = `!Type:Invst
+D01/15/2026
+NStkSplit
+YAAPL
+Q3:2
+T0.00
+^`;
+      const result = parseQif(qif);
+      const tx = result.transactions[0];
+      expect(tx.action).toBe("StkSplit");
+      expect(tx.quantity).toBeCloseTo(1.5, 6);
+    });
+
+    it("parses reverse StkSplit with N:M ratio (1:2 = 0.5)", () => {
+      const qif = `!Type:Invst
+D01/15/2026
+NStkSplit
+YAAPL
+Q1:2
+T0.00
+^`;
+      const result = parseQif(qif);
+      const tx = result.transactions[0];
+      expect(tx.quantity).toBe(0.5);
+    });
+
+    it("parses StkSplit with N/M ratio notation in the Q field", () => {
+      const qif = `!Type:Invst
+D01/15/2026
+NStkSplit
+YAAPL
+Q3/1
+T0.00
+^`;
+      const result = parseQif(qif);
+      const tx = result.transactions[0];
+      expect(tx.quantity).toBe(3);
+    });
+
     it("collects unique securities sorted", () => {
       const qif = `!Type:Invst
 D01/15/2026

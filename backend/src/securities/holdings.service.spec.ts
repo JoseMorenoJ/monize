@@ -727,6 +727,112 @@ describe("HoldingsService", () => {
     });
   });
 
+  describe("applySplit", () => {
+    it("doubles quantity and halves averageCost on a 2-for-1 split", async () => {
+      const existingHolding = {
+        id: "hold-1",
+        accountId: "acc-1",
+        securityId: "sec-1",
+        quantity: 100,
+        averageCost: 150,
+      };
+      holdingsRepository.findOne.mockResolvedValue(existingHolding);
+      holdingsRepository.save.mockImplementation((data) =>
+        Promise.resolve(data),
+      );
+
+      const result = await service.applySplit("acc-1", "sec-1", 2);
+
+      expect(result?.quantity).toBe(200);
+      expect(result?.averageCost).toBe(75);
+    });
+
+    it("halves quantity and doubles averageCost on a 1-for-2 reverse split", async () => {
+      const existingHolding = {
+        id: "hold-1",
+        accountId: "acc-1",
+        securityId: "sec-1",
+        quantity: 100,
+        averageCost: 50,
+      };
+      holdingsRepository.findOne.mockResolvedValue(existingHolding);
+      holdingsRepository.save.mockImplementation((data) =>
+        Promise.resolve(data),
+      );
+
+      const result = await service.applySplit("acc-1", "sec-1", 0.5);
+
+      expect(result?.quantity).toBe(50);
+      expect(result?.averageCost).toBe(100);
+    });
+
+    it("preserves total cost basis across the split", async () => {
+      const existingHolding = {
+        id: "hold-1",
+        accountId: "acc-1",
+        securityId: "sec-1",
+        quantity: 75,
+        averageCost: 80,
+      };
+      holdingsRepository.findOne.mockResolvedValue(existingHolding);
+      holdingsRepository.save.mockImplementation((data) =>
+        Promise.resolve(data),
+      );
+
+      const before =
+        Number(existingHolding.quantity) * Number(existingHolding.averageCost);
+      const result = await service.applySplit("acc-1", "sec-1", 1.5);
+      const after = Number(result!.quantity) * Number(result!.averageCost);
+
+      expect(after).toBeCloseTo(before, 6);
+    });
+
+    it("returns null without saving when no holding exists", async () => {
+      holdingsRepository.findOne.mockResolvedValue(null);
+
+      const result = await service.applySplit("acc-1", "sec-1", 2);
+
+      expect(result).toBeNull();
+      expect(holdingsRepository.save).not.toHaveBeenCalled();
+    });
+
+    it("rejects ratios that are zero or negative", async () => {
+      await expect(service.applySplit("acc-1", "sec-1", 0)).rejects.toThrow(
+        "Split ratio must be greater than zero",
+      );
+      await expect(service.applySplit("acc-1", "sec-1", -1)).rejects.toThrow(
+        "Split ratio must be greater than zero",
+      );
+    });
+  });
+
+  describe("reverseSplit", () => {
+    it("undoes a 2-for-1 split (halves quantity, doubles averageCost)", async () => {
+      const existingHolding = {
+        id: "hold-1",
+        accountId: "acc-1",
+        securityId: "sec-1",
+        quantity: 200,
+        averageCost: 75,
+      };
+      holdingsRepository.findOne.mockResolvedValue(existingHolding);
+      holdingsRepository.save.mockImplementation((data) =>
+        Promise.resolve(data),
+      );
+
+      const result = await service.reverseSplit("acc-1", "sec-1", 2);
+
+      expect(result?.quantity).toBe(100);
+      expect(result?.averageCost).toBe(150);
+    });
+
+    it("rejects ratios that are zero or negative", async () => {
+      await expect(service.reverseSplit("acc-1", "sec-1", 0)).rejects.toThrow(
+        "Split ratio must be greater than zero",
+      );
+    });
+  });
+
   describe("getHoldingsSummary", () => {
     it("returns summary for holdings in an account", async () => {
       const holdings = [
@@ -1022,6 +1128,43 @@ describe("HoldingsService", () => {
         }),
       );
       expect(result.holdingsCreated).toBe(1);
+    });
+
+    it("rebuilds correctly when a SPLIT is between buys (preserves cost basis)", async () => {
+      accountsRepository.find.mockResolvedValue([mockAccount]);
+
+      const transactions = [
+        {
+          accountId: "acc-1",
+          securityId: "sec-1",
+          action: InvestmentAction.BUY,
+          quantity: 100,
+          price: 100,
+          transactionDate: "2025-01-01",
+          createdAt: new Date("2025-01-01"),
+        },
+        {
+          accountId: "acc-1",
+          securityId: "sec-1",
+          action: InvestmentAction.SPLIT,
+          quantity: 2, // 2-for-1
+          price: 0,
+          transactionDate: "2025-02-01",
+          createdAt: new Date("2025-02-01"),
+        },
+      ];
+      investmentTransactionsRepository.find.mockResolvedValue(transactions);
+
+      await service.rebuildFromTransactions("user-1");
+
+      // BUY: qty=100, totalCost=10000
+      // SPLIT 2:1: qty doubles to 200, totalCost stays 10000 -> avg = 50
+      expect(mockQrRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          quantity: 200,
+          averageCost: 50,
+        }),
+      );
     });
 
     it("handles ADD_SHARES as quantity-only change (no cost basis change)", async () => {

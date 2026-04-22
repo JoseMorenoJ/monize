@@ -378,6 +378,15 @@ export class InvestmentTransactionsService {
       );
     }
 
+    if (
+      createDto.action === InvestmentAction.SPLIT &&
+      (!createDto.quantity || Number(createDto.quantity) <= 0)
+    ) {
+      throw new BadRequestException(
+        "Split ratio (quantity) must be greater than zero",
+      );
+    }
+
     if (createDto.securityId) {
       await this.securitiesService.findOne(userId, createDto.securityId);
     }
@@ -607,28 +616,18 @@ export class InvestmentTransactionsService {
         break;
 
       case InvestmentAction.SPLIT:
-        // H13: Apply stock split ratio to adjust holdings quantity
+        // Stock split: scale quantity by the ratio and divide averageCost by
+        // the same ratio so total cost basis is preserved. The optional
+        // `price` carries the post-split per-share market price for
+        // reporting; the cost basis comes from the existing holding, not
+        // from `price`.
         if (securityId && quantity) {
-          const splitRatio = Number(quantity);
-          const holding = await this.holdingsService.findByAccountAndSecurity(
+          await this.holdingsService.applySplit(
             accountId,
             securityId,
+            Number(quantity),
             queryRunner,
           );
-          if (holding) {
-            const currentQty = Number(holding.quantity);
-            const newQty = currentQty * splitRatio;
-            const additionalShares = newQty - currentQty;
-            if (Math.abs(additionalShares) > 0.00000001) {
-              await this.holdingsService.adjustQuantity(
-                userId,
-                accountId,
-                securityId,
-                additionalShares,
-                queryRunner,
-              );
-            }
-          }
         }
         break;
 
@@ -902,6 +901,17 @@ export class InvestmentTransactionsService {
         } as any);
       }
 
+      if (
+        transaction.action === InvestmentAction.SPLIT &&
+        (transaction.quantity === null ||
+          transaction.quantity === undefined ||
+          Number(transaction.quantity) <= 0)
+      ) {
+        throw new BadRequestException(
+          "Split ratio (quantity) must be greater than zero",
+        );
+      }
+
       // Exchange rate resolution precedence for update():
       //   1. DTO override wins.
       //   2. If the account, funding account, or security changed, re-resolve
@@ -1140,6 +1150,17 @@ export class InvestmentTransactionsService {
         if (securityId && quantity) {
           await this.holdingsService.adjustQuantity(
             userId,
+            accountId,
+            securityId,
+            Number(quantity),
+            queryRunner,
+          );
+        }
+        break;
+
+      case InvestmentAction.SPLIT:
+        if (securityId && quantity) {
+          await this.holdingsService.reverseSplit(
             accountId,
             securityId,
             Number(quantity),

@@ -363,8 +363,8 @@ export function parseQif(
         currentTransaction.price = parseQifAmount(value) ?? 0;
         break;
 
-      case "Q": // Quantity (number of shares)
-        currentTransaction.quantity = parseQifAmount(value) ?? 0;
+      case "Q": // Quantity (number of shares, or split ratio "N:M" for StkSplit)
+        currentTransaction.quantity = parseQifQuantity(value) ?? 0;
         break;
 
       case "O": // Commission
@@ -574,6 +574,32 @@ function parseQifAmount(amountStr: string): number | null {
   const cleaned = amountStr.replace(/[$£€,\s]/g, "");
   const amount = parseFloat(cleaned);
   return isNaN(amount) ? null : amount;
+}
+
+/**
+ * Parse a QIF investment "Q" (quantity) field. For most actions this is a
+ * plain number of shares, but for stock splits some Quicken exports encode
+ * the ratio as "N:M" or "N/M" (new:old) -- e.g. "2:1" for a 2-for-1 split.
+ * Returns the resolved decimal ratio, or null when the value can't be
+ * parsed as either form.
+ */
+function parseQifQuantity(value: string): number | null {
+  const ratioMatch = value.match(
+    /^\s*(-?\d+(?:\.\d+)?)\s*[:/]\s*(-?\d+(?:\.\d+)?)\s*$/,
+  );
+  if (ratioMatch) {
+    const numerator = parseFloat(ratioMatch[1]);
+    const denominator = parseFloat(ratioMatch[2]);
+    if (
+      !isNaN(numerator) &&
+      !isNaN(denominator) &&
+      denominator !== 0
+    ) {
+      return numerator / denominator;
+    }
+    return null;
+  }
+  return parseQifAmount(value);
 }
 
 function parseCategoryOrTransfer(value: string): {

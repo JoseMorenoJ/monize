@@ -106,6 +106,12 @@ export class ImportInvestmentProcessorService {
       totalAmount = roundToDecimals(quantity * price + commission, 2);
     } else if (action === InvestmentAction.SELL) {
       totalAmount = roundToDecimals(quantity * price - commission, 2);
+    } else if (
+      action === InvestmentAction.SPLIT ||
+      action === InvestmentAction.ADD_SHARES ||
+      action === InvestmentAction.REMOVE_SHARES
+    ) {
+      totalAmount = 0;
     }
 
     // Create investment transaction
@@ -478,9 +484,28 @@ export class ImportInvestmentProcessorService {
       InvestmentAction.REINVEST,
       InvestmentAction.TRANSFER_IN,
       InvestmentAction.TRANSFER_OUT,
+      InvestmentAction.SPLIT,
     ];
 
     if (!holdingsActions.includes(action) || !securityId || !quantity) {
+      return;
+    }
+
+    const holding = await ctx.queryRunner.manager.findOne(Holding, {
+      where: { accountId: ctx.accountId, securityId },
+    });
+
+    if (action === InvestmentAction.SPLIT) {
+      // Stock split: scale quantity by the ratio and divide averageCost by
+      // the same ratio so total cost basis is preserved. No-op when no
+      // existing position; the imported QIF should not introduce a holding
+      // out of thin air on a split.
+      if (!holding || quantity <= 0) return;
+      const currentQuantity = Number(holding.quantity);
+      const currentAvgCost = Number(holding.averageCost || 0);
+      holding.quantity = currentQuantity * quantity;
+      holding.averageCost = currentAvgCost / quantity;
+      await ctx.queryRunner.manager.save(holding);
       return;
     }
 
@@ -491,33 +516,28 @@ export class ImportInvestmentProcessorService {
       ? -quantity
       : quantity;
 
-    let holding = await ctx.queryRunner.manager.findOne(Holding, {
-      where: { accountId: ctx.accountId, securityId },
-    });
-
     if (!holding) {
-      holding = new Holding();
-      holding.accountId = ctx.accountId;
-      holding.securityId = securityId;
-      holding.quantity = quantityChange;
-      holding.averageCost = price || 0;
-    } else {
-      const currentQuantity = Number(holding.quantity);
-      const currentAvgCost = Number(holding.averageCost || 0);
-      const newQuantity = currentQuantity + quantityChange;
-
-      if (quantityChange > 0 && price) {
-        const totalCostBefore = currentQuantity * currentAvgCost;
-        const totalCostAdded = quantityChange * price;
-        holding.averageCost =
-          newQuantity > 0
-            ? (totalCostBefore + totalCostAdded) / newQuantity
-            : 0;
-      }
-
-      holding.quantity = newQuantity;
+      const newHolding = new Holding();
+      newHolding.accountId = ctx.accountId;
+      newHolding.securityId = securityId;
+      newHolding.quantity = quantityChange;
+      newHolding.averageCost = price || 0;
+      await ctx.queryRunner.manager.save(newHolding);
+      return;
     }
 
+    const currentQuantity = Number(holding.quantity);
+    const currentAvgCost = Number(holding.averageCost || 0);
+    const newQuantity = currentQuantity + quantityChange;
+
+    if (quantityChange > 0 && price) {
+      const totalCostBefore = currentQuantity * currentAvgCost;
+      const totalCostAdded = quantityChange * price;
+      holding.averageCost =
+        newQuantity > 0 ? (totalCostBefore + totalCostAdded) / newQuantity : 0;
+    }
+
+    holding.quantity = newQuantity;
     await ctx.queryRunner.manager.save(holding);
   }
 }

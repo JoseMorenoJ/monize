@@ -629,6 +629,98 @@ describe("ImportInvestmentProcessorService", () => {
       expect(cashTxCall).toBeUndefined();
     });
 
+    it("should set totalAmount to 0 for SPLIT regardless of price/quantity fields", async () => {
+      const ctx = makeContext();
+      const qifTx = {
+        action: "StkSplit",
+        quantity: 2, // ratio
+        price: 100, // post-split price
+        date: "2025-01-15",
+      };
+
+      await service.processTransaction(ctx, qifTx);
+
+      const firstSaveArg = ctx.queryRunner.manager.save.mock.calls[0][0];
+      expect(firstSaveArg.action).toBe(InvestmentAction.SPLIT);
+      expect(firstSaveArg.totalAmount).toBe(0);
+    });
+
+    it("scales holding quantity and divides averageCost on SPLIT import", async () => {
+      const securityMap = new Map<string, string | null>();
+      securityMap.set("Apple Inc", "sec-1");
+      const ctx = makeContext({ securityMap });
+
+      const existingHolding: any = {
+        accountId,
+        securityId: "sec-1",
+        quantity: 100,
+        averageCost: 150,
+      };
+
+      ctx.queryRunner.manager.findOne.mockImplementation(
+        (entity: any, opts: any) => {
+          if (entity === Security && opts?.where?.id === "sec-1") {
+            return Promise.resolve({ id: "sec-1", symbol: "AAPL" });
+          }
+          if (entity === Holding) {
+            return Promise.resolve(existingHolding);
+          }
+          return Promise.resolve(null);
+        },
+      );
+
+      const qifTx = {
+        action: "StkSplit",
+        security: "Apple Inc",
+        quantity: 2, // 2-for-1 split
+        date: "2025-01-15",
+      };
+
+      await service.processTransaction(ctx, qifTx);
+
+      // The mutated holding object is the same reference passed to save().
+      const savedHolding = ctx.queryRunner.manager.save.mock.calls
+        .map((call: any) => call[0])
+        .find((arg: any) => arg === existingHolding);
+      expect(savedHolding).toBeDefined();
+      expect(savedHolding.quantity).toBe(200);
+      expect(savedHolding.averageCost).toBe(75);
+    });
+
+    it("does not create a holding from thin air for SPLIT when none exists", async () => {
+      const securityMap = new Map<string, string | null>();
+      securityMap.set("Apple Inc", "sec-1");
+      const ctx = makeContext({ securityMap });
+
+      ctx.queryRunner.manager.findOne.mockImplementation(
+        (entity: any, opts: any) => {
+          if (entity === Security && opts?.where?.id === "sec-1") {
+            return Promise.resolve({ id: "sec-1", symbol: "AAPL" });
+          }
+          if (entity === Holding) return Promise.resolve(null);
+          return Promise.resolve(null);
+        },
+      );
+
+      const qifTx = {
+        action: "StkSplit",
+        security: "Apple Inc",
+        quantity: 2,
+        date: "2025-01-15",
+      };
+
+      await service.processTransaction(ctx, qifTx);
+
+      // No Holding-shaped object should be saved.
+      const savedHolding = ctx.queryRunner.manager.save.mock.calls
+        .map((call: any) => call[0])
+        .find(
+          (arg: any) =>
+            arg && "averageCost" in arg && "quantity" in arg && "securityId" in arg,
+        );
+      expect(savedHolding).toBeUndefined();
+    });
+
     it("should NOT create cash transaction for TRANSFER_IN action", async () => {
       const ctx = makeContext();
       const qifTx = {
