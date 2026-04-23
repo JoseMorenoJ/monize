@@ -3,7 +3,7 @@ import { render, screen, fireEvent } from '@/test/render';
 import { OccurrenceDatePicker } from './OccurrenceDatePicker';
 
 vi.mock('@/hooks/useDateFormat', () => ({
-  useDateFormat: () => ({ formatDate: (d: string) => d }),
+  useDateFormat: () => ({ formatDate: (d: string) => d, dateFormat: 'browser' }),
 }));
 
 vi.mock('@/hooks/useNumberFormat', () => ({
