@@ -435,6 +435,79 @@ export function DividendIncomeReport() {
     const accountLabel = selectedAccount
       ? selectedAccount.name.replace(/ - (Brokerage|Cash)$/, '')
       : 'All Accounts';
+
+    // Build a PDF table that mirrors what's on screen when the user is in a
+    // table view; fall back to chart capture for the chart view.
+    let tableData: {
+      headers: string[];
+      rows: (string | number)[][];
+      totalRow?: (string | number)[];
+    } | undefined;
+
+    if (viewType === 'bySecurity') {
+      tableData = {
+        headers: ['Symbol', 'Security', 'Dividends', 'Interest', 'Capital Gains', 'Total'],
+        rows: securityData.map((s) => [
+          s.symbol,
+          s.name,
+          fmtValue(s.dividends),
+          fmtValue(s.interest),
+          fmtValue(s.capitalGains),
+          fmtValue(s.total),
+        ]),
+        totalRow: [
+          'Total',
+          '',
+          fmtValue(totals.dividends),
+          fmtValue(totals.interest),
+          fmtValue(totals.capitalGains),
+          fmtValue(totals.total),
+        ],
+      };
+    } else if (viewType === 'monthly' && monthlyDisplay === 'table') {
+      const headers: string[] = ['Month'];
+      if (visibleSeries.dividends) headers.push('Dividends');
+      if (visibleSeries.interest) headers.push('Interest');
+      if (visibleSeries.capitalGains) headers.push('Capital Gains');
+      headers.push('Total');
+      const rows = monthlyData.map((row) => {
+        const out: (string | number)[] = [row.label];
+        let rowTotal = 0;
+        if (visibleSeries.dividends) {
+          out.push(fmtValue(row.dividends));
+          rowTotal += row.dividends;
+        }
+        if (visibleSeries.interest) {
+          out.push(fmtValue(row.interest));
+          rowTotal += row.interest;
+        }
+        if (visibleSeries.capitalGains) {
+          out.push(fmtValue(row.capitalGains));
+          rowTotal += row.capitalGains;
+        }
+        out.push(fmtValue(rowTotal));
+        return out;
+      });
+      // Column totals across the whole window, respecting hidden series so the
+      // footer sum matches the visible columns.
+      const totalRow: (string | number)[] = ['Total'];
+      let grandTotal = 0;
+      if (visibleSeries.dividends) {
+        totalRow.push(fmtValue(totals.dividends));
+        grandTotal += totals.dividends;
+      }
+      if (visibleSeries.interest) {
+        totalRow.push(fmtValue(totals.interest));
+        grandTotal += totals.interest;
+      }
+      if (visibleSeries.capitalGains) {
+        totalRow.push(fmtValue(totals.capitalGains));
+        grandTotal += totals.capitalGains;
+      }
+      totalRow.push(fmtValue(grandTotal));
+      tableData = { headers, rows, totalRow };
+    }
+
     await exportToPdf({
       title: 'Gains, Dividends & Interest',
       subtitle: accountLabel,
@@ -444,7 +517,8 @@ export function DividendIncomeReport() {
         { label: 'Capital Gains', value: fmtValue(totals.capitalGains), color: totals.capitalGains < 0 ? '#dc2626' : '#9333ea' },
         { label: 'Total Income', value: fmtValue(totals.total), color: '#111827' },
       ],
-      chartContainer: chartRef.current,
+      chartContainer: tableData ? undefined : chartRef.current,
+      tableData,
       filename: 'gains-dividends-interest',
     });
   };

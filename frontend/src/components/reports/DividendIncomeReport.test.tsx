@@ -76,6 +76,11 @@ vi.mock('@/lib/csv-export', () => ({
   exportToCsv: (...args: any[]) => mockExportToCsv(...args),
 }));
 
+const mockExportToPdf = vi.fn().mockResolvedValue(undefined);
+vi.mock('@/lib/pdf-export', () => ({
+  exportToPdf: (...args: any[]) => mockExportToPdf(...args),
+}));
+
 vi.mock('@/lib/logger', () => ({
   createLogger: () => ({
     error: vi.fn(),
@@ -426,6 +431,87 @@ describe('DividendIncomeReport', () => {
 
     const [, headers] = mockExportToCsv.mock.calls[0];
     expect(headers).toEqual(['Month', 'Dividends', 'Interest', 'Total', 'Currency']);
+  });
+
+  it('hands the table data (not the chart container) to the PDF exporter in the monthly table view', async () => {
+    mockGetTransactions.mockResolvedValue({
+      data: [
+        {
+          id: 'tx-1',
+          transactionDate: '2024-06-15',
+          action: 'DIVIDEND',
+          totalAmount: 100,
+          accountId: 'acc-1',
+          securityId: 'sec-a',
+          security: { symbol: 'AAA', name: 'Alpha' },
+        },
+      ],
+      pagination: { hasMore: false },
+    });
+    mockGetInvestmentAccounts.mockResolvedValue([
+      { id: 'acc-1', name: 'TFSA', currencyCode: 'CAD', accountSubType: 'INVESTMENT_CASH' },
+    ]);
+    mockGetCapitalGains.mockResolvedValue([]);
+
+    render(<DividendIncomeReport />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Table' })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Table' }));
+
+    fireEvent.click(await screen.findByRole('button', { name: /^export$/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'PDF' }));
+
+    await waitFor(() => {
+      expect(mockExportToPdf).toHaveBeenCalledTimes(1);
+    });
+    const args = mockExportToPdf.mock.calls[0][0];
+    expect(args.chartContainer).toBeUndefined();
+    expect(args.tableData).toBeDefined();
+    expect(args.tableData.headers).toEqual([
+      'Month',
+      'Dividends',
+      'Interest',
+      'Capital Gains',
+      'Total',
+    ]);
+    expect(args.tableData.rows.length).toBeGreaterThan(0);
+    expect(args.tableData.totalRow?.[0]).toBe('Total');
+  });
+
+  it('hands the chart container to the PDF exporter in the chart view', async () => {
+    mockGetTransactions.mockResolvedValue({
+      data: [
+        {
+          id: 'tx-1',
+          transactionDate: '2024-06-15',
+          action: 'DIVIDEND',
+          totalAmount: 100,
+          accountId: 'acc-1',
+          securityId: 'sec-a',
+          security: { symbol: 'AAA', name: 'Alpha' },
+        },
+      ],
+      pagination: { hasMore: false },
+    });
+    mockGetInvestmentAccounts.mockResolvedValue([
+      { id: 'acc-1', name: 'TFSA', currencyCode: 'CAD', accountSubType: 'INVESTMENT_CASH' },
+    ]);
+    mockGetCapitalGains.mockResolvedValue([]);
+
+    render(<DividendIncomeReport />);
+
+    // Chart view is the default; ExportDropdown collapses to a PDF-only button.
+    const exportPdfBtn = await screen.findByRole('button', { name: /export pdf/i });
+    fireEvent.click(exportPdfBtn);
+
+    await waitFor(() => {
+      expect(mockExportToPdf).toHaveBeenCalledTimes(1);
+    });
+    const args = mockExportToPdf.mock.calls[0][0];
+    expect(args.chartContainer).not.toBeNull();
+    expect(args.tableData).toBeUndefined();
   });
 
   it('writes a by-security CSV with one row per security', async () => {
