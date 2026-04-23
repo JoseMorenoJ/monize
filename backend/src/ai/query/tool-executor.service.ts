@@ -8,6 +8,7 @@ import { BudgetReportsService } from "../../budgets/budget-reports.service";
 import { PortfolioService } from "../../securities/portfolio.service";
 import {
   InvestmentTransactionsService,
+  LlmCapitalGainsGroupBy,
   LlmInvestmentTxGroupBy,
 } from "../../securities/investment-transactions.service";
 import { InvestmentAction } from "../../securities/entities/investment-transaction.entity";
@@ -103,6 +104,9 @@ export class ToolExecutorService {
             userId,
             validatedInput,
           );
+          break;
+        case "get_capital_gains":
+          result = await this.getCapitalGains(userId, validatedInput);
           break;
         case "get_transfers":
           result = await this.getTransfers(userId, validatedInput);
@@ -510,6 +514,52 @@ export class ToolExecutorService {
           type: "investment_transactions",
           description: `Investment transactions${filterDesc}`,
           dateRange: range,
+        },
+      ],
+    };
+  }
+
+  private async getCapitalGains(
+    userId: string,
+    input: Record<string, unknown>,
+  ): Promise<ToolResult> {
+    const startDate = input.startDate as string;
+    const endDate = input.endDate as string;
+    const accountNames = input.accountNames as string[] | undefined;
+    const symbols = input.symbols as string[] | undefined;
+    const groupBy =
+      (input.groupBy as LlmCapitalGainsGroupBy | undefined) ?? "month";
+
+    const accountIds = await this.resolveAccountIds(userId, accountNames);
+
+    const data = await this.investmentTransactionsService.getLlmCapitalGains(
+      userId,
+      { startDate, endDate, accountIds, symbols, groupBy },
+    );
+
+    const filterParts: string[] = [];
+    if (accountNames?.length) filterParts.push(accountNames.join(", "));
+    if (symbols?.length) filterParts.push(symbols.join(", "));
+    const filterDesc =
+      filterParts.length > 0 ? ` (${filterParts.join("; ")})` : "";
+
+    const summaryParts = [
+      `capital gains ${data.totals.totalCapitalGain.toFixed(2)}${filterDesc}`,
+      `realized ${data.totals.realizedGain.toFixed(2)}`,
+      `unrealized ${data.totals.unrealizedGain.toFixed(2)}`,
+      `grouped by ${groupBy} (${data.entryCount} ${
+        data.entryCount === 1 ? "entry" : "entries"
+      })`,
+    ];
+
+    return {
+      data,
+      summary: `${summaryParts.join(", ")}.`,
+      sources: [
+        {
+          type: "investment_capital_gains",
+          description: `Capital gains${filterDesc}`,
+          dateRange: `${startDate} to ${endDate}`,
         },
       ],
     };

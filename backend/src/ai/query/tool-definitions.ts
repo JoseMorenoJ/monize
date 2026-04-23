@@ -293,6 +293,43 @@ export const FINANCIAL_TOOLS: AiToolDefinition[] = [
     },
   },
   {
+    name: "get_capital_gains",
+    description:
+      "Get per-period capital gains (realized + unrealized) for the user's investment accounts. Replays transaction history against historical close prices, so the result includes mark-to-market movement on currently-held positions in addition to realized gains from SELLs. Useful for 'how did my portfolio do last year', 'did I have any unrealized losses last month', or 'which securities drove my gains this quarter'. Returns period totals plus a breakdown grouped by month, security, or account. Requires startDate and endDate. All monetary values are in the holding account's currency; when a bucket spans accounts with different currencies its 'currency' field is null and sums are mixed.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        startDate: {
+          type: "string",
+          description: "Start date of the window (YYYY-MM-DD). Required.",
+        },
+        endDate: {
+          type: "string",
+          description: "End date of the window (YYYY-MM-DD). Required.",
+        },
+        accountNames: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Optional: filter to specific investment account names. Use exact names from the user's account list.",
+        },
+        symbols: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Optional: filter to specific security ticker symbols (case insensitive).",
+        },
+        groupBy: {
+          type: "string",
+          enum: ["month", "security", "account"],
+          description:
+            "Bucket the breakdown by month, security (symbol), or account. Defaults to 'month' when omitted.",
+        },
+      },
+      required: ["startDate", "endDate"],
+    },
+  },
+  {
     name: "get_transfers",
     description:
       "Get transfer activity between the user's own accounts for a date range. Returns per-account inbound (money received from another account), outbound (money sent to another account), net movement, and transfer count. Transfers are deliberately excluded from spending and income tools because they net to zero across accounts; use this tool for questions like 'how much did I move into my savings', 'what went out of chequing to other accounts', or 'what are my transfers between accounts'.",

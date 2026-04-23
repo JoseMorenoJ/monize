@@ -36,6 +36,7 @@ describe("InvestmentTransactionsService", () => {
   let investmentTransactionsRepository: Record<string, jest.Mock>;
   let transactionRepository: Record<string, jest.Mock>;
   let accountsService: Record<string, jest.Mock>;
+  let portfolioCalculationService: Record<string, jest.Mock>;
   let transactionsService: Record<string, jest.Mock>;
   let holdingsService: Record<string, jest.Mock>;
   let securitiesService: Record<string, jest.Mock>;
@@ -346,7 +347,10 @@ describe("InvestmentTransactionsService", () => {
         },
         {
           provide: PortfolioCalculationService,
-          useValue: { calculateRealizedGains: jest.fn().mockResolvedValue([]) },
+          useValue: (portfolioCalculationService = {
+            calculateRealizedGains: jest.fn().mockResolvedValue([]),
+            calculateCapitalGainsByMonth: jest.fn().mockResolvedValue([]),
+          }),
         },
         {
           provide: SecuritiesService,
@@ -2838,6 +2842,221 @@ describe("InvestmentTransactionsService", () => {
       expect(result.groups).toEqual([]);
       expect(result.transactions).toEqual([]);
       expect(result.truncatedTransactionList).toBe(false);
+    });
+  });
+
+  describe("getLlmCapitalGains", () => {
+    const makeEntry = (
+      overrides: Partial<{
+        month: string;
+        accountId: string;
+        accountName: string | null;
+        accountCurrencyCode: string | null;
+        securityId: string;
+        symbol: string | null;
+        securityName: string | null;
+        startValue: number;
+        endValue: number;
+        realizedGain: number;
+        unrealizedGain: number;
+        totalCapitalGain: number;
+      }>,
+    ) => ({
+      month: "2024-06",
+      accountId: "acc-1",
+      accountName: "TFSA",
+      accountCurrencyCode: "CAD",
+      securityId: "sec-1",
+      symbol: "AAA",
+      securityName: "Alpha",
+      securityCurrencyCode: "CAD",
+      startQuantity: 10,
+      endQuantity: 10,
+      startValue: 1000,
+      endValue: 1100,
+      buys: 0,
+      sells: 0,
+      realizedGain: 0,
+      unrealizedGain: 100,
+      totalCapitalGain: 100,
+      ...overrides,
+    });
+
+    it("aggregates the raw per-(account,security,month) rows into monthly buckets by default", async () => {
+      const raw = [
+        makeEntry({
+          month: "2024-06",
+          symbol: "AAA",
+          securityName: "Alpha",
+          securityId: "sec-1",
+          totalCapitalGain: 100,
+          unrealizedGain: 100,
+          startValue: 1000,
+          endValue: 1100,
+        }),
+        makeEntry({
+          month: "2024-06",
+          symbol: "BBB",
+          securityName: "Beta",
+          securityId: "sec-2",
+          totalCapitalGain: -50,
+          unrealizedGain: -50,
+          startValue: 500,
+          endValue: 450,
+        }),
+        makeEntry({
+          month: "2024-07",
+          symbol: "AAA",
+          securityName: "Alpha",
+          securityId: "sec-1",
+          totalCapitalGain: 200,
+          realizedGain: 120,
+          unrealizedGain: 80,
+          startValue: 1100,
+          endValue: 1300,
+        }),
+      ];
+      (
+        portfolioCalculationService.calculateCapitalGainsByMonth as jest.Mock
+      ).mockResolvedValue(raw);
+
+      const result = await service.getLlmCapitalGains(userId, {
+        startDate: "2024-06-01",
+        endDate: "2024-07-31",
+      });
+
+      expect(result.startDate).toBe("2024-06-01");
+      expect(result.endDate).toBe("2024-07-31");
+      expect(result.groupedBy).toBe("month");
+      expect(result.totals.totalCapitalGain).toBeCloseTo(250, 4);
+      expect(result.totals.realizedGain).toBeCloseTo(120, 4);
+      expect(result.totals.unrealizedGain).toBeCloseTo(130, 4);
+      expect(result.entries).toHaveLength(2);
+      // Sorted by month ascending for the month grouping.
+      expect(result.entries.map((e) => e.month)).toEqual([
+        "2024-06",
+        "2024-07",
+      ]);
+      // June combines Alpha + Beta sums.
+      expect(result.entries[0].totalCapitalGain).toBe(50);
+      expect(result.entries[0].startValue).toBe(1500);
+      expect(result.entries[0].endValue).toBe(1550);
+      // Same account currency across all rows → kept as CAD.
+      expect(result.entries[0].currency).toBe("CAD");
+      expect(result.entryCount).toBe(2);
+      expect(result.truncatedEntryList).toBe(false);
+    });
+
+    it("groups by security when requested and sorts descending by total gain", async () => {
+      (
+        portfolioCalculationService.calculateCapitalGainsByMonth as jest.Mock
+      ).mockResolvedValue([
+        makeEntry({
+          month: "2024-06",
+          symbol: "AAA",
+          securityId: "sec-1",
+          totalCapitalGain: 80,
+          realizedGain: 0,
+          unrealizedGain: 80,
+        }),
+        makeEntry({
+          month: "2024-07",
+          symbol: "AAA",
+          securityId: "sec-1",
+          totalCapitalGain: 120,
+          realizedGain: 60,
+          unrealizedGain: 60,
+        }),
+        makeEntry({
+          month: "2024-06",
+          symbol: "BBB",
+          securityName: "Beta",
+          securityId: "sec-2",
+          totalCapitalGain: -50,
+          realizedGain: 0,
+          unrealizedGain: -50,
+        }),
+      ]);
+
+      const result = await service.getLlmCapitalGains(userId, {
+        startDate: "2024-06-01",
+        endDate: "2024-07-31",
+        groupBy: "security",
+      });
+
+      expect(result.groupedBy).toBe("security");
+      expect(result.entries.map((e) => e.symbol)).toEqual(["AAA", "BBB"]);
+      expect(result.entries[0].totalCapitalGain).toBe(200); // 80 + 120
+      expect(result.entries[0].realizedGain).toBe(60);
+      expect(result.entries[1].totalCapitalGain).toBe(-50);
+    });
+
+    it("flags mixed currencies with a null currency on the bucket", async () => {
+      (
+        portfolioCalculationService.calculateCapitalGainsByMonth as jest.Mock
+      ).mockResolvedValue([
+        makeEntry({ accountCurrencyCode: "CAD", totalCapitalGain: 100 }),
+        makeEntry({
+          accountCurrencyCode: "USD",
+          totalCapitalGain: 50,
+          symbol: "USS",
+          securityId: "sec-us",
+        }),
+      ]);
+
+      const result = await service.getLlmCapitalGains(userId, {
+        startDate: "2024-06-01",
+        endDate: "2024-06-30",
+      });
+
+      expect(result.entries).toHaveLength(1); // single month bucket
+      expect(result.entries[0].currency).toBeNull();
+    });
+
+    it("filters by symbol (case-insensitive) before aggregating", async () => {
+      (
+        portfolioCalculationService.calculateCapitalGainsByMonth as jest.Mock
+      ).mockResolvedValue([
+        makeEntry({ symbol: "AAA", totalCapitalGain: 100 }),
+        makeEntry({
+          symbol: "BBB",
+          securityId: "sec-2",
+          totalCapitalGain: 200,
+        }),
+      ]);
+
+      const result = await service.getLlmCapitalGains(userId, {
+        startDate: "2024-06-01",
+        endDate: "2024-06-30",
+        symbols: ["aaa"],
+      });
+
+      expect(result.entries).toHaveLength(1);
+      expect(result.totals.totalCapitalGain).toBe(100);
+    });
+
+    it("resolves linked brokerage/cash account pairs when an accountId filter is passed", async () => {
+      (accountsService.findByIds as jest.Mock).mockResolvedValue([
+        { id: "brok-1", linkedAccountId: "cash-1" },
+      ]);
+      (
+        portfolioCalculationService.calculateCapitalGainsByMonth as jest.Mock
+      ).mockResolvedValue([]);
+
+      await service.getLlmCapitalGains(userId, {
+        startDate: "2024-06-01",
+        endDate: "2024-06-30",
+        accountIds: ["brok-1"],
+      });
+
+      expect(
+        portfolioCalculationService.calculateCapitalGainsByMonth,
+      ).toHaveBeenCalledWith(
+        userId,
+        expect.objectContaining({
+          accountIds: expect.arrayContaining(["brok-1", "cash-1"]),
+        }),
+      );
     });
   });
 
