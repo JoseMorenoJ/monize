@@ -293,6 +293,86 @@ describe('DateInput', () => {
       expect(getByLabelText('Date')).toHaveAttribute('placeholder', 'DD/MM/YYYY');
     });
 
+    describe('segment navigation', () => {
+      it('ArrowUp increments the day when the cursor is in the day segment', () => {
+        const { getByLabelText } = renderDateInput('2025-06-15');
+        const input = getByLabelText('Date') as HTMLInputElement;
+        // "15/06/2025" - cursor in day segment (positions 0-2)
+        input.setSelectionRange(1, 1);
+        fireEvent.keyDown(input, { key: 'ArrowUp' });
+        expect(onDateChange).toHaveBeenCalledWith('2025-06-16');
+      });
+
+      it('ArrowDown decrements the month when the cursor is in the month segment', () => {
+        const { getByLabelText } = renderDateInput('2025-06-15');
+        const input = getByLabelText('Date') as HTMLInputElement;
+        // "15/06/2025" - cursor in month segment (positions 3-5)
+        input.setSelectionRange(4, 4);
+        fireEvent.keyDown(input, { key: 'ArrowDown' });
+        expect(onDateChange).toHaveBeenCalledWith('2025-05-15');
+      });
+
+      it('ArrowUp increments the year when the cursor is in the year segment', () => {
+        const { getByLabelText } = renderDateInput('2025-06-15');
+        const input = getByLabelText('Date') as HTMLInputElement;
+        // "15/06/2025" - cursor in year segment (positions 6-10)
+        input.setSelectionRange(8, 8);
+        fireEvent.keyDown(input, { key: 'ArrowUp' });
+        expect(onDateChange).toHaveBeenCalledWith('2026-06-15');
+      });
+
+      it('wraps December to January of the next year on ArrowUp', () => {
+        const { getByLabelText } = renderDateInput('2025-12-15');
+        const input = getByLabelText('Date') as HTMLInputElement;
+        input.setSelectionRange(4, 4);
+        fireEvent.keyDown(input, { key: 'ArrowUp' });
+        expect(onDateChange).toHaveBeenCalledWith('2026-01-15');
+      });
+
+      it('clamps the day when the target month has fewer days', () => {
+        const { getByLabelText } = renderDateInput('2025-01-31');
+        const input = getByLabelText('Date') as HTMLInputElement;
+        input.setSelectionRange(4, 4);
+        fireEvent.keyDown(input, { key: 'ArrowUp' });
+        // Jan 31 + 1 month -> Feb 28 in 2025 (non-leap year)
+        expect(onDateChange).toHaveBeenCalledWith('2025-02-28');
+      });
+
+      it('does not handle arrow keys when the field is empty', () => {
+        const { getByLabelText } = renderDateInput('');
+        const input = getByLabelText('Date') as HTMLInputElement;
+        input.setSelectionRange(0, 0);
+        fireEvent.keyDown(input, { key: 'ArrowUp' });
+        expect(onDateChange).not.toHaveBeenCalled();
+      });
+
+      it('re-selects the segment after adjusting so repeated arrows step the same segment', () => {
+        const { getByLabelText } = renderDateInput('2025-06-15');
+        const input = getByLabelText('Date') as HTMLInputElement;
+        input.setSelectionRange(4, 4);
+        fireEvent.keyDown(input, { key: 'ArrowUp' });
+        // Month segment range in "15/07/2025" is still 3-5
+        expect(input.selectionStart).toBe(3);
+        expect(input.selectionEnd).toBe(5);
+      });
+
+      it('handles the DD-MMM-YYYY format where the month segment is 3 chars', () => {
+        mockUseDateFormat.mockReturnValue({
+          formatDate: (d: string) => d,
+          dateFormat: 'DD-MMM-YYYY',
+        });
+        const { getByLabelText } = renderDateInput('2025-06-15');
+        const input = getByLabelText('Date') as HTMLInputElement;
+        // "15-Jun-2025" - cursor in month name segment (positions 3-6)
+        input.setSelectionRange(5, 5);
+        fireEvent.keyDown(input, { key: 'ArrowUp' });
+        expect(onDateChange).toHaveBeenCalledWith('2025-07-15');
+        // Segment range preserved on next render (still 3-6 in "15-Jul-2025")
+        expect(input.selectionStart).toBe(3);
+        expect(input.selectionEnd).toBe(6);
+      });
+    });
+
     it('shows calendar icon button on desktop', () => {
       const { getByLabelText } = renderDateInput('2025-06-15');
       const calendarBtn = getByLabelText('Open date picker');
