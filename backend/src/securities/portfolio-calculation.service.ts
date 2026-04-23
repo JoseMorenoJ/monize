@@ -794,32 +794,61 @@ export class PortfolioCalculationService {
       });
     }
 
-    let colorIndex = 0;
+    // Consolidate holdings by security so the same security held across
+    // multiple accounts appears as a single allocation slice.
+    const consolidated = new Map<
+      string,
+      {
+        name: string;
+        symbol: string;
+        currencyCode: string;
+        value: number;
+      }
+    >();
+
     for (const holding of sortedHoldings) {
-      if (holding.marketValue !== null && holding.marketValue > 0) {
-        const originalHolding = holdings.find((h) => h.id === holding.id);
-        const holdingCurrency =
-          originalHolding?.security?.currencyCode || defaultCurrency;
-        const convertedValue = await this.convertToDefault(
-          holding.marketValue,
-          holdingCurrency,
-          defaultCurrency,
-          rateCache,
-        );
-        allocation.push({
+      if (holding.marketValue === null || holding.marketValue <= 0) continue;
+      const originalHolding = holdings.find((h) => h.id === holding.id);
+      const holdingCurrency =
+        originalHolding?.security?.currencyCode || defaultCurrency;
+      const convertedValue = await this.convertToDefault(
+        holding.marketValue,
+        holdingCurrency,
+        defaultCurrency,
+        rateCache,
+      );
+      const existing = consolidated.get(holding.securityId);
+      if (existing) {
+        existing.value += convertedValue;
+      } else {
+        consolidated.set(holding.securityId, {
           name: holding.name,
           symbol: holding.symbol,
-          type: "security",
-          value: convertedValue,
-          percentage:
-            totalPortfolioValue > 0
-              ? (convertedValue / totalPortfolioValue) * 100
-              : 0,
-          color: colors[colorIndex % colors.length],
           currencyCode: holdingCurrency,
+          value: convertedValue,
         });
-        colorIndex++;
       }
+    }
+
+    const consolidatedItems = [...consolidated.values()].sort(
+      (a, b) => b.value - a.value,
+    );
+
+    let colorIndex = 0;
+    for (const item of consolidatedItems) {
+      allocation.push({
+        name: item.name,
+        symbol: item.symbol,
+        type: "security",
+        value: item.value,
+        percentage:
+          totalPortfolioValue > 0
+            ? (item.value / totalPortfolioValue) * 100
+            : 0,
+        color: colors[colorIndex % colors.length],
+        currencyCode: item.currencyCode,
+      });
+      colorIndex++;
     }
 
     allocation.sort((a, b) => b.value - a.value);

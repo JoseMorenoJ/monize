@@ -432,6 +432,53 @@ describe("PortfolioService", () => {
       });
     });
 
+    describe("when the same security is held in multiple accounts", () => {
+      beforeEach(() => {
+        prefRepository.findOne.mockResolvedValue(mockPref);
+        accountsRepository.find.mockResolvedValue([
+          mockBrokerageAccount,
+          mockCashAccount,
+          mockStandaloneAccount,
+        ]);
+        // VFV held in both the brokerage and standalone accounts
+        holdingsRepository.find.mockResolvedValue([
+          mockHoldingVFV,
+          {
+            id: "hold-4",
+            accountId: "acct-standalone-1",
+            securityId: "sec-2",
+            quantity: 25 as any,
+            averageCost: 82 as any,
+            security: mockSecurityVFV as any,
+            account: mockStandaloneAccount as any,
+          },
+        ]);
+        securityPriceRepository.query.mockResolvedValue([
+          { security_id: "sec-2", close_price: "95", price_date: "2026-02-07" },
+        ]);
+        exchangeRateService.getLatestRate.mockResolvedValue(null);
+      });
+
+      it("consolidates the security into a single allocation slice", async () => {
+        const result = await service.getPortfolioSummary(userId);
+
+        const vfvAllocs = result.allocation.filter(
+          (a) => a.symbol === "VFV.TO",
+        );
+        expect(vfvAllocs).toHaveLength(1);
+        // Combined market value: 50*95 + 25*95 = 4750 + 2375 = 7125
+        expect(vfvAllocs[0].value).toBe(7125);
+      });
+
+      it("retains per-account holdings in holdingsByAccount", async () => {
+        const result = await service.getPortfolioSummary(userId);
+
+        // The underlying holdings are still split per account
+        expect(result.holdingsByAccount).toHaveLength(2);
+        expect(result.holdings).toHaveLength(2);
+      });
+    });
+
     describe("when user has standalone investment accounts", () => {
       beforeEach(() => {
         prefRepository.findOne.mockResolvedValue(mockPref);
