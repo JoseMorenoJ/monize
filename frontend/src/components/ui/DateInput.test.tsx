@@ -331,6 +331,55 @@ describe('DateInput', () => {
       expect(onDateChange).toHaveBeenLastCalledWith('2026-02-11');
     });
 
+    it('does not auto-pad a partial day while the user is mid-edit (12/03/2026 -> 12/23/2026)', () => {
+      mockUseDateFormat.mockReturnValue({
+        formatDate: (d: string) => d,
+        dateFormat: 'MM/DD/YYYY',
+      });
+      const { getByLabelText } = renderDateInput('2026-12-03');
+      const input = getByLabelText('Date') as HTMLInputElement;
+      // Simulate removing the '0' from '03' -- "12/3/2026" is a valid partial
+      // but we must NOT pad it back to "12/03/2026" while typing.
+      fireEvent.change(input, { target: { value: '12/3/2026' } });
+      expect(input.value).toBe('12/3/2026');
+      // User types '2' to prepend and form '23'
+      fireEvent.change(input, { target: { value: '12/23/2026' } });
+      expect(input.value).toBe('12/23/2026');
+      expect(onDateChange).toHaveBeenLastCalledWith('2026-12-23');
+    });
+
+    it('does not auto-pad a partial month while the user is mid-edit (12/03/2026 -> 02/03/2026)', () => {
+      mockUseDateFormat.mockReturnValue({
+        formatDate: (d: string) => d,
+        dateFormat: 'MM/DD/YYYY',
+      });
+      const { getByLabelText } = renderDateInput('2026-12-03');
+      const input = getByLabelText('Date') as HTMLInputElement;
+      // Backspace removes the '2' from '12' -- "1/03/2026" parses as Jan 3
+      // but must NOT be re-padded to "01/03/2026" mid-edit.
+      fireEvent.change(input, { target: { value: '1/03/2026' } });
+      expect(input.value).toBe('1/03/2026');
+      // User backspaces the '1' and types '0' then '2' -> '02/03/2026'
+      fireEvent.change(input, { target: { value: '/03/2026' } });
+      fireEvent.change(input, { target: { value: '0/03/2026' } });
+      fireEvent.change(input, { target: { value: '02/03/2026' } });
+      expect(input.value).toBe('02/03/2026');
+      expect(onDateChange).toHaveBeenLastCalledWith('2026-02-03');
+    });
+
+    it('reformats to canonical padding on blur after the user types an unpadded date', () => {
+      mockUseDateFormat.mockReturnValue({
+        formatDate: (d: string) => d,
+        dateFormat: 'MM/DD/YYYY',
+      });
+      const { getByLabelText } = renderDateInput('');
+      const input = getByLabelText('Date') as HTMLInputElement;
+      fireEvent.change(input, { target: { value: '3/5/2025' } });
+      expect(input.value).toBe('3/5/2025');
+      fireEvent.blur(input);
+      expect(input.value).toBe('03/05/2025');
+    });
+
     it('uses the user date format as placeholder when empty', () => {
       const { getByLabelText } = renderDateInput('');
       expect(getByLabelText('Date')).toHaveAttribute('placeholder', 'DD/MM/YYYY');

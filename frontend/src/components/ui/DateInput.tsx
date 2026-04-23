@@ -380,18 +380,25 @@ export const DateInput = forwardRef<HTMLInputElement, DateInputProps>(
     // character that can't appear in the format so users can't enter letters
     // in MM/DD/YYYY or the like. maxLength on the input handles the
     // "too-long" case at the DOM level.
+    //
+    // Deliberately does NOT reformat displayValue when parsing succeeds --
+    // otherwise an unpadded intermediate like "12/3/2026" would be rewritten
+    // to "12/03/2026" in the middle of a "12/03/2026" -> "12/23/2026" edit
+    // and the user's next keystroke would land in the wrong place. The blur
+    // handler applies the canonical format once editing is done.
     const handleTextChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
       const text = stripInvalidFormatChars(e.target.value, dateFormat);
       setDisplayValue(text);
 
       const parsed = parseDateFromFormat(text, dateFormat);
       if (parsed) {
-        emitDateChange(parsed);
+        setIsoValue(parsed);
+        onDateChange?.(parsed);
       } else if (!text) {
         setIsoValue('');
         onDateChange?.('');
       }
-    }, [dateFormat, emitDateChange, onDateChange]);
+    }, [dateFormat, onDateChange]);
 
     // Desktop text mode: reformat on blur
     const handleTextBlur = useCallback((e: React.FocusEvent<HTMLInputElement>) => {
