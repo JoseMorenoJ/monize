@@ -61,9 +61,11 @@ export function DividendIncomeReport() {
   const [capitalGains, setCapitalGains] = useState<CapitalGainEntry[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState<string>('');
+  const [selectedSecurityId, setSelectedSecurityId] = useState<string>('');
   const { dateRange, setDateRange, resolvedRange, isValid } = useDateRange({ defaultRange: '1y', alignment: 'month' });
   const [isLoading, setIsLoading] = useState(true);
   const [viewType, setViewType] = useState<'monthly' | 'bySecurity'>('monthly');
+  const [monthlyDisplay, setMonthlyDisplay] = useState<'chart' | 'table'>('chart');
   const [visibleSeries, setVisibleSeries] = useState<Record<SeriesKey, boolean>>({
     dividends: true,
     interest: true,
@@ -76,6 +78,56 @@ export function DividendIncomeReport() {
     accounts.forEach((a) => map.set(a.id, a.currencyCode));
     return map;
   }, [accounts]);
+
+  // Securities present in the currently-loaded (account-filtered) data.
+  // Transactions and capital gains are already narrowed by the backend when an
+  // account is selected, so deriving the list from them naturally hides
+  // securities from other accounts.
+  const availableSecurities = useMemo(() => {
+    const map = new Map<string, { id: string; symbol: string; name: string }>();
+    for (const tx of transactions) {
+      if (!tx.securityId || !tx.security) continue;
+      if (!map.has(tx.securityId)) {
+        map.set(tx.securityId, {
+          id: tx.securityId,
+          symbol: tx.security.symbol,
+          name: tx.security.name,
+        });
+      }
+    }
+    for (const entry of capitalGains) {
+      if (!map.has(entry.securityId)) {
+        map.set(entry.securityId, {
+          id: entry.securityId,
+          symbol: entry.symbol || 'Unknown',
+          name: entry.securityName || 'Unknown Security',
+        });
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => a.symbol.localeCompare(b.symbol));
+  }, [transactions, capitalGains]);
+
+  // Clear the security filter when the account changes or when the selected
+  // security drops out of the available set (e.g. switching to an account
+  // that doesn't hold it).
+  useEffect(() => {
+    if (
+      selectedSecurityId &&
+      !availableSecurities.some((s) => s.id === selectedSecurityId)
+    ) {
+      setSelectedSecurityId('');
+    }
+  }, [selectedSecurityId, availableSecurities]);
+
+  const filteredTransactions = useMemo(() => {
+    if (!selectedSecurityId) return transactions;
+    return transactions.filter((tx) => tx.securityId === selectedSecurityId);
+  }, [transactions, selectedSecurityId]);
+
+  const filteredCapitalGains = useMemo(() => {
+    if (!selectedSecurityId) return capitalGains;
+    return capitalGains.filter((e) => e.securityId === selectedSecurityId);
+  }, [capitalGains, selectedSecurityId]);
 
   // When a single account is selected, show in native currency; otherwise convert to default
   const selectedAccount = accounts.find((a) => a.id === selectedAccountId);
@@ -212,7 +264,7 @@ export function DividendIncomeReport() {
       return bucket;
     };
 
-    transactions.forEach((tx) => {
+    filteredTransactions.forEach((tx) => {
       const bucket = getOrCreateBucket(parseLocalDate(tx.transactionDate));
       const contribution = getTxAmount(tx);
       switch (tx.action) {
@@ -229,7 +281,7 @@ export function DividendIncomeReport() {
       bucket.total += contribution;
     });
 
-    capitalGains.forEach((entry) => {
+    filteredCapitalGains.forEach((entry) => {
       // entry.month is YYYY-MM; create a date in the middle of the month so
       // local-timezone parsing puts it in the right bucket.
       const monthDate = parseLocalDate(`${entry.month}-15`);
@@ -240,7 +292,7 @@ export function DividendIncomeReport() {
     });
 
     return Array.from(monthMap.values()).sort((a, b) => a.month.localeCompare(b.month));
-  }, [transactions, capitalGains, dateRange, resolvedRange, getTxAmount, convertCapitalGain]);
+  }, [filteredTransactions, filteredCapitalGains, dateRange, resolvedRange, getTxAmount, convertCapitalGain]);
 
   const securityData = useMemo((): SecurityIncome[] => {
     const securityMap = new Map<string, SecurityIncome>();
@@ -254,7 +306,7 @@ export function DividendIncomeReport() {
       return bucket;
     };
 
-    transactions.forEach((tx) => {
+    filteredTransactions.forEach((tx) => {
       const symbol = tx.security?.symbol || 'Unknown';
       const name = tx.security?.name || 'Unknown Security';
       const bucket = getOrCreateBucket(symbol, name);
@@ -273,7 +325,7 @@ export function DividendIncomeReport() {
       bucket.total += contribution;
     });
 
-    capitalGains.forEach((entry) => {
+    filteredCapitalGains.forEach((entry) => {
       const symbol = entry.symbol || 'Unknown';
       const name = entry.securityName || 'Unknown Security';
       const bucket = getOrCreateBucket(symbol, name);
@@ -283,19 +335,19 @@ export function DividendIncomeReport() {
     });
 
     return Array.from(securityMap.values()).sort((a, b) => b.total - a.total);
-  }, [transactions, capitalGains, getTxAmount, convertCapitalGain]);
+  }, [filteredTransactions, filteredCapitalGains, getTxAmount, convertCapitalGain]);
 
   const totals = useMemo(() => {
-    const dividends = transactions
+    const dividends = filteredTransactions
       .filter((t) => t.action === 'DIVIDEND')
       .reduce((sum, t) => sum + getTxAmount(t), 0);
-    const interest = transactions
+    const interest = filteredTransactions
       .filter((t) => t.action === 'INTEREST')
       .reduce((sum, t) => sum + getTxAmount(t), 0);
-    const manualCapitalGains = transactions
+    const manualCapitalGains = filteredTransactions
       .filter((t) => t.action === 'CAPITAL_GAIN')
       .reduce((sum, t) => sum + getTxAmount(t), 0);
-    const periodCapitalGains = capitalGains.reduce(
+    const periodCapitalGains = filteredCapitalGains.reduce(
       (sum, entry) => sum + convertCapitalGain(entry),
       0,
     );
@@ -306,7 +358,7 @@ export function DividendIncomeReport() {
       capitalGains: totalGains,
       total: dividends + interest + totalGains,
     };
-  }, [transactions, capitalGains, getTxAmount, convertCapitalGain]);
+  }, [filteredTransactions, filteredCapitalGains, getTxAmount, convertCapitalGain]);
 
   const handleExportPdf = async () => {
     const { exportToPdf } = await import('@/lib/pdf-export');
@@ -409,8 +461,14 @@ export function DividendIncomeReport() {
         <div className="flex flex-wrap gap-3 items-center">
           <select
             value={selectedAccountId}
-            onChange={(e) => setSelectedAccountId(e.target.value)}
+            onChange={(e) => {
+              setSelectedAccountId(e.target.value);
+              // Reset security filter when the account changes so stale
+              // selections can't hide all rows.
+              setSelectedSecurityId('');
+            }}
             className="max-w-48 rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 text-sm"
+            aria-label="Filter by account"
           >
             <option value="">All Accounts</option>
             {accounts
@@ -421,6 +479,21 @@ export function DividendIncomeReport() {
                   {account.name.replace(/ - (Brokerage|Cash)$/, '')}
                 </option>
               ))}
+          </select>
+          <select
+            value={selectedSecurityId}
+            onChange={(e) => setSelectedSecurityId(e.target.value)}
+            className="max-w-48 rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 text-sm"
+            aria-label="Filter by security"
+            disabled={availableSecurities.length === 0}
+          >
+            <option value="">All Securities</option>
+            {availableSecurities.map((security) => (
+              <option key={security.id} value={security.id}>
+                {security.symbol}
+                {security.name ? ` — ${security.name}` : ''}
+              </option>
+            ))}
           </select>
           <DateRangeSelector
             ranges={['6m', '1y', '2y', 'all']}
@@ -451,41 +524,69 @@ export function DividendIncomeReport() {
             <ExportDropdown onExportPdf={handleExportPdf} />
           </div>
         </div>
-        {/* Series visibility toggles */}
+        {/* Monthly view sub-controls: chart/table switch + series toggles */}
         {viewType === 'monthly' && (
-          <div className="flex flex-wrap gap-2 mt-3 items-center">
-            <span className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
-              Show:
-            </span>
-            {(Object.keys(SERIES_COLORS) as SeriesKey[]).map((key) => (
-              <label
-                key={key}
-                className="inline-flex items-center gap-1.5 cursor-pointer text-sm text-gray-700 dark:text-gray-300"
+          <div className="flex flex-wrap gap-4 mt-3 items-center">
+            <div
+              className="inline-flex rounded-md border border-gray-200 dark:border-gray-600 overflow-hidden text-sm"
+              role="group"
+              aria-label="Monthly display mode"
+            >
+              <button
+                onClick={() => setMonthlyDisplay('chart')}
+                className={`px-3 py-1 font-medium transition-colors ${
+                  monthlyDisplay === 'chart'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+                }`}
               >
-                <input
-                  type="checkbox"
-                  checked={visibleSeries[key]}
-                  onChange={() => toggleSeries(key)}
-                  className="rounded border-gray-300 dark:border-gray-600"
-                />
-                <span
-                  className="inline-block w-3 h-3 rounded-sm"
-                  style={{ backgroundColor: SERIES_COLORS[key].positive }}
-                />
-                {SERIES_COLORS[key].label}
-              </label>
-            ))}
+                Chart
+              </button>
+              <button
+                onClick={() => setMonthlyDisplay('table')}
+                className={`px-3 py-1 font-medium transition-colors ${
+                  monthlyDisplay === 'table'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+                }`}
+              >
+                Table
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-2 items-center">
+              <span className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                Show:
+              </span>
+              {(Object.keys(SERIES_COLORS) as SeriesKey[]).map((key) => (
+                <label
+                  key={key}
+                  className="inline-flex items-center gap-1.5 cursor-pointer text-sm text-gray-700 dark:text-gray-300"
+                >
+                  <input
+                    type="checkbox"
+                    checked={visibleSeries[key]}
+                    onChange={() => toggleSeries(key)}
+                    className="rounded border-gray-300 dark:border-gray-600"
+                  />
+                  <span
+                    className="inline-block w-3 h-3 rounded-sm"
+                    style={{ backgroundColor: SERIES_COLORS[key].positive }}
+                  />
+                  {SERIES_COLORS[key].label}
+                </label>
+              ))}
+            </div>
           </div>
         )}
       </div>
 
-      {transactions.length === 0 && capitalGains.length === 0 ? (
+      {filteredTransactions.length === 0 && filteredCapitalGains.length === 0 ? (
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-6">
           <p className="text-gray-500 dark:text-gray-400 text-center py-8">
             No dividends, interest, or capital gain activity found for this period.
           </p>
         </div>
-      ) : viewType === 'monthly' ? (
+      ) : viewType === 'monthly' && monthlyDisplay === 'chart' ? (
         /* Monthly Chart */
         <div ref={chartRef} className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 px-2 py-4 sm:p-6">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
@@ -537,6 +638,89 @@ export function DividendIncomeReport() {
                 )}
               </BarChart>
             </ResponsiveContainer>
+          </div>
+        </div>
+      ) : viewType === 'monthly' ? (
+        /* Monthly Table */
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+              Monthly Gains, Dividends & Interest
+            </h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+              <thead className="bg-gray-50 dark:bg-gray-900/50">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                    Month
+                  </th>
+                  {visibleSeries.dividends && (
+                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                      Dividends
+                    </th>
+                  )}
+                  {visibleSeries.interest && (
+                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                      Interest
+                    </th>
+                  )}
+                  {visibleSeries.capitalGains && (
+                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                      Capital Gains
+                    </th>
+                  )}
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                    Total
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                {monthlyData.map((row) => {
+                  const rowTotal =
+                    (visibleSeries.dividends ? row.dividends : 0) +
+                    (visibleSeries.interest ? row.interest : 0) +
+                    (visibleSeries.capitalGains ? row.capitalGains : 0);
+                  return (
+                    <tr key={row.month} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                      <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100">
+                        {row.label}
+                      </td>
+                      {visibleSeries.dividends && (
+                        <td className="px-4 py-3 text-right text-sm text-green-600 dark:text-green-400">
+                          {row.dividends !== 0 ? fmtValue(row.dividends) : '-'}
+                        </td>
+                      )}
+                      {visibleSeries.interest && (
+                        <td className="px-4 py-3 text-right text-sm text-blue-600 dark:text-blue-400">
+                          {row.interest !== 0 ? fmtValue(row.interest) : '-'}
+                        </td>
+                      )}
+                      {visibleSeries.capitalGains && (
+                        <td
+                          className={`px-4 py-3 text-right text-sm ${
+                            row.capitalGains < 0
+                              ? 'text-red-600 dark:text-red-400'
+                              : 'text-purple-600 dark:text-purple-400'
+                          }`}
+                        >
+                          {row.capitalGains !== 0 ? fmtValue(row.capitalGains) : '-'}
+                        </td>
+                      )}
+                      <td
+                        className={`px-4 py-3 text-right text-sm font-medium ${
+                          rowTotal < 0
+                            ? 'text-red-600 dark:text-red-400'
+                            : 'text-gray-900 dark:text-gray-100'
+                        }`}
+                      >
+                        {rowTotal !== 0 ? fmtValue(rowTotal) : '-'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </div>
       ) : (
