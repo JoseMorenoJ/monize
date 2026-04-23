@@ -314,6 +314,68 @@ describe('DividendIncomeReport', () => {
     });
   });
 
+  it('renders Start Value and End Value columns in the monthly table, summed across securities', async () => {
+    mockGetTransactions.mockResolvedValue({ data: [], pagination: { hasMore: false } });
+    mockGetInvestmentAccounts.mockResolvedValue([
+      { id: 'acc-1', name: 'TFSA', currencyCode: 'CAD', accountSubType: 'INVESTMENT_CASH' },
+    ]);
+    mockGetCapitalGains.mockResolvedValue([
+      // Two securities held through June 2024; Start/End should sum.
+      {
+        month: '2024-06',
+        accountId: 'acc-1',
+        accountName: 'TFSA',
+        accountCurrencyCode: 'CAD',
+        securityId: 'sec-a',
+        symbol: 'AAA',
+        securityName: 'Alpha',
+        securityCurrencyCode: 'CAD',
+        startQuantity: 10,
+        endQuantity: 10,
+        startValue: 1000,
+        endValue: 1200,
+        buys: 0,
+        sells: 0,
+        realizedGain: 0,
+        unrealizedGain: 200,
+        totalCapitalGain: 200,
+      },
+      {
+        month: '2024-06',
+        accountId: 'acc-1',
+        accountName: 'TFSA',
+        accountCurrencyCode: 'CAD',
+        securityId: 'sec-b',
+        symbol: 'BBB',
+        securityName: 'Beta',
+        securityCurrencyCode: 'CAD',
+        startQuantity: 5,
+        endQuantity: 5,
+        startValue: 500,
+        endValue: 450,
+        buys: 0,
+        sells: 0,
+        realizedGain: 0,
+        unrealizedGain: -50,
+        totalCapitalGain: -50,
+      },
+    ]);
+
+    render(<DividendIncomeReport />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Table' })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Table' }));
+
+    // Both columns appear as headers.
+    expect(await screen.findByText('Start Value')).toBeInTheDocument();
+    expect(screen.getByText('End Value')).toBeInTheDocument();
+    // The June row carries the summed Start ($1500) and End ($1650) values.
+    expect(screen.getByText('$1500.00')).toBeInTheDocument();
+    expect(screen.getByText('$1650.00')).toBeInTheDocument();
+  });
+
   it('switches the monthly view from chart to table on demand', async () => {
     mockGetTransactions.mockResolvedValue({
       data: [
@@ -386,15 +448,27 @@ describe('DividendIncomeReport', () => {
     expect(mockExportToCsv).toHaveBeenCalledTimes(1);
     const [filename, headers, rows] = mockExportToCsv.mock.calls[0];
     expect(filename).toMatch(/gains-dividends-interest-monthly-all-accounts/);
-    expect(headers).toEqual(['Month', 'Dividends', 'Interest', 'Capital Gains', 'Total', 'Currency']);
-    // The row for June 2024 contains the $100 dividend.
+    expect(headers).toEqual([
+      'Month',
+      'Start Value',
+      'End Value',
+      'Dividends',
+      'Interest',
+      'Capital Gains',
+      'Total',
+      'Currency',
+    ]);
+    // The row for June 2024 contains the $100 dividend; Start/End Value are
+    // zero here since the mocked data has no capital-gain entries.
     const juneRow = rows.find((r: any[]) => r[0] === '2024-06');
     expect(juneRow).toBeDefined();
-    expect(juneRow[1]).toBe(100); // Dividends
-    expect(juneRow[2]).toBe(0);   // Interest
-    expect(juneRow[3]).toBe(0);   // Capital Gains
-    expect(juneRow[4]).toBe(100); // Total
-    expect(juneRow[5]).toBe('CAD');
+    expect(juneRow[1]).toBe(0);   // Start Value
+    expect(juneRow[2]).toBe(0);   // End Value
+    expect(juneRow[3]).toBe(100); // Dividends
+    expect(juneRow[4]).toBe(0);   // Interest
+    expect(juneRow[5]).toBe(0);   // Capital Gains
+    expect(juneRow[6]).toBe(100); // Total
+    expect(juneRow[7]).toBe('CAD');
   });
 
   it('omits hidden series from the CSV export', async () => {
@@ -430,7 +504,15 @@ describe('DividendIncomeReport', () => {
     fireEvent.click(screen.getByRole('button', { name: 'CSV' }));
 
     const [, headers] = mockExportToCsv.mock.calls[0];
-    expect(headers).toEqual(['Month', 'Dividends', 'Interest', 'Total', 'Currency']);
+    expect(headers).toEqual([
+      'Month',
+      'Start Value',
+      'End Value',
+      'Dividends',
+      'Interest',
+      'Total',
+      'Currency',
+    ]);
   });
 
   it('hands the table data (not the chart container) to the PDF exporter in the monthly table view', async () => {
@@ -471,6 +553,8 @@ describe('DividendIncomeReport', () => {
     expect(args.tableData).toBeDefined();
     expect(args.tableData.headers).toEqual([
       'Month',
+      'Start Value',
+      'End Value',
       'Dividends',
       'Interest',
       'Capital Gains',
@@ -478,6 +562,10 @@ describe('DividendIncomeReport', () => {
     ]);
     expect(args.tableData.rows.length).toBeGreaterThan(0);
     expect(args.tableData.totalRow?.[0]).toBe('Total');
+    // Start/End Value in the footer total row are intentionally blank —
+    // a column sum of point-in-time snapshots would be meaningless.
+    expect(args.tableData.totalRow?.[1]).toBe('');
+    expect(args.tableData.totalRow?.[2]).toBe('');
   });
 
   it('hands the chart container to the PDF exporter in the chart view', async () => {

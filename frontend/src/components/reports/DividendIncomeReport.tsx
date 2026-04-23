@@ -33,6 +33,8 @@ type SeriesKey = 'dividends' | 'interest' | 'capitalGains';
 interface MonthlyIncome {
   month: string;
   label: string;
+  startValue: number;
+  endValue: number;
   dividends: number;
   interest: number;
   capitalGains: number;
@@ -154,6 +156,16 @@ export function DividendIncomeReport() {
     return convertToDefault(entry.totalCapitalGain, entry.accountCurrencyCode || defaultCurrency);
   }, [selectedAccountId, defaultCurrency, convertToDefault]);
 
+  // Same conversion as convertCapitalGain but applied to an arbitrary amount
+  // denominated in the entry's account currency (e.g. start/end market values).
+  const convertFromAccountCurrency = useCallback(
+    (amount: number, accountCurrencyCode: string | null): number => {
+      if (selectedAccountId) return amount;
+      return convertToDefault(amount, accountCurrencyCode || defaultCurrency);
+    },
+    [selectedAccountId, defaultCurrency, convertToDefault],
+  );
+
   const fmtValue = useCallback((value: number): string => {
     if (isForeign) {
       return `${formatCurrencyFull(value, displayCurrency)} ${displayCurrency}`;
@@ -241,6 +253,8 @@ export function DividendIncomeReport() {
       monthMap.set(key, {
         month: key,
         label: format(month, 'MMM yyyy'),
+        startValue: 0,
+        endValue: 0,
         dividends: 0,
         interest: 0,
         capitalGains: 0,
@@ -255,6 +269,8 @@ export function DividendIncomeReport() {
         bucket = {
           month: monthKey,
           label: format(txDate, 'MMM yyyy'),
+          startValue: 0,
+          endValue: 0,
           dividends: 0,
           interest: 0,
           capitalGains: 0,
@@ -290,10 +306,20 @@ export function DividendIncomeReport() {
       const gain = convertCapitalGain(entry);
       bucket.capitalGains += gain;
       bucket.total += gain;
+      // Start/end market values sum across securities to give a portfolio
+      // mark-to-market snapshot at each month boundary.
+      bucket.startValue += convertFromAccountCurrency(
+        entry.startValue,
+        entry.accountCurrencyCode,
+      );
+      bucket.endValue += convertFromAccountCurrency(
+        entry.endValue,
+        entry.accountCurrencyCode,
+      );
     });
 
     return Array.from(monthMap.values()).sort((a, b) => a.month.localeCompare(b.month));
-  }, [filteredTransactions, filteredCapitalGains, dateRange, resolvedRange, getTxAmount, convertCapitalGain]);
+  }, [filteredTransactions, filteredCapitalGains, dateRange, resolvedRange, getTxAmount, convertCapitalGain, convertFromAccountCurrency]);
 
   const securityData = useMemo((): SecurityIncome[] => {
     const securityMap = new Map<string, SecurityIncome>();
@@ -404,13 +430,17 @@ export function DividendIncomeReport() {
     // Monthly table export. Respect the series visibility toggles so the CSV
     // matches what the user sees; the Total column reflects only the visible
     // series (same logic as the rendered table).
-    const headers: string[] = ['Month'];
+    const headers: string[] = ['Month', 'Start Value', 'End Value'];
     if (visibleSeries.dividends) headers.push('Dividends');
     if (visibleSeries.interest) headers.push('Interest');
     if (visibleSeries.capitalGains) headers.push('Capital Gains');
     headers.push('Total', 'Currency');
     const rows = monthlyData.map((row) => {
-      const out: (string | number)[] = [row.month];
+      const out: (string | number)[] = [
+        row.month,
+        round4(row.startValue),
+        round4(row.endValue),
+      ];
       let total = 0;
       if (visibleSeries.dividends) {
         out.push(round4(row.dividends));
@@ -465,13 +495,17 @@ export function DividendIncomeReport() {
         ],
       };
     } else if (viewType === 'monthly' && monthlyDisplay === 'table') {
-      const headers: string[] = ['Month'];
+      const headers: string[] = ['Month', 'Start Value', 'End Value'];
       if (visibleSeries.dividends) headers.push('Dividends');
       if (visibleSeries.interest) headers.push('Interest');
       if (visibleSeries.capitalGains) headers.push('Capital Gains');
       headers.push('Total');
       const rows = monthlyData.map((row) => {
-        const out: (string | number)[] = [row.label];
+        const out: (string | number)[] = [
+          row.label,
+          fmtValue(row.startValue),
+          fmtValue(row.endValue),
+        ];
         let rowTotal = 0;
         if (visibleSeries.dividends) {
           out.push(fmtValue(row.dividends));
@@ -489,8 +523,9 @@ export function DividendIncomeReport() {
         return out;
       });
       // Column totals across the whole window, respecting hidden series so the
-      // footer sum matches the visible columns.
-      const totalRow: (string | number)[] = ['Total'];
+      // footer sum matches the visible columns. Start/End values are point-in-
+      // time snapshots so a column sum would be meaningless — leave them blank.
+      const totalRow: (string | number)[] = ['Total', '', ''];
       let grandTotal = 0;
       if (visibleSeries.dividends) {
         totalRow.push(fmtValue(totals.dividends));
@@ -807,6 +842,12 @@ export function DividendIncomeReport() {
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
                     Month
                   </th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                    Start Value
+                  </th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                    End Value
+                  </th>
                   {visibleSeries.dividends && (
                     <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
                       Dividends
@@ -837,6 +878,12 @@ export function DividendIncomeReport() {
                     <tr key={row.month} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                       <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100">
                         {row.label}
+                      </td>
+                      <td className="px-4 py-3 text-right text-sm text-gray-700 dark:text-gray-300">
+                        {row.startValue !== 0 ? fmtValue(row.startValue) : '-'}
+                      </td>
+                      <td className="px-4 py-3 text-right text-sm text-gray-700 dark:text-gray-300">
+                        {row.endValue !== 0 ? fmtValue(row.endValue) : '-'}
                       </td>
                       {visibleSeries.dividends && (
                         <td className="px-4 py-3 text-right text-sm text-green-600 dark:text-green-400">
