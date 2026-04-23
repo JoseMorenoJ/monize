@@ -957,6 +957,16 @@ describe('InvestmentTransactionForm', () => {
         expect(screen.getByText(/100\.0000/)).toBeInTheDocument();
         expect(screen.getByText(/200\.0000/)).toBeInTheDocument();
         expect(screen.getByText(/75\.0000/)).toBeInTheDocument();
+
+        // The unhelpful replay-auto sentence must be gone.
+        expect(
+          screen.queryByText(/replayed automatically/i),
+        ).not.toBeInTheDocument();
+
+        // The "Before (as of ...)" line must render the transaction date using
+        // the user's locale formatting, not the raw YYYY-MM-DD string.
+        expect(screen.queryByText(/as of 2026-01-15/)).not.toBeInTheDocument();
+        expect(screen.getByText(/Before \(as of/i)).toBeInTheDocument();
       } finally {
         asOfMock.mockResolvedValue({ quantity: 0, averageCost: 0 });
       }
