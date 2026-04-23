@@ -265,15 +265,32 @@ describe('DateInput', () => {
       });
     });
 
-    it('renders as type="date" in non-browser format mode on desktop', () => {
+    it('renders as type="text" with formatted display in non-browser format mode on desktop', () => {
       const { getByLabelText } = renderDateInput('2025-06-15');
-      // Desktop custom-format mode now uses native date input for segment navigation
-      expect(getByLabelText('Date')).toHaveAttribute('type', 'date');
+      const input = getByLabelText('Date') as HTMLInputElement;
+      expect(input).toHaveAttribute('type', 'text');
+      expect(input.value).toBe('15/06/2025');
     });
 
-    it('uses YYYY-MM-DD value in native date input regardless of format preference', () => {
-      const { getByLabelText } = renderDateInput('2025-06-15');
-      expect(getByLabelText('Date')).toHaveValue('2025-06-15');
+    it('keeps ISO value in a hidden input so react-hook-form reads the canonical format', () => {
+      const { container } = renderDateInput('2025-06-15');
+      const hidden = container.querySelector('input[type="hidden"]') as HTMLInputElement;
+      expect(hidden).not.toBeNull();
+      expect(hidden.value).toBe('2025-06-15');
+    });
+
+    it('reformats the typed date on blur', () => {
+      const { getByLabelText } = renderDateInput('');
+      const input = getByLabelText('Date') as HTMLInputElement;
+      fireEvent.change(input, { target: { value: '25/12/2025' } });
+      fireEvent.blur(input);
+      expect(input.value).toBe('25/12/2025');
+      expect(onDateChange).toHaveBeenCalledWith('2025-12-25');
+    });
+
+    it('uses the user date format as placeholder when empty', () => {
+      const { getByLabelText } = renderDateInput('');
+      expect(getByLabelText('Date')).toHaveAttribute('placeholder', 'DD/MM/YYYY');
     });
 
     it('shows calendar icon button on desktop', () => {

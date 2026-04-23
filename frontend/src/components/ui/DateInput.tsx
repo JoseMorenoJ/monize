@@ -165,7 +165,7 @@ function getInputMode(dateFormat: string): InputMode {
 }
 
 export const DateInput = forwardRef<HTMLInputElement, DateInputProps>(
-  ({ onDateChange, onKeyDown, onChange: externalOnChange, onBlur: externalOnBlur, value: externalValue, label, id, ...props }, ref) => {
+  ({ onDateChange, onKeyDown, onChange: externalOnChange, onBlur: externalOnBlur, value: externalValue, label, id, name, ...props }, ref) => {
     const inputId = id || (label ? `input-${label.toLowerCase().replace(/\s+/g, '-')}` : undefined);
     const { dateFormat } = useDateFormat();
     const mode = getInputMode(dateFormat);
@@ -216,14 +216,17 @@ export const DateInput = forwardRef<HTMLInputElement, DateInputProps>(
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [mode, dateFormat]);
 
-    // Sync explicit value prop changes to internal state
+    // Sync explicit value prop changes to internal state. When the caller is
+    // uncontrolled (RHF register, no value prop), externalValue is undefined
+    // and we skip -- the mount effect below reads the ref-injected DOM value
+    // instead.
     useEffect(() => {
       if (mode === 'touch-browser') return;
+      if (externalValue === undefined) return;
       const newIso = (externalValue as string) || '';
-      if (!newIso) return;
       setIsoValue(newIso);
       if (!isFocusedRef.current) {
-        setDisplayValue(formatDate(newIso, dateFormat));
+        setDisplayValue(newIso ? formatDate(newIso, dateFormat) : '');
       }
     }, [externalValue, dateFormat, mode]);
 
@@ -260,20 +263,21 @@ export const DateInput = forwardRef<HTMLInputElement, DateInputProps>(
     }, [mode, isoValue, emitDateChange, onDateChange, onKeyDown]);
 
     // Desktop text mode: handle user typing in the formatted input
-    const _handleTextChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
+    const handleTextChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
       const text = e.target.value;
       setDisplayValue(text);
 
       const parsed = parseDateFromFormat(text, dateFormat);
       if (parsed) {
         emitDateChange(parsed);
+      } else if (!text) {
+        setIsoValue('');
+        onDateChange?.('');
       }
-      // Also forward to external onChange for components that listen to it directly
-      externalOnChange?.(e);
-    }, [dateFormat, emitDateChange, externalOnChange]);
+    }, [dateFormat, emitDateChange, onDateChange]);
 
     // Desktop text mode: reformat on blur
-    const _handleTextBlur = useCallback((e: React.FocusEvent<HTMLInputElement>) => {
+    const handleTextBlur = useCallback((e: React.FocusEvent<HTMLInputElement>) => {
       isFocusedRef.current = false;
       const parsed = parseDateFromFormat(displayValue, dateFormat);
       if (parsed) {
@@ -285,7 +289,7 @@ export const DateInput = forwardRef<HTMLInputElement, DateInputProps>(
       externalOnBlur?.(e);
     }, [displayValue, dateFormat, isoValue, emitDateChange, externalOnBlur]);
 
-    const _handleTextFocus = useCallback(() => {
+    const handleTextFocus = useCallback(() => {
       isFocusedRef.current = true;
     }, []);
 
@@ -297,7 +301,7 @@ export const DateInput = forwardRef<HTMLInputElement, DateInputProps>(
       setShowCalendar((prev) => !prev);
     }, []);
 
-    const _handleCalendarSelect = useCallback((date: string) => {
+    const handleCalendarSelect = useCallback((date: string) => {
       if (date) {
         emitDateChange(date);
       }
@@ -379,7 +383,7 @@ export const DateInput = forwardRef<HTMLInputElement, DateInputProps>(
             <input
               ref={mergedRef}
               type="hidden"
-              name={props.name}
+              name={name}
               value={isoValue}
               readOnly
             />
@@ -404,10 +408,54 @@ export const DateInput = forwardRef<HTMLInputElement, DateInputProps>(
       </button>
     );
 
-    // --- Desktop mode (both formatted and browser) ---
+    // --- Desktop + custom format mode ---
+    // Visible text input displays the date in the user's chosen format
+    // (e.g. DD/MM/YYYY). A hidden input holds the canonical YYYY-MM-DD value
+    // and is bound to react-hook-form via the forwarded ref.
+    if (mode === 'desktop-formatted') {
+      return (
+        <div className="w-full">
+          {labelBlock}
+          <div className="relative" ref={calendarAnchorRef}>
+            <Input
+              id={inputId}
+              type="text"
+              value={displayValue}
+              onChange={handleTextChange}
+              onFocus={handleTextFocus}
+              onBlur={handleTextBlur}
+              onKeyDown={handleKeyDown}
+              error={props.error}
+              placeholder={dateFormat}
+              className="pr-9"
+              {...props}
+            />
+            {calendarButton}
+            {showCalendar && (
+              <CalendarPopover
+                value={isoValue}
+                onSelect={handleCalendarSelect}
+                onClose={handleCalendarClose}
+                anchorRef={calendarAnchorRef}
+              />
+            )}
+            {/* Hidden input bound to react-hook-form for value/ref management */}
+            <input
+              ref={mergedRef}
+              type="hidden"
+              name={name}
+              value={isoValue}
+              readOnly
+            />
+          </div>
+        </div>
+      );
+    }
+
+    // --- Desktop + browser-locale mode ---
     // Native date input (supports arrow-key segment navigation) with the
     // browser's built-in picker icon hidden, replaced by CalendarPopover.
-    if (mode === 'desktop-formatted' || mode === 'desktop-browser') {
+    if (mode === 'desktop-browser') {
       return (
         <div className="w-full">
           {labelBlock}
@@ -425,6 +473,7 @@ export const DateInput = forwardRef<HTMLInputElement, DateInputProps>(
               onKeyDown={handleKeyDown}
               error={props.error}
               className="pr-9 date-picker-hide"
+              name={name}
               {...props}
             />
             {calendarButton}
@@ -461,6 +510,7 @@ export const DateInput = forwardRef<HTMLInputElement, DateInputProps>(
             onBlur={externalOnBlur}
             onKeyDown={handleKeyDown}
             className="pr-10"
+            name={name}
             {...props}
           />
           <span
