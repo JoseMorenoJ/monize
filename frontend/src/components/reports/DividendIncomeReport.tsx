@@ -23,6 +23,7 @@ import { useExchangeRates } from '@/hooks/useExchangeRates';
 import { useDateRange } from '@/hooks/useDateRange';
 import { DateRangeSelector } from '@/components/ui/DateRangeSelector';
 import { ExportDropdown } from '@/components/ui/ExportDropdown';
+import { exportToCsv } from '@/lib/csv-export';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('DividendIncomeReport');
@@ -360,6 +361,75 @@ export function DividendIncomeReport() {
     };
   }, [filteredTransactions, filteredCapitalGains, getTxAmount, convertCapitalGain]);
 
+  // CSV is only offered when the user is looking at a table. Raw numeric
+  // values (no currency formatting) are written so spreadsheets can sum and
+  // filter them; the currency code goes into a dedicated column.
+  const isTableView =
+    viewType === 'bySecurity' ||
+    (viewType === 'monthly' && monthlyDisplay === 'table');
+
+  const round4 = (n: number) => Math.round(n * 10000) / 10000;
+
+  const handleExportCsv = () => {
+    const accountLabel = selectedAccount
+      ? selectedAccount.name.replace(/ - (Brokerage|Cash)$/, '')
+      : 'all-accounts';
+    const filenameBase = 'gains-dividends-interest';
+    const scope = accountLabel.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    const currencyCode = displayCurrency;
+
+    if (viewType === 'bySecurity') {
+      const headers = [
+        'Symbol',
+        'Security',
+        'Dividends',
+        'Interest',
+        'Capital Gains',
+        'Total',
+        'Currency',
+      ];
+      const rows = securityData.map((s) => [
+        s.symbol,
+        s.name,
+        round4(s.dividends),
+        round4(s.interest),
+        round4(s.capitalGains),
+        round4(s.total),
+        currencyCode,
+      ]);
+      exportToCsv(`${filenameBase}-by-security-${scope}`, headers, rows);
+      return;
+    }
+
+    // Monthly table export. Respect the series visibility toggles so the CSV
+    // matches what the user sees; the Total column reflects only the visible
+    // series (same logic as the rendered table).
+    const headers: string[] = ['Month'];
+    if (visibleSeries.dividends) headers.push('Dividends');
+    if (visibleSeries.interest) headers.push('Interest');
+    if (visibleSeries.capitalGains) headers.push('Capital Gains');
+    headers.push('Total', 'Currency');
+    const rows = monthlyData.map((row) => {
+      const out: (string | number)[] = [row.month];
+      let total = 0;
+      if (visibleSeries.dividends) {
+        out.push(round4(row.dividends));
+        total += row.dividends;
+      }
+      if (visibleSeries.interest) {
+        out.push(round4(row.interest));
+        total += row.interest;
+      }
+      if (visibleSeries.capitalGains) {
+        out.push(round4(row.capitalGains));
+        total += row.capitalGains;
+      }
+      out.push(round4(total), currencyCode);
+      return out;
+    });
+    exportToCsv(`${filenameBase}-monthly-${scope}`, headers, rows);
+  };
+
   const handleExportPdf = async () => {
     const { exportToPdf } = await import('@/lib/pdf-export');
     const accountLabel = selectedAccount
@@ -521,7 +591,10 @@ export function DividendIncomeReport() {
             >
               By Security
             </button>
-            <ExportDropdown onExportPdf={handleExportPdf} />
+            <ExportDropdown
+              onExportPdf={handleExportPdf}
+              onExportCsv={isTableView ? handleExportCsv : undefined}
+            />
           </div>
         </div>
         {/* Monthly view sub-controls: chart/table switch + series toggles */}
@@ -557,24 +630,29 @@ export function DividendIncomeReport() {
               <span className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
                 Show:
               </span>
-              {(Object.keys(SERIES_COLORS) as SeriesKey[]).map((key) => (
-                <label
-                  key={key}
-                  className="inline-flex items-center gap-1.5 cursor-pointer text-sm text-gray-700 dark:text-gray-300"
-                >
-                  <input
-                    type="checkbox"
-                    checked={visibleSeries[key]}
-                    onChange={() => toggleSeries(key)}
-                    className="rounded border-gray-300 dark:border-gray-600"
-                  />
-                  <span
-                    className="inline-block w-3 h-3 rounded-sm"
-                    style={{ backgroundColor: SERIES_COLORS[key].positive }}
-                  />
-                  {SERIES_COLORS[key].label}
-                </label>
-              ))}
+              {(Object.keys(SERIES_COLORS) as SeriesKey[]).map((key) => {
+                const active = visibleSeries[key];
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => toggleSeries(key)}
+                    aria-pressed={active}
+                    className={`px-3 py-1 text-sm font-medium rounded-md border transition-colors ${
+                      active
+                        ? 'text-white border-transparent'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-600'
+                    }`}
+                    style={
+                      active
+                        ? { backgroundColor: SERIES_COLORS[key].positive }
+                        : undefined
+                    }
+                  >
+                    {SERIES_COLORS[key].label}
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}

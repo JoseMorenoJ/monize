@@ -71,6 +71,11 @@ vi.mock('@/lib/investments', () => ({
   },
 }));
 
+const mockExportToCsv = vi.fn();
+vi.mock('@/lib/csv-export', () => ({
+  exportToCsv: (...args: any[]) => mockExportToCsv(...args),
+}));
+
 vi.mock('@/lib/logger', () => ({
   createLogger: () => ({
     error: vi.fn(),
@@ -339,7 +344,135 @@ describe('DividendIncomeReport', () => {
     expect(screen.getByText('Month')).toBeInTheDocument();
   });
 
-  it('renders series toggles and hides a series when its checkbox is unchecked', async () => {
+  it('offers a CSV export in the monthly table view and writes the visible columns', async () => {
+    mockGetTransactions.mockResolvedValue({
+      data: [
+        {
+          id: 'tx-1',
+          transactionDate: '2024-06-15',
+          action: 'DIVIDEND',
+          totalAmount: 100,
+          accountId: 'acc-1',
+          securityId: 'sec-a',
+          security: { symbol: 'AAA', name: 'Alpha' },
+        },
+      ],
+      pagination: { hasMore: false },
+    });
+    mockGetInvestmentAccounts.mockResolvedValue([
+      { id: 'acc-1', name: 'TFSA', currencyCode: 'CAD', accountSubType: 'INVESTMENT_CASH' },
+    ]);
+    mockGetCapitalGains.mockResolvedValue([]);
+
+    render(<DividendIncomeReport />);
+
+    // No CSV button while the chart view is active.
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /export pdf/i })).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('button', { name: /^export$/i })).not.toBeInTheDocument();
+
+    // Switch to the monthly table — the dropdown trigger replaces the PDF-only button.
+    fireEvent.click(screen.getByRole('button', { name: 'Table' }));
+    const exportTrigger = await screen.findByRole('button', { name: /^export$/i });
+    fireEvent.click(exportTrigger);
+    fireEvent.click(screen.getByRole('button', { name: 'CSV' }));
+
+    expect(mockExportToCsv).toHaveBeenCalledTimes(1);
+    const [filename, headers, rows] = mockExportToCsv.mock.calls[0];
+    expect(filename).toMatch(/gains-dividends-interest-monthly-all-accounts/);
+    expect(headers).toEqual(['Month', 'Dividends', 'Interest', 'Capital Gains', 'Total', 'Currency']);
+    // The row for June 2024 contains the $100 dividend.
+    const juneRow = rows.find((r: any[]) => r[0] === '2024-06');
+    expect(juneRow).toBeDefined();
+    expect(juneRow[1]).toBe(100); // Dividends
+    expect(juneRow[2]).toBe(0);   // Interest
+    expect(juneRow[3]).toBe(0);   // Capital Gains
+    expect(juneRow[4]).toBe(100); // Total
+    expect(juneRow[5]).toBe('CAD');
+  });
+
+  it('omits hidden series from the CSV export', async () => {
+    mockGetTransactions.mockResolvedValue({
+      data: [
+        {
+          id: 'tx-1',
+          transactionDate: '2024-06-15',
+          action: 'DIVIDEND',
+          totalAmount: 100,
+          accountId: 'acc-1',
+          securityId: 'sec-a',
+          security: { symbol: 'AAA', name: 'Alpha' },
+        },
+      ],
+      pagination: { hasMore: false },
+    });
+    mockGetInvestmentAccounts.mockResolvedValue([
+      { id: 'acc-1', name: 'TFSA', currencyCode: 'CAD', accountSubType: 'INVESTMENT_CASH' },
+    ]);
+    mockGetCapitalGains.mockResolvedValue([]);
+
+    render(<DividendIncomeReport />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Table' })).toBeInTheDocument();
+    });
+    // Turn Capital Gains off, then switch to the table.
+    fireEvent.click(screen.getByRole('button', { name: 'Capital Gains' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Table' }));
+
+    fireEvent.click(await screen.findByRole('button', { name: /^export$/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'CSV' }));
+
+    const [, headers] = mockExportToCsv.mock.calls[0];
+    expect(headers).toEqual(['Month', 'Dividends', 'Interest', 'Total', 'Currency']);
+  });
+
+  it('writes a by-security CSV with one row per security', async () => {
+    mockGetTransactions.mockResolvedValue({
+      data: [
+        {
+          id: 'tx-1',
+          transactionDate: '2024-06-15',
+          action: 'DIVIDEND',
+          totalAmount: 100,
+          accountId: 'acc-1',
+          securityId: 'sec-a',
+          security: { symbol: 'AAA', name: 'Alpha' },
+        },
+      ],
+      pagination: { hasMore: false },
+    });
+    mockGetInvestmentAccounts.mockResolvedValue([
+      { id: 'acc-1', name: 'TFSA', currencyCode: 'CAD', accountSubType: 'INVESTMENT_CASH' },
+    ]);
+    mockGetCapitalGains.mockResolvedValue([]);
+
+    render(<DividendIncomeReport />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'By Security' })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'By Security' }));
+
+    fireEvent.click(await screen.findByRole('button', { name: /^export$/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'CSV' }));
+
+    const [filename, headers, rows] = mockExportToCsv.mock.calls[0];
+    expect(filename).toMatch(/gains-dividends-interest-by-security-all-accounts/);
+    expect(headers).toEqual([
+      'Symbol',
+      'Security',
+      'Dividends',
+      'Interest',
+      'Capital Gains',
+      'Total',
+      'Currency',
+    ]);
+    expect(rows).toEqual([['AAA', 'Alpha', 100, 0, 0, 100, 'CAD']]);
+  });
+
+  it('renders series toggle pills and hides a series when one is clicked', async () => {
     mockGetTransactions.mockResolvedValue({
       data: [
         {
@@ -359,21 +492,24 @@ describe('DividendIncomeReport', () => {
     mockGetCapitalGains.mockResolvedValue([]);
     render(<DividendIncomeReport />);
 
-    // Wait until the chart's Capital Gains bar appears, then toggle it off.
+    // Wait until the chart's Capital Gains bar appears, then toggle it off via
+    // the coloured pill (no checkbox here — it's a toggle button).
     await waitFor(() => {
       expect(screen.getByTestId('bar-Capital Gains')).toBeInTheDocument();
     });
 
-    const checkboxes = screen.getAllByRole('checkbox');
-    // Three series toggles: Dividends, Interest, Capital Gains. All checked by default.
-    expect(checkboxes).toHaveLength(3);
-    const capitalGainsCheckbox = checkboxes[2];
-    fireEvent.click(capitalGainsCheckbox);
+    const capitalGainsToggle = screen.getByRole('button', { name: 'Capital Gains' });
+    expect(capitalGainsToggle.getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(capitalGainsToggle);
 
     await waitFor(() => {
       expect(screen.queryByTestId('bar-Capital Gains')).not.toBeInTheDocument();
     });
-    // Other bars remain visible.
+    expect(capitalGainsToggle.getAttribute('aria-pressed')).toBe('false');
+    // Other series pills remain in the "on" state and their bars are visible.
+    expect(
+      screen.getByRole('button', { name: 'Dividends' }).getAttribute('aria-pressed'),
+    ).toBe('true');
     expect(screen.getByTestId('bar-Dividends')).toBeInTheDocument();
     expect(screen.getByTestId('bar-Interest')).toBeInTheDocument();
   });
