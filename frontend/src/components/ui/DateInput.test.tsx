@@ -293,6 +293,50 @@ describe('DateInput', () => {
       expect(getByLabelText('Date')).toHaveAttribute('placeholder', 'DD/MM/YYYY');
     });
 
+    it('caps input length to the format length', () => {
+      const { getByLabelText } = renderDateInput('');
+      // DD/MM/YYYY is 10 characters
+      expect(getByLabelText('Date')).toHaveAttribute('maxLength', '10');
+    });
+
+    it('strips letters typed into a numeric-only format', () => {
+      const { getByLabelText } = renderDateInput('');
+      const input = getByLabelText('Date') as HTMLInputElement;
+      fireEvent.change(input, { target: { value: '15abc' } });
+      expect(input.value).toBe('15');
+    });
+
+    it('strips characters that are not separators in the format', () => {
+      const { getByLabelText } = renderDateInput('');
+      const input = getByLabelText('Date') as HTMLInputElement;
+      // '.' is not a separator in DD/MM/YYYY
+      fireEvent.change(input, { target: { value: '15.06.2025' } });
+      expect(input.value).toBe('15062025');
+    });
+
+    it('allows letters in DD-MMM-YYYY but not slashes', () => {
+      mockUseDateFormat.mockReturnValue({
+        formatDate: (d: string) => d,
+        dateFormat: 'DD-MMM-YYYY',
+      });
+      const { getByLabelText } = renderDateInput('');
+      const input = getByLabelText('Date') as HTMLInputElement;
+      fireEvent.change(input, { target: { value: '15/Jun/2025' } });
+      expect(input.value).toBe('15Jun2025');
+      fireEvent.change(input, { target: { value: '15-Jun-2025' } });
+      expect(input.value).toBe('15-Jun-2025');
+      expect(onDateChange).toHaveBeenLastCalledWith('2025-06-15');
+    });
+
+    it('caps DD-MMM-YYYY format length to 11 characters', () => {
+      mockUseDateFormat.mockReturnValue({
+        formatDate: (d: string) => d,
+        dateFormat: 'DD-MMM-YYYY',
+      });
+      const { getByLabelText } = renderDateInput('');
+      expect(getByLabelText('Date')).toHaveAttribute('maxLength', '11');
+    });
+
     describe('segment navigation', () => {
       it('ArrowUp increments the day when the cursor is in the day segment', () => {
         const { getByLabelText } = renderDateInput('2025-06-15');

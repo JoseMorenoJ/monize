@@ -185,6 +185,24 @@ function findSegmentAtCursor(format: string, cursor: number): DateSegment | null
   return segments.find(s => cursor >= s.start && cursor <= s.end) ?? null;
 }
 
+// Return only characters that can legally appear in a value formatted with
+// `format` -- digits always, letters only when the format contains a month
+// name segment (MMM), and any separator that literally appears in the format.
+function stripInvalidFormatChars(text: string, format: string): string {
+  const allowsLetters = format.includes('MMM');
+  const separators = new Set<string>();
+  for (const ch of format) {
+    if (ch !== 'Y' && ch !== 'M' && ch !== 'D') separators.add(ch);
+  }
+  let result = '';
+  for (const ch of text) {
+    if (/\d/.test(ch)) result += ch;
+    else if (allowsLetters && /[a-zA-Z]/.test(ch)) result += ch;
+    else if (separators.has(ch)) result += ch;
+  }
+  return result;
+}
+
 // Adjust a YYYY-MM-DD date by delta on the given segment. Clamps day when the
 // target month/year has fewer days (e.g. Jan 31 + month -> Feb 28/29).
 function adjustIsoDate(iso: string, segmentType: DateSegmentType, delta: number): string {
@@ -358,9 +376,12 @@ export const DateInput = forwardRef<HTMLInputElement, DateInputProps>(
       pendingSelectionRef.current = null;
     }, [displayValue]);
 
-    // Desktop text mode: handle user typing in the formatted input
+    // Desktop text mode: handle user typing in the formatted input. Strip any
+    // character that can't appear in the format so users can't enter letters
+    // in MM/DD/YYYY or the like. maxLength on the input handles the
+    // "too-long" case at the DOM level.
     const handleTextChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
-      const text = e.target.value;
+      const text = stripInvalidFormatChars(e.target.value, dateFormat);
       setDisplayValue(text);
 
       const parsed = parseDateFromFormat(text, dateFormat);
@@ -524,6 +545,7 @@ export const DateInput = forwardRef<HTMLInputElement, DateInputProps>(
               onKeyDown={handleKeyDown}
               error={props.error}
               placeholder={dateFormat}
+              maxLength={dateFormat.length}
               className="pr-9"
               {...props}
             />
