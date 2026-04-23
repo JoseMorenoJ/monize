@@ -22,6 +22,7 @@ describe("McpInvestmentsTools", () => {
 
     investmentTransactionsService = {
       getLlmInvestmentTransactions: jest.fn(),
+      getLlmCapitalGains: jest.fn(),
     };
 
     tool = new McpInvestmentsTools(
@@ -40,8 +41,8 @@ describe("McpInvestmentsTools", () => {
     tool.register(server as any, resolve);
   });
 
-  it("should register 3 tools", () => {
-    expect(server.registerTool).toHaveBeenCalledTimes(3);
+  it("should register 4 tools", () => {
+    expect(server.registerTool).toHaveBeenCalledTimes(4);
   });
 
   describe("get_portfolio_summary", () => {
@@ -197,6 +198,109 @@ describe("McpInvestmentsTools", () => {
 
       const result = await handlers["query_investment_transactions"](
         {},
+        { sessionId: "s1" },
+      );
+      expect(result.isError).toBe(true);
+    });
+  });
+
+  describe("get_capital_gains", () => {
+    it("returns error when no user context", async () => {
+      resolve.mockReturnValue(undefined);
+      const result = await handlers["get_capital_gains"](
+        { startDate: "2024-01-01", endDate: "2024-12-31" },
+        { sessionId: "s1" },
+      );
+      expect(result.isError).toBe(true);
+    });
+
+    it("delegates to shared getLlmCapitalGains with all filters", async () => {
+      resolve.mockReturnValue({ userId: "u1", scopes: "read" });
+      investmentTransactionsService.getLlmCapitalGains.mockResolvedValue({
+        startDate: "2024-01-01",
+        endDate: "2024-12-31",
+        totals: {
+          realizedGain: 50,
+          unrealizedGain: 100,
+          totalCapitalGain: 150,
+        },
+        groupedBy: "security",
+        entries: [
+          {
+            month: null,
+            accountName: null,
+            symbol: "AAA",
+            securityName: "Alpha",
+            currency: "CAD",
+            startValue: 1000,
+            endValue: 1100,
+            realizedGain: 50,
+            unrealizedGain: 100,
+            totalCapitalGain: 150,
+          },
+        ],
+        entryCount: 1,
+        truncatedEntryList: false,
+      });
+
+      const result = await handlers["get_capital_gains"](
+        {
+          startDate: "2024-01-01",
+          endDate: "2024-12-31",
+          accountIds: ["00000000-0000-0000-0000-000000000001"],
+          symbols: ["AAA"],
+          groupBy: "security",
+        },
+        { sessionId: "s1" },
+      );
+
+      expect(
+        investmentTransactionsService.getLlmCapitalGains,
+      ).toHaveBeenCalledWith("u1", {
+        startDate: "2024-01-01",
+        endDate: "2024-12-31",
+        accountIds: ["00000000-0000-0000-0000-000000000001"],
+        symbols: ["AAA"],
+        groupBy: "security",
+      });
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.totals.totalCapitalGain).toBe(150);
+      expect(parsed.entries[0].symbol).toBe("AAA");
+    });
+
+    it("defaults groupBy to 'month' when omitted", async () => {
+      resolve.mockReturnValue({ userId: "u1", scopes: "read" });
+      investmentTransactionsService.getLlmCapitalGains.mockResolvedValue({
+        startDate: "2024-01-01",
+        endDate: "2024-12-31",
+        totals: { realizedGain: 0, unrealizedGain: 0, totalCapitalGain: 0 },
+        groupedBy: "month",
+        entries: [],
+        entryCount: 0,
+        truncatedEntryList: false,
+      });
+
+      await handlers["get_capital_gains"](
+        { startDate: "2024-01-01", endDate: "2024-12-31" },
+        { sessionId: "s1" },
+      );
+
+      expect(
+        investmentTransactionsService.getLlmCapitalGains,
+      ).toHaveBeenCalledWith(
+        "u1",
+        expect.objectContaining({ groupBy: "month" }),
+      );
+    });
+
+    it("returns a safe error on service failure", async () => {
+      resolve.mockReturnValue({ userId: "u1", scopes: "read" });
+      investmentTransactionsService.getLlmCapitalGains.mockRejectedValue(
+        new Error("boom"),
+      );
+
+      const result = await handlers["get_capital_gains"](
+        { startDate: "2024-01-01", endDate: "2024-12-31" },
         { sessionId: "s1" },
       );
       expect(result.isError).toBe(true);

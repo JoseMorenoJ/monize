@@ -31,6 +31,7 @@ describe("InvestmentTransactionsController", () => {
       findAll: jest.fn(),
       getSummary: jest.fn(),
       getRealizedGains: jest.fn(),
+      getCapitalGainsByMonth: jest.fn(),
       findOne: jest.fn(),
       update: jest.fn(),
       remove: jest.fn(),
@@ -220,6 +221,69 @@ describe("InvestmentTransactionsController", () => {
     it("rejects malformed dates", () => {
       expect(() =>
         controller.getRealizedGains(req, undefined, "2024/01/01"),
+      ).toThrow(BadRequestException);
+    });
+  });
+
+  describe("getCapitalGainsByMonth", () => {
+    it("passes startDate, endDate, and account filters through to the service", async () => {
+      const rows = [
+        {
+          month: "2024-06",
+          totalCapitalGain: 250,
+          realizedGain: 0,
+          unrealizedGain: 250,
+        },
+      ];
+      service.getCapitalGainsByMonth.mockResolvedValue(rows);
+
+      const result = await controller.getCapitalGainsByMonth(
+        req,
+        "2024-01-01",
+        "2024-12-31",
+        `${UUID1},${UUID2}`,
+      );
+
+      expect(service.getCapitalGainsByMonth).toHaveBeenCalledWith("user-1", {
+        accountIds: [UUID1, UUID2],
+        startDate: "2024-01-01",
+        endDate: "2024-12-31",
+      });
+      expect(result).toEqual(rows);
+    });
+
+    it("requires startDate", () => {
+      expect(() =>
+        controller.getCapitalGainsByMonth(req, "", "2024-12-31"),
+      ).toThrow(BadRequestException);
+    });
+
+    it("requires endDate", () => {
+      expect(() =>
+        controller.getCapitalGainsByMonth(req, "2024-01-01", ""),
+      ).toThrow(BadRequestException);
+    });
+
+    it("rejects malformed dates", () => {
+      expect(() =>
+        controller.getCapitalGainsByMonth(req, "2024/01/01", "2024-12-31"),
+      ).toThrow(BadRequestException);
+    });
+
+    it("rejects when startDate is after endDate", () => {
+      expect(() =>
+        controller.getCapitalGainsByMonth(req, "2024-12-31", "2024-01-01"),
+      ).toThrow(BadRequestException);
+    });
+
+    it("rejects invalid account UUIDs", () => {
+      expect(() =>
+        controller.getCapitalGainsByMonth(
+          req,
+          "2024-01-01",
+          "2024-12-31",
+          "not-a-uuid",
+        ),
       ).toThrow(BadRequestException);
     });
   });

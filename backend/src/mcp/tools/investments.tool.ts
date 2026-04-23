@@ -5,6 +5,7 @@ import { PortfolioService } from "../../securities/portfolio.service";
 import { HoldingsService } from "../../securities/holdings.service";
 import {
   InvestmentTransactionsService,
+  LlmCapitalGainsGroupBy,
   LlmInvestmentTxGroupBy,
 } from "../../securities/investment-transactions.service";
 import { InvestmentAction } from "../../securities/entities/investment-transaction.entity";
@@ -118,6 +119,65 @@ export class McpInvestmentsTools {
                 groupBy:
                   (args.groupBy as LlmInvestmentTxGroupBy | undefined) ??
                   "security",
+              },
+            );
+          return toolResult(result);
+        } catch (err: unknown) {
+          return safeToolError(err);
+        }
+      },
+    );
+
+    server.registerTool(
+      "get_capital_gains",
+      {
+        description:
+          "Per-period capital gains (realized + unrealized) for the user's investment accounts. Replays transaction history and snapshots positions against historical close prices, so the output includes mark-to-market movement on currently-held positions in addition to realized SELL gains. Requires startDate and endDate. Returns the same compact, LLM-friendly shape as the AI Assistant's tool.",
+        inputSchema: {
+          startDate: z
+            .string()
+            .regex(/^\d{4}-\d{2}-\d{2}$/)
+            .describe("Start date of the window (YYYY-MM-DD)"),
+          endDate: z
+            .string()
+            .regex(/^\d{4}-\d{2}-\d{2}$/)
+            .describe("End date of the window (YYYY-MM-DD)"),
+          accountIds: z
+            .array(z.string().uuid())
+            .max(50)
+            .optional()
+            .describe("Optional investment account IDs."),
+          symbols: z
+            .array(z.string().min(1).max(20))
+            .max(50)
+            .optional()
+            .describe("Optional security ticker symbols (case insensitive)."),
+          groupBy: z
+            .enum(["month", "security", "account"])
+            .optional()
+            .describe(
+              "Bucket the breakdown by month, security, or account. Defaults to 'month' when omitted.",
+            ),
+        },
+      },
+      async (args, extra) => {
+        const ctx = resolve(extra.sessionId);
+        if (!ctx) return toolError("No user context");
+        const check = requireScope(ctx.scopes, "read");
+        if (check.error) return check.result;
+
+        try {
+          const result =
+            await this.investmentTransactionsService.getLlmCapitalGains(
+              ctx.userId,
+              {
+                startDate: args.startDate,
+                endDate: args.endDate,
+                accountIds: args.accountIds,
+                symbols: args.symbols,
+                groupBy:
+                  (args.groupBy as LlmCapitalGainsGroupBy | undefined) ??
+                  "month",
               },
             );
           return toolResult(result);

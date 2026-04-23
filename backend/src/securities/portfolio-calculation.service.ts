@@ -49,8 +49,137 @@ export interface RealizedGainEntry {
   realizedGain: number;
 }
 
+/**
+ * Per-(account, security, month) capital-gain breakdown including both the
+ * realized portion (from SELLs in the month) and the unrealized mark-to-market
+ * change on the position. All monetary values are denominated in the holding
+ * account's currency. The decomposition uses:
+ *
+ *   totalCapitalGain = (endValue - startValue) + sells - buys
+ *   unrealizedGain   = totalCapitalGain - realizedGain
+ *
+ * which is equivalent to "change in market value plus net cash withdrawn from
+ * the position". Months with zero quantity and zero activity are dropped.
+ */
+export interface CapitalGainEntry {
+  month: string;
+  accountId: string;
+  accountName: string | null;
+  accountCurrencyCode: string | null;
+  securityId: string;
+  symbol: string | null;
+  securityName: string | null;
+  securityCurrencyCode: string | null;
+  startQuantity: number;
+  endQuantity: number;
+  startValue: number;
+  endValue: number;
+  buys: number;
+  sells: number;
+  realizedGain: number;
+  unrealizedGain: number;
+  totalCapitalGain: number;
+}
+
 function roundMoney(value: number): number {
   return Math.round(value * 10000) / 10000;
+}
+
+/**
+ * Add `days` to a YYYY-MM-DD date string and return a new YYYY-MM-DD string.
+ * Uses UTC to avoid local-timezone drift when crossing day boundaries.
+ */
+function addDaysIso(iso: string, days: number): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + days);
+  return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}-${String(dt.getUTCDate()).padStart(2, "0")}`;
+}
+
+interface MonthBucket {
+  month: string; // YYYY-MM
+  monthStart: string; // YYYY-MM-DD (first day of month, clamped to startDate)
+  monthEnd: string; // YYYY-MM-DD (last day of month, clamped to endDate)
+  priceLookupStart: string; // day before monthStart, used to value the
+  // position at the start of the month
+}
+
+/**
+ * Enumerate calendar months covered by [startDate, endDate]. Each entry
+ * carries the YYYY-MM key, the (clamped) start/end day-of-month, and the
+ * day-before-start date used to look up the starting price for the month.
+ */
+function enumerateMonths(startDate: string, endDate: string): MonthBucket[] {
+  const [sy, sm] = startDate.split("-").map(Number);
+  const [ey, em] = endDate.split("-").map(Number);
+  const buckets: MonthBucket[] = [];
+  let y = sy;
+  let m = sm;
+  while (y < ey || (y === ey && m <= em)) {
+    const firstOfMonth = `${y}-${String(m).padStart(2, "0")}-01`;
+    const lastDayNum = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    const lastOfMonth = `${y}-${String(m).padStart(2, "0")}-${String(lastDayNum).padStart(2, "0")}`;
+    const monthStart = firstOfMonth < startDate ? startDate : firstOfMonth;
+    const monthEnd = lastOfMonth > endDate ? endDate : lastOfMonth;
+    buckets.push({
+      month: `${y}-${String(m).padStart(2, "0")}`,
+      monthStart,
+      monthEnd,
+      priceLookupStart: addDaysIso(monthStart, -1),
+    });
+    m++;
+    if (m > 12) {
+      m = 1;
+      y++;
+    }
+  }
+  return buckets;
+}
+
+/**
+ * Apply a single investment transaction to a running { quantity, costBasis }
+ * state in account-currency terms. Used to seed cost basis from history that
+ * predates the requested capital-gains window.
+ */
+function applyTxToState(
+  tx: InvestmentTransaction,
+  state: { quantity: number; costBasis: number },
+): void {
+  const quantity = Number(tx.quantity) || 0;
+  const price = Number(tx.price) || 0;
+  const exchangeRate = Number(tx.exchangeRate) || 1;
+  switch (tx.action) {
+    case InvestmentAction.BUY:
+    case InvestmentAction.REINVEST:
+    case InvestmentAction.TRANSFER_IN:
+      state.costBasis += quantity * price * exchangeRate;
+      state.quantity += quantity;
+      break;
+    case InvestmentAction.SELL:
+    case InvestmentAction.TRANSFER_OUT: {
+      const sellQty = Math.min(quantity, state.quantity);
+      const avgCostPerShare =
+        state.quantity > 0 ? state.costBasis / state.quantity : 0;
+      state.costBasis -= sellQty * avgCostPerShare;
+      state.quantity -= sellQty;
+      break;
+    }
+    case InvestmentAction.ADD_SHARES:
+      state.quantity += quantity;
+      break;
+    case InvestmentAction.REMOVE_SHARES:
+      state.quantity -= quantity;
+      break;
+    case InvestmentAction.SPLIT: {
+      const splitRatio = quantity || 1;
+      if (splitRatio > 0) state.quantity *= splitRatio;
+      break;
+    }
+  }
+  if (Math.abs(state.quantity) < 0.0001) {
+    state.quantity = 0;
+    state.costBasis = 0;
+  }
 }
 
 /**
@@ -468,6 +597,234 @@ export class PortfolioCalculationService {
       if (Math.abs(entry.quantity) < 0.0001) {
         entry.quantity = 0;
         entry.costBasis = 0;
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * Compute realized + unrealized capital gains per (account, security, month)
+   * across the requested window. Replays the user's full investment history
+   * to derive cost basis and quantities, then snapshots the position at each
+   * month boundary using historical close prices to capture mark-to-market
+   * changes alongside any realized gains from SELLs in the month.
+   *
+   * Quantities are snapshotted at each month boundary; market values use the
+   * last available close on or before the snapshot date converted to the
+   * holding account's currency at the latest exchange rate. BUYs/SELLs use
+   * their stored historical exchange rate (matching `calculateRealizedGains`).
+   * Months with no holding and no activity are omitted from the result.
+   */
+  async calculateCapitalGainsByMonth(
+    userId: string,
+    opts: {
+      accountIds?: string[];
+      startDate: string;
+      endDate: string;
+      defaultCurrency?: string;
+    },
+  ): Promise<CapitalGainEntry[]> {
+    const { accountIds, startDate, endDate } = opts;
+    if (!startDate || !endDate || startDate > endDate) return [];
+
+    const where: FindOptionsWhere<InvestmentTransaction> = { userId };
+    if (accountIds && accountIds.length > 0) {
+      where.accountId = In(accountIds);
+    }
+    where.transactionDate = LessThanOrEqual(endDate);
+
+    const transactions = await this.investmentTransactionRepository.find({
+      where,
+      relations: ["security", "account"],
+      order: { transactionDate: "ASC", createdAt: "ASC" },
+    });
+
+    if (transactions.length === 0) return [];
+
+    const securityIds = [
+      ...new Set(
+        transactions.filter((t) => t.securityId).map((t) => t.securityId!),
+      ),
+    ];
+    const allPrices = await this.getAllPricesForSecurities(securityIds);
+
+    // Build the ordered list of month buckets to snapshot
+    const months = enumerateMonths(startDate, endDate);
+    if (months.length === 0) return [];
+
+    // Group transactions by (account, security)
+    type GroupKey = string;
+    const groups = new Map<
+      GroupKey,
+      {
+        accountId: string;
+        accountName: string | null;
+        accountCurrencyCode: string | null;
+        securityId: string;
+        symbol: string | null;
+        securityName: string | null;
+        securityCurrencyCode: string | null;
+        txs: InvestmentTransaction[];
+      }
+    >();
+    for (const tx of transactions) {
+      if (!tx.securityId) continue;
+      const key = `${tx.accountId}:${tx.securityId}`;
+      let group = groups.get(key);
+      if (!group) {
+        group = {
+          accountId: tx.accountId,
+          accountName: tx.account?.name ?? null,
+          accountCurrencyCode: tx.account?.currencyCode ?? null,
+          securityId: tx.securityId,
+          symbol: tx.security?.symbol ?? null,
+          securityName: tx.security?.name ?? null,
+          securityCurrencyCode: tx.security?.currencyCode ?? null,
+          txs: [],
+        };
+        groups.set(key, group);
+      }
+      group.txs.push(tx);
+    }
+
+    // Cache FX rates: securityCurrency -> accountCurrency
+    const fxCache = new Map<string, number>();
+    const fxRate = async (
+      from: string | null,
+      to: string | null,
+    ): Promise<number> => {
+      if (!from || !to || from === to) return 1;
+      const cacheKey = `${from}->${to}`;
+      const cached = fxCache.get(cacheKey);
+      if (cached !== undefined) return cached;
+      let rate = await this.exchangeRateService.getLatestRate(from, to);
+      if (rate === null) {
+        const reverse = await this.exchangeRateService.getLatestRate(to, from);
+        rate = reverse !== null ? 1 / reverse : 1;
+      }
+      fxCache.set(cacheKey, rate);
+      return rate;
+    };
+
+    const results: CapitalGainEntry[] = [];
+
+    for (const group of groups.values()) {
+      const txs = group.txs;
+      const state = { quantity: 0, costBasis: 0 };
+      let txIdx = 0;
+      const securityToAccountFx = await fxRate(
+        group.securityCurrencyCode,
+        group.accountCurrencyCode,
+      );
+
+      // Replay any transactions strictly before startDate to seed state.
+      while (
+        txIdx < txs.length &&
+        txs[txIdx].transactionDate < months[0].monthStart
+      ) {
+        applyTxToState(txs[txIdx], state);
+        txIdx++;
+      }
+
+      for (const { month, monthEnd, priceLookupStart } of months) {
+        const startQuantity = state.quantity;
+        const startPrice =
+          this.lookupPrice(group.securityId, priceLookupStart, allPrices) ?? 0;
+        const startValue = startQuantity * startPrice * securityToAccountFx;
+
+        let buys = 0;
+        let sells = 0;
+        let realizedGain = 0;
+
+        while (txIdx < txs.length && txs[txIdx].transactionDate <= monthEnd) {
+          const tx = txs[txIdx];
+          const quantity = Number(tx.quantity) || 0;
+          const price = Number(tx.price) || 0;
+          const exchangeRate = Number(tx.exchangeRate) || 1;
+
+          switch (tx.action) {
+            case InvestmentAction.BUY:
+            case InvestmentAction.REINVEST:
+            case InvestmentAction.TRANSFER_IN: {
+              buys += quantity * price * exchangeRate;
+              state.costBasis += quantity * price * exchangeRate;
+              state.quantity += quantity;
+              break;
+            }
+            case InvestmentAction.SELL:
+            case InvestmentAction.TRANSFER_OUT: {
+              const sellQty = Math.min(quantity, state.quantity);
+              const avgCostPerShare =
+                state.quantity > 0 ? state.costBasis / state.quantity : 0;
+              const costBasisSold = sellQty * avgCostPerShare;
+              state.costBasis -= costBasisSold;
+              state.quantity -= sellQty;
+              if (tx.action === InvestmentAction.SELL) {
+                const proceeds = Number(tx.totalAmount) * exchangeRate;
+                sells += proceeds;
+                realizedGain += proceeds - costBasisSold;
+              }
+              break;
+            }
+            case InvestmentAction.ADD_SHARES:
+              state.quantity += quantity;
+              break;
+            case InvestmentAction.REMOVE_SHARES:
+              state.quantity -= quantity;
+              break;
+            case InvestmentAction.SPLIT: {
+              const splitRatio = quantity || 1;
+              if (splitRatio > 0) state.quantity *= splitRatio;
+              break;
+            }
+          }
+
+          if (Math.abs(state.quantity) < 0.0001) {
+            state.quantity = 0;
+            state.costBasis = 0;
+          }
+          txIdx++;
+        }
+
+        const endQuantity = state.quantity;
+        const endPrice =
+          this.lookupPrice(group.securityId, monthEnd, allPrices) ?? 0;
+        const endValue = endQuantity * endPrice * securityToAccountFx;
+
+        const totalCapitalGain = endValue - startValue + sells - buys;
+        const unrealizedGain = totalCapitalGain - realizedGain;
+
+        const hasActivity =
+          buys !== 0 ||
+          sells !== 0 ||
+          realizedGain !== 0 ||
+          startQuantity !== 0 ||
+          endQuantity !== 0;
+        if (!hasActivity) continue;
+
+        // Suppress vanishingly small float drift to keep the chart clean.
+        const round = (n: number) => (Math.abs(n) < 0.005 ? 0 : roundMoney(n));
+
+        results.push({
+          month,
+          accountId: group.accountId,
+          accountName: group.accountName,
+          accountCurrencyCode: group.accountCurrencyCode,
+          securityId: group.securityId,
+          symbol: group.symbol,
+          securityName: group.securityName,
+          securityCurrencyCode: group.securityCurrencyCode,
+          startQuantity,
+          endQuantity,
+          startValue: round(startValue),
+          endValue: round(endValue),
+          buys: round(buys),
+          sells: round(sells),
+          realizedGain: round(realizedGain),
+          unrealizedGain: round(unrealizedGain),
+          totalCapitalGain: round(totalCapitalGain),
+        });
       }
     }
 
@@ -907,7 +1264,7 @@ export class PortfolioCalculationService {
    * Get all historical prices for a list of security IDs, ordered by date.
    * Returns a map of securityId -> sorted array of { date, price }.
    */
-  private async getAllPricesForSecurities(
+  async getAllPricesForSecurities(
     securityIds: string[],
   ): Promise<Map<string, { date: string; price: number }[]>> {
     if (securityIds.length === 0) return new Map();
@@ -939,7 +1296,7 @@ export class PortfolioCalculationService {
   /**
    * Look up the price for a security on or before a given date using binary search.
    */
-  private lookupPrice(
+  lookupPrice(
     securityId: string,
     date: string,
     allPrices: Map<string, { date: string; price: number }[]>,

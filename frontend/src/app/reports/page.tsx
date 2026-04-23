@@ -192,8 +192,8 @@ const reports: Report[] = [
   },
   {
     id: 'dividend-income',
-    name: 'Dividend & Interest Income',
-    description: 'Track passive income from dividends, interest, and other investment returns.',
+    name: 'Gains, Dividends & Interest',
+    description: 'Track capital gains and losses (realized + unrealized) alongside dividend and interest income.',
     category: 'investment',
     color: 'bg-green-600',
     icon: (

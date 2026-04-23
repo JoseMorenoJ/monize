@@ -137,6 +137,32 @@ describe("ToolExecutorService", () => {
         transactions: [],
         truncatedTransactionList: false,
       }),
+      getLlmCapitalGains: jest.fn().mockResolvedValue({
+        startDate: "2024-01-01",
+        endDate: "2024-12-31",
+        totals: {
+          realizedGain: 120,
+          unrealizedGain: 80,
+          totalCapitalGain: 200,
+        },
+        groupedBy: "month",
+        entries: [
+          {
+            month: "2024-06",
+            accountName: null,
+            symbol: null,
+            securityName: null,
+            currency: "CAD",
+            startValue: 1000,
+            endValue: 1200,
+            realizedGain: 0,
+            unrealizedGain: 200,
+            totalCapitalGain: 200,
+          },
+        ],
+        entryCount: 1,
+        truncatedEntryList: false,
+      }),
     };
 
     portfolio = {
@@ -494,6 +520,49 @@ describe("ToolExecutorService", () => {
       ).toHaveBeenCalledWith(
         userId,
         expect.objectContaining({ groupBy: "security" }),
+      );
+    });
+
+    it("get_capital_gains delegates to investmentTransactions.getLlmCapitalGains", async () => {
+      const result = await service.execute(userId, "get_capital_gains", {
+        startDate: "2024-01-01",
+        endDate: "2024-12-31",
+        symbols: ["AAA"],
+        groupBy: "month",
+      });
+
+      expect(investmentTransactions.getLlmCapitalGains).toHaveBeenCalledWith(
+        userId,
+        {
+          startDate: "2024-01-01",
+          endDate: "2024-12-31",
+          accountIds: undefined,
+          symbols: ["AAA"],
+          groupBy: "month",
+        },
+      );
+      expect(result.sources[0].type).toBe("investment_capital_gains");
+      expect(result.sources[0].dateRange).toBe("2024-01-01 to 2024-12-31");
+      expect(result.summary).toContain("capital gains 200.00");
+      expect(result.summary).toContain("realized 120.00");
+      expect(result.summary).toContain("unrealized 80.00");
+      expect(result.summary).toContain("grouped by month");
+    });
+
+    it("get_capital_gains resolves account names and defaults groupBy to 'month'", async () => {
+      await service.execute(userId, "get_capital_gains", {
+        startDate: "2024-01-01",
+        endDate: "2024-12-31",
+        accountNames: ["Checking"],
+      });
+
+      expect(accounts.findAll).toHaveBeenCalledWith(userId, false);
+      expect(investmentTransactions.getLlmCapitalGains).toHaveBeenCalledWith(
+        userId,
+        expect.objectContaining({
+          accountIds: ["acc-1"],
+          groupBy: "month",
+        }),
       );
     });
 

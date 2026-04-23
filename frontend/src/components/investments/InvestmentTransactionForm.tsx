@@ -26,6 +26,7 @@ import { getCurrencySymbol, roundToDecimals } from '@/lib/format';
 import { getErrorMessage } from '@/lib/errors';
 import { useNumberFormat } from '@/hooks/useNumberFormat';
 import { useExchangeRates } from '@/hooks/useExchangeRates';
+import { useDateFormat } from '@/hooks/useDateFormat';
 import { createLogger } from '@/lib/logger';
 import { useFormSubmitRef } from '@/hooks/useFormSubmitRef';
 import { useFormDirtyNotify } from '@/hooks/useFormDirtyNotify';
@@ -138,6 +139,7 @@ export function InvestmentTransactionForm({
   submitRef,
 }: InvestmentTransactionFormProps) {
   const { defaultCurrency, formatCurrency } = useNumberFormat();
+  const { formatDate } = useDateFormat();
   const [isLoading, setIsLoading] = useState(false);
   const [securities, setSecurities] = useState<Security[]>([]);
   const [securitiesLoaded, setSecuritiesLoaded] = useState(false);
@@ -724,7 +726,7 @@ export function InvestmentTransactionForm({
                 Holding preview
               </div>
               <div>
-                Before (as of {watchedTransactionDate}):{' '}
+                Before (as of {formatDate(watchedTransactionDate)}):{' '}
                 <span className="font-mono">
                   {splitPreview.currentQty.toFixed(4)}
                 </span>{' '}
@@ -748,16 +750,16 @@ export function InvestmentTransactionForm({
                 avg cost
               </div>
               <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                Total cost basis is preserved across the split. Subsequent
-                transactions will be replayed automatically.
+                Total cost basis is preserved across the split.
               </div>
             </div>
           )}
           {!splitPreview && watchedSecurityId && (
             <div className="text-xs text-gray-500 dark:text-gray-400">
               No shares of this security were held in this account on{' '}
-              {watchedTransactionDate}; the split will be recorded but won&apos;t
-              change holdings until shares are added on or before that date.
+              {formatDate(watchedTransactionDate)}; the split will be recorded
+              but won&apos;t change holdings until shares are added on or
+              before that date.
             </div>
           )}
         </div>

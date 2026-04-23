@@ -111,6 +111,14 @@ export const queryInvestmentTransactionsSchema = z.object({
   groupBy: z.enum(["account", "date", "security", "action"]).optional(),
 });
 
+export const getCapitalGainsSchema = z.object({
+  startDate: isoDateSchema,
+  endDate: isoDateSchema,
+  accountNames: z.array(z.string().max(100)).max(50).optional(),
+  symbols: z.array(z.string().min(1).max(20)).max(50).optional(),
+  groupBy: z.enum(["month", "security", "account"]).optional(),
+});
+
 export const getTransfersSchema = z.object({
   startDate: isoDateSchema.optional(),
   endDate: isoDateSchema.optional(),
@@ -158,6 +166,7 @@ export const toolInputSchemas: Record<string, z.ZodSchema> = {
   compare_periods: comparePeriodsSchema,
   get_portfolio_summary: getPortfolioSummarySchema,
   query_investment_transactions: queryInvestmentTransactionsSchema,
+  get_capital_gains: getCapitalGainsSchema,
   get_transfers: getTransfersSchema,
   get_budget_status: getBudgetStatusSchema,
   calculate: calculateSchema,

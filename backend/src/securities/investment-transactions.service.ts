@@ -20,6 +20,7 @@ import { HoldingsService } from "./holdings.service";
 import {
   PortfolioCalculationService,
   RealizedGainEntry,
+  CapitalGainEntry,
 } from "./portfolio-calculation.service";
 import { SecuritiesService } from "./securities.service";
 import { SecurityPriceService } from "./security-price.service";
@@ -36,6 +37,40 @@ import { isTransactionInFuture } from "../common/date-utils";
 import { ActionHistoryService } from "../action-history/action-history.service";
 
 export type LlmInvestmentTxGroupBy = "account" | "date" | "security" | "action";
+
+export type LlmCapitalGainsGroupBy = "month" | "security" | "account";
+
+export interface LlmCapitalGainsEntry {
+  month: string | null;
+  accountName: string | null;
+  symbol: string | null;
+  securityName: string | null;
+  /**
+   * Currency the monetary fields are denominated in. `null` when the entry
+   * aggregates rows from multiple accounts with different currencies (the LLM
+   * should then treat the sums as mixed and avoid currency-specific claims).
+   */
+  currency: string | null;
+  startValue: number;
+  endValue: number;
+  realizedGain: number;
+  unrealizedGain: number;
+  totalCapitalGain: number;
+}
+
+export interface LlmCapitalGainsResult {
+  startDate: string;
+  endDate: string;
+  totals: {
+    realizedGain: number;
+    unrealizedGain: number;
+    totalCapitalGain: number;
+  };
+  groupedBy: LlmCapitalGainsGroupBy;
+  entries: LlmCapitalGainsEntry[];
+  entryCount: number;
+  truncatedEntryList: boolean;
+}
 
 export interface LlmInvestmentTxRow {
   transactionDate: string;
@@ -814,6 +849,209 @@ export class InvestmentTransactionsService {
       startDate: opts.startDate,
       endDate: opts.endDate,
     });
+  }
+
+  /**
+   * Per-month capital gain breakdown (realized + unrealized) per security in
+   * the requested window. Resolves linked brokerage/cash accounts the same way
+   * `findAll()` and `getRealizedGains()` do so callers can filter by either
+   * side and get a consistent picture.
+   */
+  async getCapitalGainsByMonth(
+    userId: string,
+    opts: {
+      accountIds?: string[];
+      startDate: string;
+      endDate: string;
+    },
+  ): Promise<CapitalGainEntry[]> {
+    let accountIds = opts.accountIds;
+    if (accountIds && accountIds.length > 0) {
+      const resolvedIds = new Set<string>(accountIds);
+      const accounts = await this.accountsService.findByIds(userId, accountIds);
+      for (const acct of accounts) {
+        if (acct.linkedAccountId) resolvedIds.add(acct.linkedAccountId);
+      }
+      accountIds = [...resolvedIds];
+    }
+
+    return this.portfolioCalculationService.calculateCapitalGainsByMonth(
+      userId,
+      {
+        accountIds,
+        startDate: opts.startDate,
+        endDate: opts.endDate,
+      },
+    );
+  }
+
+  /**
+   * LLM-friendly capital-gains roll-up sharing logic with the report endpoint
+   * and the MCP server. Replays the user's investment history via
+   * PortfolioCalculationService.calculateCapitalGainsByMonth, optionally
+   * narrows by symbol, and aggregates into buckets ('month', 'security', or
+   * 'account') so the assistant gets a compact shape with period totals.
+   *
+   * All monetary values are in the holding account's currency. When a bucket
+   * spans accounts with differing currencies, its `currency` is set to `null`
+   * so callers can tell the sum is mixed.
+   */
+  async getLlmCapitalGains(
+    userId: string,
+    options: {
+      startDate: string;
+      endDate: string;
+      accountIds?: string[];
+      symbols?: string[];
+      groupBy?: LlmCapitalGainsGroupBy;
+    },
+  ): Promise<LlmCapitalGainsResult> {
+    let accountIds = options.accountIds;
+    if (accountIds && accountIds.length > 0) {
+      const resolvedIds = new Set<string>(accountIds);
+      const accounts = await this.accountsService.findByIds(userId, accountIds);
+      for (const acct of accounts) {
+        if (acct.linkedAccountId) resolvedIds.add(acct.linkedAccountId);
+      }
+      accountIds = [...resolvedIds];
+    }
+
+    const raw =
+      await this.portfolioCalculationService.calculateCapitalGainsByMonth(
+        userId,
+        {
+          accountIds,
+          startDate: options.startDate,
+          endDate: options.endDate,
+        },
+      );
+
+    const upperSymbols = options.symbols?.length
+      ? new Set(options.symbols.map((s) => s.toUpperCase()))
+      : null;
+    const filtered = upperSymbols
+      ? raw.filter((e) => e.symbol && upperSymbols.has(e.symbol.toUpperCase()))
+      : raw;
+
+    const groupBy: LlmCapitalGainsGroupBy = options.groupBy ?? "month";
+
+    // Aggregate in integer 1e-4 units so sums stay free of float drift.
+    const round4 = (n: number): number => Math.round(n * 10000) / 10000;
+    interface Bucket {
+      month: string | null;
+      accountName: string | null;
+      symbol: string | null;
+      securityName: string | null;
+      currency: string | null | undefined; // undefined = not seen yet
+      startValueScaled: number;
+      endValueScaled: number;
+      realizedScaled: number;
+      unrealizedScaled: number;
+      totalScaled: number;
+    }
+    const buckets = new Map<string, Bucket>();
+    let totalsRealizedScaled = 0;
+    let totalsUnrealizedScaled = 0;
+    let totalsCapitalScaled = 0;
+
+    for (const e of filtered) {
+      totalsRealizedScaled += Math.round(e.realizedGain * 10000);
+      totalsUnrealizedScaled += Math.round(e.unrealizedGain * 10000);
+      totalsCapitalScaled += Math.round(e.totalCapitalGain * 10000);
+
+      let key: string;
+      let seed: Pick<
+        Bucket,
+        "month" | "accountName" | "symbol" | "securityName"
+      >;
+      if (groupBy === "month") {
+        key = e.month;
+        seed = {
+          month: e.month,
+          accountName: null,
+          symbol: null,
+          securityName: null,
+        };
+      } else if (groupBy === "security") {
+        key = e.symbol ?? `__sec:${e.securityId}`;
+        seed = {
+          month: null,
+          accountName: null,
+          symbol: e.symbol,
+          securityName: e.securityName,
+        };
+      } else {
+        key = e.accountName ?? `__acct:${e.accountId}`;
+        seed = {
+          month: null,
+          accountName: e.accountName,
+          symbol: null,
+          securityName: null,
+        };
+      }
+
+      let b = buckets.get(key);
+      if (!b) {
+        b = {
+          ...seed,
+          currency: undefined,
+          startValueScaled: 0,
+          endValueScaled: 0,
+          realizedScaled: 0,
+          unrealizedScaled: 0,
+          totalScaled: 0,
+        };
+        buckets.set(key, b);
+      }
+
+      // Track currency: consistent → keep it; mixed → null.
+      if (b.currency === undefined) {
+        b.currency = e.accountCurrencyCode;
+      } else if (b.currency !== e.accountCurrencyCode) {
+        b.currency = null;
+      }
+
+      b.startValueScaled += Math.round(e.startValue * 10000);
+      b.endValueScaled += Math.round(e.endValue * 10000);
+      b.realizedScaled += Math.round(e.realizedGain * 10000);
+      b.unrealizedScaled += Math.round(e.unrealizedGain * 10000);
+      b.totalScaled += Math.round(e.totalCapitalGain * 10000);
+    }
+
+    const MAX_ENTRIES = 100;
+    const allEntries: LlmCapitalGainsEntry[] = [...buckets.values()].map(
+      (b) => ({
+        month: b.month,
+        accountName: b.accountName,
+        symbol: b.symbol,
+        securityName: b.securityName,
+        currency: b.currency ?? null,
+        startValue: round4(b.startValueScaled / 10000),
+        endValue: round4(b.endValueScaled / 10000),
+        realizedGain: round4(b.realizedScaled / 10000),
+        unrealizedGain: round4(b.unrealizedScaled / 10000),
+        totalCapitalGain: round4(b.totalScaled / 10000),
+      }),
+    );
+    allEntries.sort((a, b) => {
+      if (groupBy === "month")
+        return (a.month ?? "").localeCompare(b.month ?? "");
+      return b.totalCapitalGain - a.totalCapitalGain;
+    });
+
+    return {
+      startDate: options.startDate,
+      endDate: options.endDate,
+      totals: {
+        realizedGain: round4(totalsRealizedScaled / 10000),
+        unrealizedGain: round4(totalsUnrealizedScaled / 10000),
+        totalCapitalGain: round4(totalsCapitalScaled / 10000),
+      },
+      groupedBy: groupBy,
+      entries: allEntries.slice(0, MAX_ENTRIES),
+      entryCount: allEntries.length,
+      truncatedEntryList: allEntries.length > MAX_ENTRIES,
+    };
   }
 
   async findOne(userId: string, id: string): Promise<InvestmentTransaction> {

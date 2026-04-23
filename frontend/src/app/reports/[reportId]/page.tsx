@@ -74,7 +74,7 @@ const reportNames: Record<string, string> = {
   'loan-amortization': 'Loan Amortization Schedule',
   // Investment
   'investment-performance': 'Investment Performance',
-  'dividend-income': 'Dividend & Interest Income',
+  'dividend-income': 'Gains, Dividends & Interest',
   'sector-weightings': 'Sector Weightings',
   'realized-gains': 'Realized Gains & Losses',
   'portfolio-value': 'Portfolio Value Over Time',
@@ -121,7 +121,7 @@ const reportDescriptions: Record<string, string> = {
   'debt-payoff-timeline': 'Visualize your debt reduction progress with projections for payoff dates.',
   'loan-amortization': 'Detailed payment schedules for mortgages and loans with principal vs interest breakdown.',
   'investment-performance': 'Track portfolio returns, gains/losses, and asset allocation over time.',
-  'dividend-income': 'Track passive income from dividends, interest, and other investment returns.',
+  'dividend-income': 'Track capital gains and losses (realized + unrealized) alongside dividend and interest income.',
   'sector-weightings': 'Analyze portfolio sector exposure from individual stocks and ETFs.',
   'realized-gains': 'Track realized gains and losses from sold securities for tax planning and performance review.',
   'portfolio-value': 'Visualize your total investment portfolio value with historical trends and period returns.',
