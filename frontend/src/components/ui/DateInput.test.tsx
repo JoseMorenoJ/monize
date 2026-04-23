@@ -288,6 +288,49 @@ describe('DateInput', () => {
       expect(onDateChange).toHaveBeenCalledWith('2025-12-25');
     });
 
+    it('does not reinterpret a partial date while editing (e.g. backspace leaving month 0)', () => {
+      mockUseDateFormat.mockReturnValue({
+        formatDate: (d: string) => d,
+        dateFormat: 'MM/DD/YYYY',
+      });
+      const { getByLabelText } = renderDateInput('2026-09-11');
+      const input = getByLabelText('Date') as HTMLInputElement;
+      // Simulate backspace turning "09/11/2026" into "0/11/2026"
+      fireEvent.change(input, { target: { value: '0/11/2026' } });
+      // The partial value stays as typed rather than being treated as month 0
+      // and rewritten as December 2025
+      expect(input.value).toBe('0/11/2026');
+      expect(onDateChange).not.toHaveBeenCalled();
+    });
+
+    it('reverts to the last valid date on blur when the field contains a partial edit', () => {
+      mockUseDateFormat.mockReturnValue({
+        formatDate: (d: string) => d,
+        dateFormat: 'MM/DD/YYYY',
+      });
+      const { getByLabelText } = renderDateInput('2026-09-11');
+      const input = getByLabelText('Date') as HTMLInputElement;
+      fireEvent.change(input, { target: { value: '0/11/2026' } });
+      fireEvent.blur(input);
+      expect(input.value).toBe('09/11/2026');
+    });
+
+    it('lets the user replace a digit by backspacing and retyping (09/11/2026 -> 02/11/2026)', () => {
+      mockUseDateFormat.mockReturnValue({
+        formatDate: (d: string) => d,
+        dateFormat: 'MM/DD/YYYY',
+      });
+      const { getByLabelText } = renderDateInput('2026-09-11');
+      const input = getByLabelText('Date') as HTMLInputElement;
+      // Step 1: backspace removes the '9' from '09/11/2026'
+      fireEvent.change(input, { target: { value: '0/11/2026' } });
+      expect(input.value).toBe('0/11/2026');
+      // Step 2: user types '2' at the position, forming a new valid date
+      fireEvent.change(input, { target: { value: '02/11/2026' } });
+      expect(input.value).toBe('02/11/2026');
+      expect(onDateChange).toHaveBeenLastCalledWith('2026-02-11');
+    });
+
     it('uses the user date format as placeholder when empty', () => {
       const { getByLabelText } = renderDateInput('');
       expect(getByLabelText('Date')).toHaveAttribute('placeholder', 'DD/MM/YYYY');
@@ -518,10 +561,71 @@ describe('DateInput', () => {
       window.matchMedia = originalMatchMedia;
     });
 
-    it('keyboard shortcuts work in custom format mode', () => {
-      const { getByLabelText } = renderDateInput('2025-06-15');
-      fireEvent.keyDown(getByLabelText('Date'), { key: 't' });
-      expect(onDateChange).toHaveBeenCalledWith('2026-04-01');
+    describe('keyboard shortcuts in custom format mode', () => {
+      it('T sets today and updates the formatted display', () => {
+        const { getByLabelText } = renderDateInput('2025-06-15');
+        const input = getByLabelText('Date') as HTMLInputElement;
+        fireEvent.keyDown(input, { key: 't' });
+        expect(onDateChange).toHaveBeenCalledWith('2026-04-01');
+        expect(input.value).toBe('01/04/2026');
+      });
+
+      it('Y sets the first day of the year', () => {
+        const { getByLabelText } = renderDateInput('2025-06-15');
+        fireEvent.keyDown(getByLabelText('Date'), { key: 'y' });
+        expect(onDateChange).toHaveBeenCalledWith('2025-01-01');
+      });
+
+      it('R sets the last day of the year', () => {
+        const { getByLabelText } = renderDateInput('2025-06-15');
+        fireEvent.keyDown(getByLabelText('Date'), { key: 'r' });
+        expect(onDateChange).toHaveBeenCalledWith('2025-12-31');
+      });
+
+      it('M sets the first day of the month', () => {
+        const { getByLabelText } = renderDateInput('2025-06-15');
+        fireEvent.keyDown(getByLabelText('Date'), { key: 'm' });
+        expect(onDateChange).toHaveBeenCalledWith('2025-06-01');
+      });
+
+      it('H sets the last day of the month', () => {
+        const { getByLabelText } = renderDateInput('2025-02-10');
+        fireEvent.keyDown(getByLabelText('Date'), { key: 'h' });
+        // 2025 is non-leap
+        expect(onDateChange).toHaveBeenCalledWith('2025-02-28');
+      });
+
+      it('+ adds one day', () => {
+        const { getByLabelText } = renderDateInput('2025-06-15');
+        fireEvent.keyDown(getByLabelText('Date'), { key: '+' });
+        expect(onDateChange).toHaveBeenCalledWith('2025-06-16');
+      });
+
+      it('- subtracts one day', () => {
+        const { getByLabelText } = renderDateInput('2025-06-15');
+        fireEvent.keyDown(getByLabelText('Date'), { key: '-' });
+        expect(onDateChange).toHaveBeenCalledWith('2025-06-14');
+      });
+
+      it('PageUp sets the first day of the next month', () => {
+        const { getByLabelText } = renderDateInput('2025-06-15');
+        fireEvent.keyDown(getByLabelText('Date'), { key: 'PageUp' });
+        expect(onDateChange).toHaveBeenCalledWith('2025-07-01');
+      });
+
+      it('PageDown sets the first day of the previous month', () => {
+        const { getByLabelText } = renderDateInput('2025-06-15');
+        fireEvent.keyDown(getByLabelText('Date'), { key: 'PageDown' });
+        expect(onDateChange).toHaveBeenCalledWith('2025-05-01');
+      });
+
+      it('refreshes the formatted display after a shortcut fires', () => {
+        const { getByLabelText } = renderDateInput('2025-06-15');
+        const input = getByLabelText('Date') as HTMLInputElement;
+        fireEvent.keyDown(input, { key: '+' });
+        // "15/06/2025" -> "16/06/2025"
+        expect(input.value).toBe('16/06/2025');
+      });
     });
   });
 });

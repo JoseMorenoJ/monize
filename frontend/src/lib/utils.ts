@@ -143,9 +143,22 @@ export function datetimeLocalToIso(datetimeLocal: string, timezone: string): str
 
 const MONTH_ABBREVS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
 
+function buildValidatedIsoDate(year: string, month: string, day: string): string | null {
+  const y = Number(year);
+  const mo = Number(month);
+  const d = Number(day);
+  if (!Number.isInteger(y) || !Number.isInteger(mo) || !Number.isInteger(d)) return null;
+  if (mo < 1 || mo > 12) return null;
+  if (d < 1) return null;
+  const daysInMonth = new Date(y, mo, 0).getDate();
+  if (d > daysInMonth) return null;
+  return `${String(y).padStart(4, '0')}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+
 /**
  * Parse a user-typed date string in the given format back to YYYY-MM-DD.
- * Returns null if the input does not match the expected format.
+ * Returns null if the input does not match the expected format or represents
+ * an impossible date (e.g. month 0, February 30).
  */
 export function parseDateFromFormat(input: string, format: string): string | null {
   if (!input) return null;
@@ -155,32 +168,29 @@ export function parseDateFromFormat(input: string, format: string): string | nul
     case 'YYYY-MM-DD': {
       const m = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
       if (!m) return null;
-      const [, y, mo, d] = m;
-      return `${y}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}`;
+      return buildValidatedIsoDate(m[1], m[2], m[3]);
     }
     case 'MM/DD/YYYY': {
       const m = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
       if (!m) return null;
-      const [, mo, d, y] = m;
-      return `${y}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}`;
+      return buildValidatedIsoDate(m[3], m[1], m[2]);
     }
     case 'DD/MM/YYYY': {
       const m = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
       if (!m) return null;
-      const [, d, mo, y] = m;
-      return `${y}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}`;
+      return buildValidatedIsoDate(m[3], m[2], m[1]);
     }
     case 'DD-MMM-YYYY': {
       const m = trimmed.match(/^(\d{1,2})-(\w{3})-(\d{4})$/i);
       if (!m) return null;
       const monthIdx = MONTH_ABBREVS.indexOf(m[2].toLowerCase());
       if (monthIdx === -1) return null;
-      return `${m[3]}-${String(monthIdx + 1).padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+      return buildValidatedIsoDate(m[3], String(monthIdx + 1), m[1]);
     }
     default: {
       // For 'browser' or unknown formats, try YYYY-MM-DD as a universal fallback
       const m = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
-      if (m) return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+      if (m) return buildValidatedIsoDate(m[1], m[2], m[3]);
       return null;
     }
   }
