@@ -20,6 +20,7 @@ import { HoldingsService } from "./holdings.service";
 import {
   PortfolioCalculationService,
   RealizedGainEntry,
+  CapitalGainEntry,
 } from "./portfolio-calculation.service";
 import { SecuritiesService } from "./securities.service";
 import { SecurityPriceService } from "./security-price.service";
@@ -814,6 +815,40 @@ export class InvestmentTransactionsService {
       startDate: opts.startDate,
       endDate: opts.endDate,
     });
+  }
+
+  /**
+   * Per-month capital gain breakdown (realized + unrealized) per security in
+   * the requested window. Resolves linked brokerage/cash accounts the same way
+   * `findAll()` and `getRealizedGains()` do so callers can filter by either
+   * side and get a consistent picture.
+   */
+  async getCapitalGainsByMonth(
+    userId: string,
+    opts: {
+      accountIds?: string[];
+      startDate: string;
+      endDate: string;
+    },
+  ): Promise<CapitalGainEntry[]> {
+    let accountIds = opts.accountIds;
+    if (accountIds && accountIds.length > 0) {
+      const resolvedIds = new Set<string>(accountIds);
+      const accounts = await this.accountsService.findByIds(userId, accountIds);
+      for (const acct of accounts) {
+        if (acct.linkedAccountId) resolvedIds.add(acct.linkedAccountId);
+      }
+      accountIds = [...resolvedIds];
+    }
+
+    return this.portfolioCalculationService.calculateCapitalGainsByMonth(
+      userId,
+      {
+        accountIds,
+        startDate: opts.startDate,
+        endDate: opts.endDate,
+      },
+    );
   }
 
   async findOne(userId: string, id: string): Promise<InvestmentTransaction> {

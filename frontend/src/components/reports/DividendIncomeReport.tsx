@@ -10,10 +10,12 @@ import {
   Tooltip,
   ResponsiveContainer,
   Legend,
+  ReferenceLine,
+  Cell,
 } from 'recharts';
 import { format, eachMonthOfInterval } from 'date-fns';
 import { investmentsApi } from '@/lib/investments';
-import { InvestmentTransaction, RealizedGainEntry } from '@/types/investment';
+import { InvestmentTransaction, CapitalGainEntry } from '@/types/investment';
 import { Account } from '@/types/account';
 import { parseLocalDate } from '@/lib/utils';
 import { useNumberFormat } from '@/hooks/useNumberFormat';
@@ -24,6 +26,8 @@ import { ExportDropdown } from '@/components/ui/ExportDropdown';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('DividendIncomeReport');
+
+type SeriesKey = 'dividends' | 'interest' | 'capitalGains';
 
 interface MonthlyIncome {
   month: string;
@@ -43,17 +47,28 @@ interface SecurityIncome {
   total: number;
 }
 
+const SERIES_COLORS: Record<SeriesKey, { positive: string; negative: string; label: string }> = {
+  dividends: { positive: '#22c55e', negative: '#22c55e', label: 'Dividends' },
+  interest: { positive: '#3b82f6', negative: '#3b82f6', label: 'Interest' },
+  capitalGains: { positive: '#8b5cf6', negative: '#ef4444', label: 'Capital Gains' },
+};
+
 export function DividendIncomeReport() {
   const { formatCurrency: formatCurrencyFull, formatCurrencyAxis } = useNumberFormat();
   const { defaultCurrency, convertToDefault } = useExchangeRates();
   const chartRef = useRef<HTMLDivElement>(null);
   const [transactions, setTransactions] = useState<InvestmentTransaction[]>([]);
-  const [realizedGains, setRealizedGains] = useState<RealizedGainEntry[]>([]);
+  const [capitalGains, setCapitalGains] = useState<CapitalGainEntry[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState<string>('');
   const { dateRange, setDateRange, resolvedRange, isValid } = useDateRange({ defaultRange: '1y', alignment: 'month' });
   const [isLoading, setIsLoading] = useState(true);
   const [viewType, setViewType] = useState<'monthly' | 'bySecurity'>('monthly');
+  const [visibleSeries, setVisibleSeries] = useState<Record<SeriesKey, boolean>>({
+    dividends: true,
+    interest: true,
+    capitalGains: true,
+  });
 
   // Build account currency lookup
   const accountCurrencyMap = useMemo(() => {
@@ -78,12 +93,12 @@ export function DividendIncomeReport() {
     return convertToDefault(amount, txCurrency);
   }, [selectedAccountId, accountCurrencyMap, defaultCurrency, convertToDefault]);
 
-  // Backend already returns each realized gain in the holding account's
-  // currency (cost basis derived via chronological replay). Convert to the
-  // default currency for the All-Accounts view; pass through otherwise.
-  const convertRealized = useCallback((entry: RealizedGainEntry): number => {
-    if (selectedAccountId) return entry.realizedGain;
-    return convertToDefault(entry.realizedGain, entry.accountCurrencyCode || defaultCurrency);
+  // Backend already returns each capital gain entry in the holding account's
+  // currency. Convert to the default currency for the All-Accounts view; pass
+  // through otherwise.
+  const convertCapitalGain = useCallback((entry: CapitalGainEntry): number => {
+    if (selectedAccountId) return entry.totalCapitalGain;
+    return convertToDefault(entry.totalCapitalGain, entry.accountCurrencyCode || defaultCurrency);
   }, [selectedAccountId, defaultCurrency, convertToDefault]);
 
   const fmtValue = useCallback((value: number): string => {
@@ -101,9 +116,12 @@ export function DividendIncomeReport() {
         const { start, end } = resolvedRange;
 
         const accountsPromise = investmentsApi.getInvestmentAccounts();
-        const realizedGainsPromise = investmentsApi.getRealizedGains({
+        // Capital gains require a window; fall back to a wide window when the
+        // user picks "All Time" so the backend still has bounds to enumerate.
+        const cgStart = start || '1970-01-01';
+        const capitalGainsPromise = investmentsApi.getCapitalGains({
           accountIds: selectedAccountId || undefined,
-          startDate: start || undefined,
+          startDate: cgStart,
           endDate: end,
         });
 
@@ -124,13 +142,14 @@ export function DividendIncomeReport() {
           page++;
         }
 
-        const [accountsData, realizedGainsData] = await Promise.all([
+        const [accountsData, capitalGainsData] = await Promise.all([
           accountsPromise,
-          realizedGainsPromise,
+          capitalGainsPromise,
         ]);
 
-        // Dividend / Interest / CAPITAL_GAIN come from the plain transaction
-        // list; SELL realized gains come from the backend replay endpoint.
+        // Dividend / Interest / CAPITAL_GAIN income comes from the plain
+        // transaction list; SELL realized + unrealized capital gains come from
+        // the new monthly capital gains endpoint.
         const incomeTransactions = allTransactions.filter(
           (tx) =>
             tx.action === 'DIVIDEND' ||
@@ -139,7 +158,7 @@ export function DividendIncomeReport() {
         );
 
         setTransactions(incomeTransactions);
-        setRealizedGains(realizedGainsData);
+        setCapitalGains(capitalGainsData);
         setAccounts(accountsData);
       } catch (error) {
         logger.error('Failed to load investment transactions:', error);
@@ -210,15 +229,18 @@ export function DividendIncomeReport() {
       bucket.total += contribution;
     });
 
-    realizedGains.forEach((entry) => {
-      const bucket = getOrCreateBucket(parseLocalDate(entry.transactionDate));
-      const gain = convertRealized(entry);
+    capitalGains.forEach((entry) => {
+      // entry.month is YYYY-MM; create a date in the middle of the month so
+      // local-timezone parsing puts it in the right bucket.
+      const monthDate = parseLocalDate(`${entry.month}-15`);
+      const bucket = getOrCreateBucket(monthDate);
+      const gain = convertCapitalGain(entry);
       bucket.capitalGains += gain;
       bucket.total += gain;
     });
 
     return Array.from(monthMap.values()).sort((a, b) => a.month.localeCompare(b.month));
-  }, [transactions, realizedGains, dateRange, resolvedRange, getTxAmount, convertRealized]);
+  }, [transactions, capitalGains, dateRange, resolvedRange, getTxAmount, convertCapitalGain]);
 
   const securityData = useMemo((): SecurityIncome[] => {
     const securityMap = new Map<string, SecurityIncome>();
@@ -251,17 +273,17 @@ export function DividendIncomeReport() {
       bucket.total += contribution;
     });
 
-    realizedGains.forEach((entry) => {
+    capitalGains.forEach((entry) => {
       const symbol = entry.symbol || 'Unknown';
       const name = entry.securityName || 'Unknown Security';
       const bucket = getOrCreateBucket(symbol, name);
-      const gain = convertRealized(entry);
+      const gain = convertCapitalGain(entry);
       bucket.capitalGains += gain;
       bucket.total += gain;
     });
 
     return Array.from(securityMap.values()).sort((a, b) => b.total - a.total);
-  }, [transactions, realizedGains, getTxAmount, convertRealized]);
+  }, [transactions, capitalGains, getTxAmount, convertCapitalGain]);
 
   const totals = useMemo(() => {
     const dividends = transactions
@@ -273,18 +295,18 @@ export function DividendIncomeReport() {
     const manualCapitalGains = transactions
       .filter((t) => t.action === 'CAPITAL_GAIN')
       .reduce((sum, t) => sum + getTxAmount(t), 0);
-    const sellRealizedGains = realizedGains.reduce(
-      (sum, entry) => sum + convertRealized(entry),
+    const periodCapitalGains = capitalGains.reduce(
+      (sum, entry) => sum + convertCapitalGain(entry),
       0,
     );
-    const capitalGains = manualCapitalGains + sellRealizedGains;
+    const totalGains = manualCapitalGains + periodCapitalGains;
     return {
       dividends,
       interest,
-      capitalGains,
-      total: dividends + interest + capitalGains,
+      capitalGains: totalGains,
+      total: dividends + interest + totalGains,
     };
-  }, [transactions, realizedGains, getTxAmount, convertRealized]);
+  }, [transactions, capitalGains, getTxAmount, convertCapitalGain]);
 
   const handleExportPdf = async () => {
     const { exportToPdf } = await import('@/lib/pdf-export');
@@ -292,29 +314,43 @@ export function DividendIncomeReport() {
       ? selectedAccount.name.replace(/ - (Brokerage|Cash)$/, '')
       : 'All Accounts';
     await exportToPdf({
-      title: 'Dividend Income',
+      title: 'Gains, Dividends & Interest',
       subtitle: accountLabel,
       summaryCards: [
         { label: 'Dividends', value: fmtValue(totals.dividends), color: '#16a34a' },
         { label: 'Interest', value: fmtValue(totals.interest), color: '#2563eb' },
-        { label: 'Capital Gains', value: fmtValue(totals.capitalGains), color: '#9333ea' },
+        { label: 'Capital Gains', value: fmtValue(totals.capitalGains), color: totals.capitalGains < 0 ? '#dc2626' : '#9333ea' },
         { label: 'Total Income', value: fmtValue(totals.total), color: '#111827' },
       ],
       chartContainer: chartRef.current,
-      filename: 'dividend-income',
+      filename: 'gains-dividends-interest',
     });
   };
 
-  const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?: Array<{ name: string; value: number; color: string }>; label?: string }) => {
+  const toggleSeries = (key: SeriesKey) => {
+    setVisibleSeries((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?: Array<{ name: string; value: number; color: string; dataKey?: string }>; label?: string }) => {
     if (active && payload && payload.length) {
+      // Recharts can pass a Cell-coloured payload entry; surface signed values
+      // and use the original series colour rather than the per-bar Cell colour.
       return (
         <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-3">
           <p className="font-medium text-gray-900 dark:text-gray-100 mb-1">{label}</p>
-          {payload.map((entry, index) => (
-            <p key={index} className="text-sm" style={{ color: entry.color }}>
-              {entry.name}: {fmtValue(entry.value)}
-            </p>
-          ))}
+          {payload.map((entry, index) => {
+            const seriesKey = entry.dataKey as SeriesKey | undefined;
+            const colour = seriesKey
+              ? entry.value < 0
+                ? SERIES_COLORS[seriesKey].negative
+                : SERIES_COLORS[seriesKey].positive
+              : entry.color;
+            return (
+              <p key={index} className="text-sm" style={{ color: colour }}>
+                {entry.name}: {fmtValue(entry.value)}
+              </p>
+            );
+          })}
         </div>
       );
     }
@@ -332,6 +368,12 @@ export function DividendIncomeReport() {
     );
   }
 
+  // Only stack series where every value is non-negative; once losses appear
+  // we render bars side-by-side so negatives can drop below the zero line
+  // instead of being hidden inside a stack.
+  const hasNegativeCapitalGains = monthlyData.some((m) => m.capitalGains < 0);
+  const stackId = hasNegativeCapitalGains ? undefined : 'a';
+
   return (
     <div className="space-y-6">
       {/* Summary Cards */}
@@ -348,9 +390,9 @@ export function DividendIncomeReport() {
             {fmtValue(totals.interest)}
           </div>
         </div>
-        <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-4">
-          <div className="text-sm text-purple-600 dark:text-purple-400">Capital Gains</div>
-          <div className="text-xl font-bold text-purple-700 dark:text-purple-300">
+        <div className={`rounded-lg p-4 ${totals.capitalGains < 0 ? 'bg-red-50 dark:bg-red-900/20' : 'bg-purple-50 dark:bg-purple-900/20'}`}>
+          <div className={`text-sm ${totals.capitalGains < 0 ? 'text-red-600 dark:text-red-400' : 'text-purple-600 dark:text-purple-400'}`}>Capital Gains</div>
+          <div className={`text-xl font-bold ${totals.capitalGains < 0 ? 'text-red-700 dark:text-red-300' : 'text-purple-700 dark:text-purple-300'}`}>
             {fmtValue(totals.capitalGains)}
           </div>
         </div>
@@ -409,19 +451,45 @@ export function DividendIncomeReport() {
             <ExportDropdown onExportPdf={handleExportPdf} />
           </div>
         </div>
+        {/* Series visibility toggles */}
+        {viewType === 'monthly' && (
+          <div className="flex flex-wrap gap-2 mt-3 items-center">
+            <span className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+              Show:
+            </span>
+            {(Object.keys(SERIES_COLORS) as SeriesKey[]).map((key) => (
+              <label
+                key={key}
+                className="inline-flex items-center gap-1.5 cursor-pointer text-sm text-gray-700 dark:text-gray-300"
+              >
+                <input
+                  type="checkbox"
+                  checked={visibleSeries[key]}
+                  onChange={() => toggleSeries(key)}
+                  className="rounded border-gray-300 dark:border-gray-600"
+                />
+                <span
+                  className="inline-block w-3 h-3 rounded-sm"
+                  style={{ backgroundColor: SERIES_COLORS[key].positive }}
+                />
+                {SERIES_COLORS[key].label}
+              </label>
+            ))}
+          </div>
+        )}
       </div>
 
-      {transactions.length === 0 && realizedGains.length === 0 ? (
+      {transactions.length === 0 && capitalGains.length === 0 ? (
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-6">
           <p className="text-gray-500 dark:text-gray-400 text-center py-8">
-            No dividend, interest, capital gain, or sell transactions found for this period.
+            No dividends, interest, or capital gain activity found for this period.
           </p>
         </div>
       ) : viewType === 'monthly' ? (
         /* Monthly Chart */
         <div ref={chartRef} className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 px-2 py-4 sm:p-6">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
-            Monthly Income
+            Monthly Gains, Dividends & Interest
           </h3>
           <div className="h-80">
             <ResponsiveContainer width="100%" height="100%" minWidth={0}>
@@ -431,9 +499,42 @@ export function DividendIncomeReport() {
                 <YAxis tickFormatter={formatCurrencyAxis} />
                 <Tooltip content={<CustomTooltip />} />
                 <Legend />
-                <Bar dataKey="dividends" stackId="a" fill="#22c55e" name="Dividends" />
-                <Bar dataKey="interest" stackId="a" fill="#3b82f6" name="Interest" />
-                <Bar dataKey="capitalGains" stackId="a" fill="#8b5cf6" name="Capital Gains" />
+                <ReferenceLine y={0} stroke="#9ca3af" />
+                {visibleSeries.dividends && (
+                  <Bar
+                    dataKey="dividends"
+                    stackId={stackId}
+                    fill={SERIES_COLORS.dividends.positive}
+                    name="Dividends"
+                  />
+                )}
+                {visibleSeries.interest && (
+                  <Bar
+                    dataKey="interest"
+                    stackId={stackId}
+                    fill={SERIES_COLORS.interest.positive}
+                    name="Interest"
+                  />
+                )}
+                {visibleSeries.capitalGains && (
+                  <Bar
+                    dataKey="capitalGains"
+                    stackId={stackId}
+                    fill={SERIES_COLORS.capitalGains.positive}
+                    name="Capital Gains"
+                  >
+                    {monthlyData.map((entry) => (
+                      <Cell
+                        key={entry.month}
+                        fill={
+                          entry.capitalGains < 0
+                            ? SERIES_COLORS.capitalGains.negative
+                            : SERIES_COLORS.capitalGains.positive
+                        }
+                      />
+                    ))}
+                  </Bar>
+                )}
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -484,10 +585,22 @@ export function DividendIncomeReport() {
                     <td className="px-4 py-3 text-right text-sm text-blue-600 dark:text-blue-400">
                       {security.interest > 0 ? fmtValue(security.interest) : '-'}
                     </td>
-                    <td className="px-4 py-3 text-right text-sm text-purple-600 dark:text-purple-400">
+                    <td
+                      className={`px-4 py-3 text-right text-sm ${
+                        security.capitalGains < 0
+                          ? 'text-red-600 dark:text-red-400'
+                          : 'text-purple-600 dark:text-purple-400'
+                      }`}
+                    >
                       {security.capitalGains !== 0 ? fmtValue(security.capitalGains) : '-'}
                     </td>
-                    <td className="px-4 py-3 text-right text-sm font-medium text-gray-900 dark:text-gray-100">
+                    <td
+                      className={`px-4 py-3 text-right text-sm font-medium ${
+                        security.total < 0
+                          ? 'text-red-600 dark:text-red-400'
+                          : 'text-gray-900 dark:text-gray-100'
+                      }`}
+                    >
                       {fmtValue(security.total)}
                     </td>
                   </tr>

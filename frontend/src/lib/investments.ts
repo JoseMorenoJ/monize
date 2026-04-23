@@ -7,6 +7,7 @@ import {
   CreateInvestmentTransactionData,
   Holding,
   RealizedGainEntry,
+  CapitalGainEntry,
   Security,
   CreateSecurityData,
   CreateSecurityPriceData,
@@ -128,6 +129,19 @@ export const investmentsApi = {
   }): Promise<RealizedGainEntry[]> => {
     const response = await apiClient.get<RealizedGainEntry[]>(
       '/investment-transactions/realized-gains',
+      { params },
+    );
+    return response.data;
+  },
+
+  // Per-month capital gain breakdown (realized + unrealized) by security.
+  getCapitalGains: async (params: {
+    accountIds?: string;
+    startDate: string;
+    endDate: string;
+  }): Promise<CapitalGainEntry[]> => {
+    const response = await apiClient.get<CapitalGainEntry[]>(
+      '/investment-transactions/capital-gains',
       { params },
     );
     return response.data;

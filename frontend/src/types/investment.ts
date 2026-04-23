@@ -228,3 +228,28 @@ export interface RealizedGainEntry {
   costBasis: number;
   realizedGain: number;
 }
+
+/**
+ * Per-(account, security, month) capital gain entry combining realized SELL
+ * gains with the unrealized mark-to-market change on the position. All values
+ * are in the holding account's currency.
+ */
+export interface CapitalGainEntry {
+  month: string;
+  accountId: string;
+  accountName: string | null;
+  accountCurrencyCode: string | null;
+  securityId: string;
+  symbol: string | null;
+  securityName: string | null;
+  securityCurrencyCode: string | null;
+  startQuantity: number;
+  endQuantity: number;
+  startValue: number;
+  endValue: number;
+  buys: number;
+  sells: number;
+  realizedGain: number;
+  unrealizedGain: number;
+  totalCapitalGain: number;
+}

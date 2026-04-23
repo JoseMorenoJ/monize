@@ -219,6 +219,59 @@ export class InvestmentTransactionsController {
     });
   }
 
+  @Get("capital-gains")
+  @ApiOperation({
+    summary:
+      "Per-month capital gains (realized + unrealized) by security across the window",
+    description:
+      "Returns per (account, security, month) capital gain entries combining realized SELL gains and the unrealized mark-to-market change on the position. Requires startDate and endDate.",
+  })
+  @ApiQuery({ name: "accountIds", required: false })
+  @ApiQuery({ name: "startDate", required: true })
+  @ApiQuery({ name: "endDate", required: true })
+  @ApiResponse({
+    status: 200,
+    description: "List of monthly capital gain entries",
+  })
+  getCapitalGainsByMonth(
+    @Request() req,
+    @Query("startDate") startDate: string,
+    @Query("endDate") endDate: string,
+    @Query("accountIds") accountIds?: string,
+  ) {
+    const uuidRegex =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+
+    if (!startDate || !dateRegex.test(startDate)) {
+      throw new BadRequestException(
+        "startDate is required and must be in YYYY-MM-DD format",
+      );
+    }
+    if (!endDate || !dateRegex.test(endDate)) {
+      throw new BadRequestException(
+        "endDate is required and must be in YYYY-MM-DD format",
+      );
+    }
+    if (startDate > endDate) {
+      throw new BadRequestException("startDate must be on or before endDate");
+    }
+
+    const ids = accountIds ? accountIds.split(",").filter(Boolean) : undefined;
+    if (ids) {
+      for (const id of ids) {
+        if (!uuidRegex.test(id)) {
+          throw new BadRequestException(`Invalid account UUID: ${id}`);
+        }
+      }
+    }
+
+    return this.investmentTransactionsService.getCapitalGainsByMonth(
+      req.user.id,
+      { accountIds: ids, startDate, endDate },
+    );
+  }
+
   @Get(":id")
   @ApiOperation({ summary: "Get an investment transaction by ID" })
   @ApiResponse({

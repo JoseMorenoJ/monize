@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@/test/render';
+import { render, screen, waitFor, fireEvent } from '@/test/render';
 import { DividendIncomeReport } from './DividendIncomeReport';
 
 vi.mock('@/hooks/useNumberFormat', () => ({
@@ -42,23 +42,25 @@ vi.mock('@/components/ui/DateRangeSelector', () => ({
 vi.mock('recharts', () => ({
   ResponsiveContainer: ({ children }: any) => <div data-testid="responsive-container">{children}</div>,
   BarChart: ({ children }: any) => <div data-testid="bar-chart">{children}</div>,
-  Bar: () => null,
+  Bar: ({ name }: any) => <div data-testid={`bar-${name}`} />,
   XAxis: () => null,
   YAxis: () => null,
   CartesianGrid: () => null,
   Tooltip: () => null,
   Legend: () => null,
+  ReferenceLine: () => null,
+  Cell: () => null,
 }));
 
 const mockGetTransactions = vi.fn();
 const mockGetInvestmentAccounts = vi.fn();
-const mockGetRealizedGains = vi.fn();
+const mockGetCapitalGains = vi.fn();
 
 vi.mock('@/lib/investments', () => ({
   investmentsApi: {
     getTransactions: (...args: any[]) => mockGetTransactions(...args),
     getInvestmentAccounts: (...args: any[]) => mockGetInvestmentAccounts(...args),
-    getRealizedGains: (...args: any[]) => mockGetRealizedGains(...args),
+    getCapitalGains: (...args: any[]) => mockGetCapitalGains(...args),
   },
 }));
 
@@ -79,32 +81,31 @@ describe('DividendIncomeReport', () => {
   it('shows loading state initially', () => {
     mockGetTransactions.mockReturnValue(new Promise(() => {}));
     mockGetInvestmentAccounts.mockReturnValue(new Promise(() => {}));
-    mockGetRealizedGains.mockReturnValue(new Promise(() => {}));
+    mockGetCapitalGains.mockReturnValue(new Promise(() => {}));
     render(<DividendIncomeReport />);
     expect(document.querySelector('.animate-pulse')).toBeTruthy();
   });
 
-  it('renders empty state when no income transactions', async () => {
+  it('renders empty state when there is no investment activity', async () => {
     mockGetTransactions.mockResolvedValue({ data: [], pagination: { hasMore: false } });
     mockGetInvestmentAccounts.mockResolvedValue([]);
-    mockGetRealizedGains.mockResolvedValue([]);
+    mockGetCapitalGains.mockResolvedValue([]);
     render(<DividendIncomeReport />);
     await waitFor(() => {
       expect(
-        screen.getByText(/No dividend, interest, capital gain, or sell transactions found/),
+        screen.getByText(/No dividends, interest, or capital gain activity/),
       ).toBeInTheDocument();
     });
   });
 
-  it('folds realized gains from the backend into Capital Gains', async () => {
+  it('folds monthly capital gains (realized + unrealized) from the backend into Capital Gains', async () => {
     mockGetTransactions.mockResolvedValue({ data: [], pagination: { hasMore: false } });
     mockGetInvestmentAccounts.mockResolvedValue([
       { id: 'acc-1', name: 'TFSA', currencyCode: 'CAD', accountSubType: 'INVESTMENT_CASH' },
     ]);
-    mockGetRealizedGains.mockResolvedValue([
+    mockGetCapitalGains.mockResolvedValue([
       {
-        transactionId: 'sell-1',
-        transactionDate: '2024-08-10',
+        month: '2024-08',
         accountId: 'acc-1',
         accountName: 'TFSA',
         accountCurrencyCode: 'CAD',
@@ -112,20 +113,56 @@ describe('DividendIncomeReport', () => {
         symbol: 'ABC',
         securityName: 'ABC Corp',
         securityCurrencyCode: 'CAD',
-        quantity: 10,
-        price: 80,
-        commission: 0,
-        proceeds: 800,
-        costBasis: 500,
+        startQuantity: 10,
+        endQuantity: 0,
+        startValue: 800,
+        endValue: 0,
+        buys: 0,
+        sells: 800,
         realizedGain: 300,
+        unrealizedGain: 0,
+        totalCapitalGain: 300,
       },
     ]);
     render(<DividendIncomeReport />);
     await waitFor(() => {
-      expect(screen.getByText('Capital Gains')).toBeInTheDocument();
+      expect(screen.getAllByText('Capital Gains').length).toBeGreaterThan(0);
     });
-    // Summary card and By Security cell for ABC should both display the $300 realized gain.
     expect(screen.getAllByText('$300.00').length).toBeGreaterThan(0);
+  });
+
+  it('shows negative capital gain totals (losses) with red styling', async () => {
+    mockGetTransactions.mockResolvedValue({ data: [], pagination: { hasMore: false } });
+    mockGetInvestmentAccounts.mockResolvedValue([
+      { id: 'acc-1', name: 'RRSP', currencyCode: 'CAD', accountSubType: 'INVESTMENT_CASH' },
+    ]);
+    mockGetCapitalGains.mockResolvedValue([
+      {
+        month: '2024-03',
+        accountId: 'acc-1',
+        accountName: 'RRSP',
+        accountCurrencyCode: 'CAD',
+        securityId: 'sec-2',
+        symbol: 'DEF',
+        securityName: 'DEF Corp',
+        securityCurrencyCode: 'CAD',
+        startQuantity: 100,
+        endQuantity: 100,
+        startValue: 5000,
+        endValue: 4500,
+        buys: 0,
+        sells: 0,
+        realizedGain: 0,
+        unrealizedGain: -500,
+        totalCapitalGain: -500,
+      },
+    ]);
+    render(<DividendIncomeReport />);
+    await waitFor(() => {
+      expect(screen.getAllByText('Capital Gains').length).toBeGreaterThan(0);
+    });
+    // Negative total renders as -$500.00 inside the summary card.
+    expect(screen.getAllByText('$-500.00').length).toBeGreaterThan(0);
   });
 
   it('renders summary cards with data', async () => {
@@ -153,24 +190,63 @@ describe('DividendIncomeReport', () => {
     mockGetInvestmentAccounts.mockResolvedValue([
       { id: 'acc-1', name: 'TFSA', currencyCode: 'CAD', accountSubType: 'INVESTMENT_CASH' },
     ]);
-    mockGetRealizedGains.mockResolvedValue([]);
+    mockGetCapitalGains.mockResolvedValue([]);
     render(<DividendIncomeReport />);
     await waitFor(() => {
-      expect(screen.getByText('Dividends')).toBeInTheDocument();
+      expect(screen.getAllByText('Dividends').length).toBeGreaterThan(0);
     });
-    expect(screen.getByText('Interest')).toBeInTheDocument();
-    expect(screen.getByText('Capital Gains')).toBeInTheDocument();
+    expect(screen.getAllByText('Interest').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Capital Gains').length).toBeGreaterThan(0);
     expect(screen.getByText('Total Income')).toBeInTheDocument();
   });
 
   it('renders view type buttons', async () => {
     mockGetTransactions.mockResolvedValue({ data: [], pagination: { hasMore: false } });
     mockGetInvestmentAccounts.mockResolvedValue([]);
-    mockGetRealizedGains.mockResolvedValue([]);
+    mockGetCapitalGains.mockResolvedValue([]);
     render(<DividendIncomeReport />);
     await waitFor(() => {
       expect(screen.getByText('Monthly')).toBeInTheDocument();
     });
     expect(screen.getByText('By Security')).toBeInTheDocument();
+  });
+
+  it('renders series toggles and hides a series when its checkbox is unchecked', async () => {
+    mockGetTransactions.mockResolvedValue({
+      data: [
+        {
+          id: 'tx-1',
+          transactionDate: '2024-06-15',
+          action: 'DIVIDEND',
+          totalAmount: 100,
+          accountId: 'acc-1',
+          security: { symbol: 'VFV', name: 'Vanguard S&P 500' },
+        },
+      ],
+      pagination: { hasMore: false },
+    });
+    mockGetInvestmentAccounts.mockResolvedValue([
+      { id: 'acc-1', name: 'TFSA', currencyCode: 'CAD', accountSubType: 'INVESTMENT_CASH' },
+    ]);
+    mockGetCapitalGains.mockResolvedValue([]);
+    render(<DividendIncomeReport />);
+
+    // Wait until the chart's Capital Gains bar appears, then toggle it off.
+    await waitFor(() => {
+      expect(screen.getByTestId('bar-Capital Gains')).toBeInTheDocument();
+    });
+
+    const checkboxes = screen.getAllByRole('checkbox');
+    // Three series toggles: Dividends, Interest, Capital Gains. All checked by default.
+    expect(checkboxes).toHaveLength(3);
+    const capitalGainsCheckbox = checkboxes[2];
+    fireEvent.click(capitalGainsCheckbox);
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('bar-Capital Gains')).not.toBeInTheDocument();
+    });
+    // Other bars remain visible.
+    expect(screen.getByTestId('bar-Dividends')).toBeInTheDocument();
+    expect(screen.getByTestId('bar-Interest')).toBeInTheDocument();
   });
 });
