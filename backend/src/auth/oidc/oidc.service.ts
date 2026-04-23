@@ -5,6 +5,10 @@ import * as client from "openid-client";
 export interface OidcTokenResult {
   access_token: string;
   sub: string;
+  /** "amr" (Authentication Methods References) claim from the ID token. */
+  amr?: string[];
+  /** "acr" (Authentication Context Class Reference) claim from the ID token. */
+  acr?: string;
 }
 
 @Injectable()
@@ -111,9 +115,18 @@ export class OidcService implements OnModuleInit {
       throw new Error("No subject claim in ID token");
     }
 
+    const rawAmr = (claims as Record<string, unknown>).amr;
+    const amr = Array.isArray(rawAmr)
+      ? rawAmr.filter((v): v is string => typeof v === "string")
+      : undefined;
+    const rawAcr = (claims as Record<string, unknown>).acr;
+    const acr = typeof rawAcr === "string" ? rawAcr : undefined;
+
     return {
       access_token: tokens.access_token,
       sub: claims.sub,
+      amr,
+      acr,
     };
   }
 

@@ -10,6 +10,7 @@ import * as bcrypt from "bcryptjs";
 import * as crypto from "crypto";
 
 import { User } from "../users/entities/user.entity";
+import { TrustedDevice } from "../users/entities/trusted-device.entity";
 import { hashToken } from "./crypto.util";
 import { PasswordBreachService } from "./password-breach.service";
 import { TokenService } from "./token.service";
@@ -30,6 +31,8 @@ export class AuthEmailService implements OnModuleDestroy {
   constructor(
     @InjectRepository(User)
     private usersRepository: Repository<User>,
+    @InjectRepository(TrustedDevice)
+    private trustedDevicesRepository: Repository<TrustedDevice>,
     private passwordBreachService: PasswordBreachService,
     private tokenService: TokenService,
   ) {
@@ -114,6 +117,9 @@ export class AuthEmailService implements OnModuleDestroy {
     const userId = result.raw?.[0]?.id;
     if (userId) {
       await this.tokenService.revokeAllUserRefreshTokens(userId);
+      // SECURITY: Revoke trusted devices so a stolen trusted-device cookie
+      // cannot bypass 2FA after a password reset.
+      await this.trustedDevicesRepository.delete({ userId });
     }
   }
 

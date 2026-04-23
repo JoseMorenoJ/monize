@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import '@/lib/zodConfig';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -19,6 +19,12 @@ const totpCodeSchema = z.object({
 
 type TotpCodeFormData = z.infer<typeof totpCodeSchema>;
 
+const passwordSchema = z.object({
+  currentPassword: z.string().min(1, 'Password is required').max(128),
+});
+
+type PasswordFormData = z.infer<typeof passwordSchema>;
+
 interface TwoFactorSetupProps {
   onComplete: () => void;
   onSkip?: () => void;
@@ -27,7 +33,6 @@ interface TwoFactorSetupProps {
 
 export function TwoFactorSetup({ onComplete, onSkip, isForced }: TwoFactorSetupProps) {
   const [setupData, setSetupData] = useState<TwoFactorSetupResponse | null>(null);
-  const [isSettingUp, setIsSettingUp] = useState(true);
   const [showManualKey, setShowManualKey] = useState(false);
   const [backupCodes, setBackupCodes] = useState<string[] | null>(null);
 
@@ -47,19 +52,23 @@ export function TwoFactorSetup({ onComplete, onSkip, isForced }: TwoFactorSetupP
   const codeValue = watch('code');
   const codeRef = register('code');
 
-  useEffect(() => {
-    const initSetup = async () => {
-      try {
-        const data = await authApi.setup2FA();
-        setSetupData(data);
-      } catch (error) {
-        toast.error(getErrorMessage(error, 'Failed to initialize 2FA setup'));
-      } finally {
-        setIsSettingUp(false);
-      }
-    };
-    initSetup();
-  }, []);
+  const {
+    register: registerPassword,
+    handleSubmit: handlePasswordSubmit,
+    formState: { errors: passwordErrors, isSubmitting: isPasswordSubmitting },
+  } = useForm<PasswordFormData>({
+    resolver: zodResolver(passwordSchema),
+    defaultValues: { currentPassword: '' },
+  });
+
+  const onPasswordSubmit = async (data: PasswordFormData) => {
+    try {
+      const setup = await authApi.setup2FA(data.currentPassword);
+      setSetupData(setup);
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Current password is incorrect'));
+    }
+  };
 
   const onSubmit = async (formData: TotpCodeFormData) => {
     try {
@@ -83,19 +92,46 @@ export function TwoFactorSetup({ onComplete, onSkip, isForced }: TwoFactorSetupP
     return <BackupCodesDisplay codes={backupCodes} onDone={onComplete} />;
   }
 
-  if (isSettingUp) {
-    return (
-      <div className="flex justify-center py-8">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-      </div>
-    );
-  }
-
   if (!setupData) {
     return (
-      <div className="text-center py-4">
-        <p className="text-red-600 dark:text-red-400">Failed to load 2FA setup. Please try again.</p>
-      </div>
+      <form onSubmit={handlePasswordSubmit(onPasswordSubmit)} className="space-y-4">
+        <div className="text-center">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+            Confirm your password
+          </h3>
+          <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+            Re-enter your current password to start two-factor authentication setup.
+          </p>
+        </div>
+
+        <Input
+          label="Current password"
+          type="password"
+          autoComplete="current-password"
+          error={passwordErrors.currentPassword?.message}
+          {...registerPassword('currentPassword')}
+        />
+
+        <Button
+          type="submit"
+          variant="primary"
+          size="lg"
+          isLoading={isPasswordSubmitting}
+          className="w-full"
+        >
+          Continue
+        </Button>
+
+        {onSkip && !isForced && (
+          <button
+            type="button"
+            onClick={onSkip}
+            className="w-full text-center text-sm font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+          >
+            Skip for now
+          </button>
+        )}
+      </form>
     );
   }
 

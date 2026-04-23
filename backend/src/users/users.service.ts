@@ -12,6 +12,7 @@ import { Repository, DataSource } from "typeorm";
 import * as bcrypt from "bcryptjs";
 import { User } from "./entities/user.entity";
 import { UserPreference } from "./entities/user-preference.entity";
+import { TrustedDevice } from "./entities/trusted-device.entity";
 import { RefreshToken } from "../auth/entities/refresh-token.entity";
 import { PersonalAccessToken } from "../auth/entities/personal-access-token.entity";
 import { UpdateProfileDto } from "./dto/update-profile.dto";
@@ -33,6 +34,8 @@ export class UsersService {
     private refreshTokensRepository: Repository<RefreshToken>,
     @InjectRepository(PersonalAccessToken)
     private patRepository: Repository<PersonalAccessToken>,
+    @InjectRepository(TrustedDevice)
+    private trustedDevicesRepository: Repository<TrustedDevice>,
     private dataSource: DataSource,
     private passwordBreachService: PasswordBreachService,
   ) {}
@@ -238,6 +241,10 @@ export class UsersService {
       { userId, isRevoked: false },
       { isRevoked: true },
     );
+
+    // SECURITY: Revoke trusted devices so a stolen trusted-device cookie
+    // cannot bypass 2FA after the user rotates their password.
+    await this.trustedDevicesRepository.delete({ userId });
   }
 
   async deleteAccount(

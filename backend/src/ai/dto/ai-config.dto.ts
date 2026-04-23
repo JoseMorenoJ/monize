@@ -15,6 +15,7 @@ import {
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { SanitizeHtml } from "../../common/decorators/sanitize-html.decorator";
 import { IsSafeConfigObject } from "../validators/safe-config-object.validator";
+import { IsSafeProviderBaseUrl } from "../validators/safe-url.validator";
 import {
   AI_PROVIDERS,
   AiProviderType,
@@ -66,6 +67,7 @@ export class CreateAiConfigDto {
   @IsOptional()
   @IsString()
   @MaxLength(500)
+  @IsSafeProviderBaseUrl()
   baseUrl?: string;
 
   @ApiPropertyOptional({
@@ -158,6 +160,7 @@ export class UpdateAiConfigDto {
   @IsOptional()
   @IsString()
   @MaxLength(500)
+  @IsSafeProviderBaseUrl()
   baseUrl?: string;
 
   @ApiPropertyOptional({
@@ -267,6 +270,7 @@ export class TestAiConfigDto {
   @IsOptional()
   @IsString()
   @MaxLength(500)
+  @IsSafeProviderBaseUrl()
   baseUrl?: string;
 
   @ApiPropertyOptional({

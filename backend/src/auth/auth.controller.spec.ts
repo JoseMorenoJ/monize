@@ -986,7 +986,7 @@ describe("AuthController", () => {
   });
 
   describe("setup2FA", () => {
-    it("delegates to authService.setup2FA with user id", async () => {
+    it("delegates to authService.setup2FA with user id and password", async () => {
       const setupResult = {
         secret: "JBSWY3DPEHPK3PXP",
         qrCodeDataUrl: "data:image/png;base64,abc123",
@@ -994,9 +994,14 @@ describe("AuthController", () => {
       authService.setup2FA.mockResolvedValue(setupResult);
       const reqWithUser = { user: { id: "user-1" } };
 
-      const result = await controller.setup2FA(reqWithUser);
+      const result = await controller.setup2FA(reqWithUser, {
+        currentPassword: "correct-password",
+      });
 
-      expect(authService.setup2FA).toHaveBeenCalledWith("user-1");
+      expect(authService.setup2FA).toHaveBeenCalledWith(
+        "user-1",
+        "correct-password",
+      );
       expect(result).toEqual(setupResult);
     });
   });

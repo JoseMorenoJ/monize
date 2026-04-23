@@ -55,8 +55,8 @@ export const authApi = {
     return response.data;
   },
 
-  setup2FA: async (): Promise<TwoFactorSetupResponse> => {
-    const response = await apiClient.post<TwoFactorSetupResponse>('/auth/2fa/setup');
+  setup2FA: async (currentPassword: string): Promise<TwoFactorSetupResponse> => {
+    const response = await apiClient.post<TwoFactorSetupResponse>('/auth/2fa/setup', { currentPassword });
     return response.data;
   },
 

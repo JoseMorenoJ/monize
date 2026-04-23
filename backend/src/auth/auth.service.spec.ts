@@ -678,8 +678,9 @@ describe("AuthService", () => {
     it("generates secret, QR code, and stores encrypted secret", async () => {
       usersRepository.findOne.mockResolvedValue({ ...mockUser });
       usersRepository.save.mockImplementation((u) => u);
+      jest.spyOn(bcrypt, "compare").mockResolvedValueOnce(true as never);
 
-      const result = await service.setup2FA("user-1");
+      const result = await service.setup2FA("user-1", "correct-password");
 
       expect(result.secret).toBe("TESTSECRET");
       expect(result.qrCodeDataUrl).toBe("data:image/png;base64,mockqrcode");
@@ -702,10 +703,10 @@ describe("AuthService", () => {
     it("throws NotFoundException when user not found", async () => {
       usersRepository.findOne.mockResolvedValue(null);
 
-      await expect(service.setup2FA("nonexistent")).rejects.toThrow(
+      await expect(service.setup2FA("nonexistent", "pw")).rejects.toThrow(
         NotFoundException,
       );
-      await expect(service.setup2FA("nonexistent")).rejects.toThrow(
+      await expect(service.setup2FA("nonexistent", "pw")).rejects.toThrow(
         "User not found",
       );
     });
@@ -716,12 +717,22 @@ describe("AuthService", () => {
         authProvider: "oidc",
       });
 
-      await expect(service.setup2FA("user-1")).rejects.toThrow(
+      await expect(service.setup2FA("user-1", "pw")).rejects.toThrow(
         BadRequestException,
       );
-      await expect(service.setup2FA("user-1")).rejects.toThrow(
+      await expect(service.setup2FA("user-1", "pw")).rejects.toThrow(
         "Two-factor authentication is not available for SSO accounts",
       );
+    });
+
+    it("rejects when current password does not match", async () => {
+      usersRepository.findOne.mockResolvedValue({ ...mockUser });
+      jest.spyOn(bcrypt, "compare").mockResolvedValueOnce(false as never);
+
+      await expect(service.setup2FA("user-1", "wrong")).rejects.toThrow(
+        "Current password is incorrect",
+      );
+      expect(usersRepository.save).not.toHaveBeenCalled();
     });
   });
 

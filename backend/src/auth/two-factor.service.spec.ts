@@ -397,8 +397,9 @@ describe("TwoFactorService", () => {
   describe("setup2FA", () => {
     it("should generate a secret and QR code for a local user", async () => {
       usersRepository.findOne.mockResolvedValue({ ...mockUser });
+      jest.spyOn(bcrypt, "compare").mockResolvedValueOnce(true as never);
 
-      const result = await service.setup2FA("user-1");
+      const result = await service.setup2FA("user-1", "correct-password");
 
       expect(result.secret).toBe("TESTSECRET");
       expect(result.qrCodeDataUrl).toBe("data:image/png;base64,mockqrcode");
@@ -409,7 +410,7 @@ describe("TwoFactorService", () => {
     it("should throw NotFoundException for unknown user", async () => {
       usersRepository.findOne.mockResolvedValue(null);
 
-      await expect(service.setup2FA("nonexistent")).rejects.toThrow(
+      await expect(service.setup2FA("nonexistent", "pw")).rejects.toThrow(
         NotFoundException,
       );
     });
@@ -420,9 +421,19 @@ describe("TwoFactorService", () => {
         authProvider: "oidc",
       });
 
-      await expect(service.setup2FA("user-1")).rejects.toThrow(
+      await expect(service.setup2FA("user-1", "pw")).rejects.toThrow(
         BadRequestException,
       );
+    });
+
+    it("should reject incorrect current password", async () => {
+      usersRepository.findOne.mockResolvedValue({ ...mockUser });
+      jest.spyOn(bcrypt, "compare").mockResolvedValueOnce(false as never);
+
+      await expect(
+        service.setup2FA("user-1", "wrong-password"),
+      ).rejects.toThrow(UnauthorizedException);
+      expect(usersRepository.save).not.toHaveBeenCalled();
     });
   });
 

@@ -1,11 +1,16 @@
 import {
   registerDecorator,
+  ValidationArguments,
   ValidationOptions,
   ValidatorConstraint,
   ValidatorConstraintInterface,
 } from "class-validator";
 import * as dns from "dns";
 import * as net from "net";
+import {
+  AiProviderType,
+  SELF_HOSTED_PROVIDERS,
+} from "../entities/ai-provider-config.entity";
 
 const BLOCKED_HOSTNAMES = new Set([
   "localhost",
@@ -215,6 +220,72 @@ export function IsSafeUrl(
       options: validationOptions,
       constraints: [],
       validator: IsSafeUrlConstraint,
+    });
+  };
+}
+
+/**
+ * SSRF guard for AI provider baseUrl values. Dispatches on the sibling
+ * `provider` field: cloud providers get the strict IsSafeUrl check (blocks
+ * private IPs, metadata endpoints, DNS-rebinding) while self-hosted providers
+ * (ollama, openai-compatible) intentionally allow private/local URLs since
+ * they run on LAN.
+ */
+@ValidatorConstraint({ async: true })
+export class IsSafeProviderBaseUrlConstraint implements ValidatorConstraintInterface {
+  private lastMessage = "baseUrl must be a valid HTTP/HTTPS URL";
+
+  async validate(value: unknown, args: ValidationArguments): Promise<boolean> {
+    if (typeof value !== "string" || value.length === 0) return false;
+
+    const provider = (args.object as { provider?: AiProviderType }).provider;
+
+    // No provider in the DTO means we can't pick the right policy at the
+    // validation layer (e.g. UpdateAiConfigDto, where provider is immutable
+    // and not echoed in the request). Fall back to basic safety here and let
+    // the service layer run provider-aware validation against the stored row.
+    if (!provider) {
+      if (!validateUrlBasicSafety(value)) {
+        this.lastMessage =
+          "baseUrl must be a valid HTTP/HTTPS URL without embedded credentials";
+        return false;
+      }
+      return true;
+    }
+
+    if (SELF_HOSTED_PROVIDERS.has(provider)) {
+      if (!validateUrlBasicSafety(value)) {
+        this.lastMessage =
+          "baseUrl must be a valid HTTP/HTTPS URL without embedded credentials";
+        return false;
+      }
+      return true;
+    }
+
+    const strict = new IsSafeUrlConstraint();
+    const ok = await strict.validate(value);
+    if (!ok) {
+      this.lastMessage =
+        "baseUrl must be a valid HTTP/HTTPS URL pointing to an external host";
+    }
+    return ok;
+  }
+
+  defaultMessage(): string {
+    return this.lastMessage;
+  }
+}
+
+export function IsSafeProviderBaseUrl(
+  validationOptions?: ValidationOptions,
+): PropertyDecorator {
+  return function (object: object, propertyName: string | symbol) {
+    registerDecorator({
+      target: object.constructor,
+      propertyName: String(propertyName),
+      options: validationOptions,
+      constraints: [],
+      validator: IsSafeProviderBaseUrlConstraint,
     });
   };
 }
