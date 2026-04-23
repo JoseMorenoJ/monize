@@ -3,7 +3,7 @@ import { render, screen, fireEvent } from '@/test/render';
 import { InvestmentTransactionList } from './InvestmentTransactionList';
 
 vi.mock('@/hooks/useDateFormat', () => ({
-  useDateFormat: () => ({ formatDate: (d: string) => d }),
+  useDateFormat: () => ({ formatDate: (d: string) => d, dateFormat: 'browser' }),
 }));
 
 vi.mock('@/hooks/useNumberFormat', () => ({

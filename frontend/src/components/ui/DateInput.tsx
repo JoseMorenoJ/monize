@@ -146,6 +146,84 @@ function isIsoDate(value: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
 
+// Parse a date format string (e.g. "DD/MM/YYYY") into the segments it contains
+// together with the character range each segment occupies in a formatted date.
+// Used so desktop-formatted mode can map the cursor position back to a
+// day/month/year segment and adjust it with ArrowUp/ArrowDown.
+type DateSegmentType = 'day' | 'month' | 'year';
+interface DateSegment {
+  type: DateSegmentType;
+  start: number;
+  end: number;
+}
+
+function parseFormatSegments(format: string): DateSegment[] {
+  const segments: DateSegment[] = [];
+  let i = 0;
+  while (i < format.length) {
+    if (format.startsWith('YYYY', i)) {
+      segments.push({ type: 'year', start: i, end: i + 4 });
+      i += 4;
+    } else if (format.startsWith('MMM', i)) {
+      segments.push({ type: 'month', start: i, end: i + 3 });
+      i += 3;
+    } else if (format.startsWith('MM', i)) {
+      segments.push({ type: 'month', start: i, end: i + 2 });
+      i += 2;
+    } else if (format.startsWith('DD', i)) {
+      segments.push({ type: 'day', start: i, end: i + 2 });
+      i += 2;
+    } else {
+      i += 1;
+    }
+  }
+  return segments;
+}
+
+function findSegmentAtCursor(format: string, cursor: number): DateSegment | null {
+  const segments = parseFormatSegments(format);
+  return segments.find(s => cursor >= s.start && cursor <= s.end) ?? null;
+}
+
+// Return only characters that can legally appear in a value formatted with
+// `format` -- digits always, letters only when the format contains a month
+// name segment (MMM), and any separator that literally appears in the format.
+function stripInvalidFormatChars(text: string, format: string): string {
+  const allowsLetters = format.includes('MMM');
+  const separators = new Set<string>();
+  for (const ch of format) {
+    if (ch !== 'Y' && ch !== 'M' && ch !== 'D') separators.add(ch);
+  }
+  let result = '';
+  for (const ch of text) {
+    if (/\d/.test(ch)) result += ch;
+    else if (allowsLetters && /[a-zA-Z]/.test(ch)) result += ch;
+    else if (separators.has(ch)) result += ch;
+  }
+  return result;
+}
+
+// Adjust a YYYY-MM-DD date by delta on the given segment. Clamps day when the
+// target month/year has fewer days (e.g. Jan 31 + month -> Feb 28/29).
+function adjustIsoDate(iso: string, segmentType: DateSegmentType, delta: number): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  if (segmentType === 'year') {
+    const newYear = y + delta;
+    const daysInMonth = new Date(newYear, m, 0).getDate();
+    return `${String(newYear).padStart(4, '0')}-${String(m).padStart(2, '0')}-${String(Math.min(d, daysInMonth)).padStart(2, '0')}`;
+  }
+  if (segmentType === 'month') {
+    let month = m + delta;
+    let year = y;
+    while (month > 12) { month -= 12; year += 1; }
+    while (month < 1) { month += 12; year -= 1; }
+    const daysInMonth = new Date(year, month, 0).getDate();
+    return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(Math.min(d, daysInMonth)).padStart(2, '0')}`;
+  }
+  // Day: let the Date constructor handle rollover between months/years
+  return getLocalDateString(new Date(y, m - 1, d + delta));
+}
+
 function isTouchDevice(): boolean {
   return typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
 }
@@ -165,7 +243,7 @@ function getInputMode(dateFormat: string): InputMode {
 }
 
 export const DateInput = forwardRef<HTMLInputElement, DateInputProps>(
-  ({ onDateChange, onKeyDown, onChange: externalOnChange, onBlur: externalOnBlur, value: externalValue, label, id, ...props }, ref) => {
+  ({ onDateChange, onKeyDown, onChange: externalOnChange, onBlur: externalOnBlur, value: externalValue, label, id, name, ...props }, ref) => {
     const inputId = id || (label ? `input-${label.toLowerCase().replace(/\s+/g, '-')}` : undefined);
     const { dateFormat } = useDateFormat();
     const mode = getInputMode(dateFormat);
@@ -180,6 +258,10 @@ export const DateInput = forwardRef<HTMLInputElement, DateInputProps>(
     const localRef = useRef<HTMLInputElement>(null);
     // Hidden native date input ref for touch-formatted mode
     const nativeDateRef = useRef<HTMLInputElement>(null);
+    // Visible text input ref for desktop-formatted mode
+    const textInputRef = useRef<HTMLInputElement>(null);
+    // Segment range to re-select after emitDateChange re-renders the text input
+    const pendingSelectionRef = useRef<[number, number] | null>(null);
 
     // Merged ref: forwards to external ref (react-hook-form register) and keeps
     // a local reference for reading the DOM value
@@ -216,14 +298,17 @@ export const DateInput = forwardRef<HTMLInputElement, DateInputProps>(
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [mode, dateFormat]);
 
-    // Sync explicit value prop changes to internal state
+    // Sync explicit value prop changes to internal state. When the caller is
+    // uncontrolled (RHF register, no value prop), externalValue is undefined
+    // and we skip -- the mount effect below reads the ref-injected DOM value
+    // instead.
     useEffect(() => {
       if (mode === 'touch-browser') return;
+      if (externalValue === undefined) return;
       const newIso = (externalValue as string) || '';
-      if (!newIso) return;
       setIsoValue(newIso);
       if (!isFocusedRef.current) {
-        setDisplayValue(formatDate(newIso, dateFormat));
+        setDisplayValue(newIso ? formatDate(newIso, dateFormat) : '');
       }
     }, [externalValue, dateFormat, mode]);
 
@@ -238,6 +323,27 @@ export const DateInput = forwardRef<HTMLInputElement, DateInputProps>(
 
     // Keyboard shortcut handler (works in all modes)
     const handleKeyDown = useCallback((e: KeyboardEvent<HTMLInputElement>) => {
+      // Desktop-formatted segment navigation: ArrowUp/ArrowDown increments the
+      // day/month/year segment that the cursor is currently in, restoring the
+      // segment highlight after the re-render so repeated arrow presses keep
+      // stepping the same segment.
+      if (
+        mode === 'desktop-formatted'
+        && (e.key === 'ArrowUp' || e.key === 'ArrowDown')
+        && isoValue
+      ) {
+        const cursor = e.currentTarget.selectionStart ?? 0;
+        const segment = findSegmentAtCursor(dateFormat, cursor);
+        if (segment) {
+          e.preventDefault();
+          const delta = e.key === 'ArrowUp' ? 1 : -1;
+          emitDateChange(adjustIsoDate(isoValue, segment.type, delta));
+          pendingSelectionRef.current = [segment.start, segment.end];
+          onKeyDown?.(e);
+          return;
+        }
+      }
+
       const isFormatted = mode === 'desktop-formatted' || mode === 'touch-formatted';
       const currentIso = isFormatted ? isoValue : e.currentTarget.value;
       const newDate = resolveShortcutDate(e.key, currentIso);
@@ -257,23 +363,45 @@ export const DateInput = forwardRef<HTMLInputElement, DateInputProps>(
       }
 
       onKeyDown?.(e);
-    }, [mode, isoValue, emitDateChange, onDateChange, onKeyDown]);
+    }, [mode, isoValue, dateFormat, emitDateChange, onDateChange, onKeyDown]);
 
-    // Desktop text mode: handle user typing in the formatted input
-    const _handleTextChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
-      const text = e.target.value;
+    // Restore a segment highlight after the controlled text input re-renders
+    // with a new displayValue.
+    useEffect(() => {
+      const range = pendingSelectionRef.current;
+      if (!range) return;
+      const input = textInputRef.current;
+      if (!input) return;
+      input.setSelectionRange(range[0], range[1]);
+      pendingSelectionRef.current = null;
+    }, [displayValue]);
+
+    // Desktop text mode: handle user typing in the formatted input. Strip any
+    // character that can't appear in the format so users can't enter letters
+    // in MM/DD/YYYY or the like. maxLength on the input handles the
+    // "too-long" case at the DOM level.
+    //
+    // Deliberately does NOT reformat displayValue when parsing succeeds --
+    // otherwise an unpadded intermediate like "12/3/2026" would be rewritten
+    // to "12/03/2026" in the middle of a "12/03/2026" -> "12/23/2026" edit
+    // and the user's next keystroke would land in the wrong place. The blur
+    // handler applies the canonical format once editing is done.
+    const handleTextChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
+      const text = stripInvalidFormatChars(e.target.value, dateFormat);
       setDisplayValue(text);
 
       const parsed = parseDateFromFormat(text, dateFormat);
       if (parsed) {
-        emitDateChange(parsed);
+        setIsoValue(parsed);
+        onDateChange?.(parsed);
+      } else if (!text) {
+        setIsoValue('');
+        onDateChange?.('');
       }
-      // Also forward to external onChange for components that listen to it directly
-      externalOnChange?.(e);
-    }, [dateFormat, emitDateChange, externalOnChange]);
+    }, [dateFormat, onDateChange]);
 
     // Desktop text mode: reformat on blur
-    const _handleTextBlur = useCallback((e: React.FocusEvent<HTMLInputElement>) => {
+    const handleTextBlur = useCallback((e: React.FocusEvent<HTMLInputElement>) => {
       isFocusedRef.current = false;
       const parsed = parseDateFromFormat(displayValue, dateFormat);
       if (parsed) {
@@ -285,7 +413,7 @@ export const DateInput = forwardRef<HTMLInputElement, DateInputProps>(
       externalOnBlur?.(e);
     }, [displayValue, dateFormat, isoValue, emitDateChange, externalOnBlur]);
 
-    const _handleTextFocus = useCallback(() => {
+    const handleTextFocus = useCallback(() => {
       isFocusedRef.current = true;
     }, []);
 
@@ -297,7 +425,7 @@ export const DateInput = forwardRef<HTMLInputElement, DateInputProps>(
       setShowCalendar((prev) => !prev);
     }, []);
 
-    const _handleCalendarSelect = useCallback((date: string) => {
+    const handleCalendarSelect = useCallback((date: string) => {
       if (date) {
         emitDateChange(date);
       }
@@ -379,7 +507,7 @@ export const DateInput = forwardRef<HTMLInputElement, DateInputProps>(
             <input
               ref={mergedRef}
               type="hidden"
-              name={props.name}
+              name={name}
               value={isoValue}
               readOnly
             />
@@ -404,10 +532,56 @@ export const DateInput = forwardRef<HTMLInputElement, DateInputProps>(
       </button>
     );
 
-    // --- Desktop mode (both formatted and browser) ---
+    // --- Desktop + custom format mode ---
+    // Visible text input displays the date in the user's chosen format
+    // (e.g. DD/MM/YYYY). A hidden input holds the canonical YYYY-MM-DD value
+    // and is bound to react-hook-form via the forwarded ref.
+    if (mode === 'desktop-formatted') {
+      return (
+        <div className="w-full">
+          {labelBlock}
+          <div className="relative" ref={calendarAnchorRef}>
+            <Input
+              ref={textInputRef}
+              id={inputId}
+              type="text"
+              value={displayValue}
+              onChange={handleTextChange}
+              onFocus={handleTextFocus}
+              onBlur={handleTextBlur}
+              onKeyDown={handleKeyDown}
+              error={props.error}
+              placeholder={dateFormat}
+              maxLength={dateFormat.length}
+              className="pr-9"
+              {...props}
+            />
+            {calendarButton}
+            {showCalendar && (
+              <CalendarPopover
+                value={isoValue}
+                onSelect={handleCalendarSelect}
+                onClose={handleCalendarClose}
+                anchorRef={calendarAnchorRef}
+              />
+            )}
+            {/* Hidden input bound to react-hook-form for value/ref management */}
+            <input
+              ref={mergedRef}
+              type="hidden"
+              name={name}
+              value={isoValue}
+              readOnly
+            />
+          </div>
+        </div>
+      );
+    }
+
+    // --- Desktop + browser-locale mode ---
     // Native date input (supports arrow-key segment navigation) with the
     // browser's built-in picker icon hidden, replaced by CalendarPopover.
-    if (mode === 'desktop-formatted' || mode === 'desktop-browser') {
+    if (mode === 'desktop-browser') {
       return (
         <div className="w-full">
           {labelBlock}
@@ -425,6 +599,7 @@ export const DateInput = forwardRef<HTMLInputElement, DateInputProps>(
               onKeyDown={handleKeyDown}
               error={props.error}
               className="pr-9 date-picker-hide"
+              name={name}
               {...props}
             />
             {calendarButton}
@@ -461,6 +636,7 @@ export const DateInput = forwardRef<HTMLInputElement, DateInputProps>(
             onBlur={externalOnBlur}
             onKeyDown={handleKeyDown}
             className="pr-10"
+            name={name}
             {...props}
           />
           <span
