@@ -36,6 +36,7 @@ import { ForgotPasswordDto } from "./dto/forgot-password.dto";
 import { ResetPasswordDto } from "./dto/reset-password.dto";
 import { VerifyTotpDto } from "./dto/verify-totp.dto";
 import { Setup2faDto } from "./dto/setup-2fa.dto";
+import { Setup2faInitDto } from "./dto/setup-2fa-init.dto";
 import { passwordResetTemplate } from "../notifications/email-templates";
 import { SkipCsrf } from "../common/decorators/skip-csrf.decorator";
 import { SkipPasswordCheck } from "./decorators/skip-password-check.decorator";
@@ -113,6 +114,50 @@ export class AuthController {
       // the user through the normal 2FA flow on this login.
       return undefined;
     }
+  }
+
+  /**
+   * Decide whether the OIDC provider actually performed multi-factor auth.
+   * Matches RFC 8176 "amr" values that imply a second factor, plus a small
+   * set of well-known multi-factor "acr" strings. When neither claim is
+   * present we treat it as "MFA not proven".
+   */
+  private oidcProvedMfa(amr: string[] | undefined, acr: string | undefined) {
+    const mfaAmrValues = new Set([
+      "mfa",
+      "otp",
+      "totp",
+      "hwk",
+      "swk",
+      "sms",
+      "tel",
+      "pop",
+      "fpt",
+      "face",
+      "iris",
+      "retina",
+      "vbm",
+      "wia",
+      "kba",
+    ]);
+    if (amr?.some((v) => mfaAmrValues.has(v.toLowerCase()))) {
+      // "pwd" + a second factor is the normal case; the presence of any
+      // second-factor value on top of the password is enough.
+      return true;
+    }
+    if (acr) {
+      const lower = acr.toLowerCase();
+      if (
+        lower.includes("mfa") ||
+        lower.endsWith(":2") ||
+        lower.endsWith("/2") ||
+        lower === "2" ||
+        /loa[-_]?[234]/.test(lower)
+      ) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private getAccessCookieOptions() {
@@ -317,6 +362,18 @@ export class AuthController {
         nonce,
       );
 
+      // SECURITY: When FORCE_2FA is enabled, app-level 2FA is unavailable for
+      // OIDC users (2FA is delegated to the identity provider). To still
+      // honor the admin's "require MFA for everyone" intent, require the IdP
+      // to assert MFA via RFC 8176 "amr" or a multi-factor "acr" value.
+      if (this.force2fa && !this.oidcProvedMfa(tokenSet.amr, tokenSet.acr)) {
+        this.logger.warn(
+          `OIDC login rejected: FORCE_2FA is enabled but IdP did not assert MFA (amr=${JSON.stringify(tokenSet.amr)}, acr=${tokenSet.acr})`,
+        );
+        res.redirect(`${frontendUrl}/auth/callback?error=mfa_required`);
+        return;
+      }
+
       // Get user info from OIDC provider
       const userInfo = await this.oidcService.getUserInfo(
         tokenSet.access_token,
@@ -516,10 +573,11 @@ export class AuthController {
   @Post("2fa/setup")
   @UseGuards(AuthGuard("jwt"))
   @DemoRestricted()
+  @Throttle({ default: { ttl: 900000, limit: 5 } })
   @ApiBearerAuth()
   @ApiOperation({ summary: "Generate QR code and secret for 2FA setup" })
-  async setup2FA(@Request() req) {
-    return this.authService.setup2FA(req.user.id);
+  async setup2FA(@Request() req, @Body() dto: Setup2faInitDto) {
+    return this.authService.setup2FA(req.user.id, dto.currentPassword);
   }
 
   @Post("2fa/confirm-setup")

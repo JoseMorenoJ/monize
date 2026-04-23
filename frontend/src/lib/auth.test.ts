@@ -66,10 +66,10 @@ describe('authApi', () => {
     });
   });
 
-  it('setup2FA posts to /auth/2fa/setup', async () => {
+  it('setup2FA posts to /auth/2fa/setup with current password', async () => {
     vi.mocked(apiClient.post).mockResolvedValue({ data: { qrCodeDataUrl: 'data:image' } });
-    const result = await authApi.setup2FA();
-    expect(apiClient.post).toHaveBeenCalledWith('/auth/2fa/setup');
+    const result = await authApi.setup2FA('correct-password');
+    expect(apiClient.post).toHaveBeenCalledWith('/auth/2fa/setup', { currentPassword: 'correct-password' });
     expect(result.qrCodeDataUrl).toBeDefined();
   });
 

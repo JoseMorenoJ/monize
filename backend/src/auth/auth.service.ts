@@ -565,8 +565,8 @@ export class AuthService {
     );
   }
 
-  async setup2FA(userId: string) {
-    return this.twoFactorService.setup2FA(userId);
+  async setup2FA(userId: string, currentPassword: string) {
+    return this.twoFactorService.setup2FA(userId, currentPassword);
   }
 
   async confirmSetup2FA(userId: string, code: string) {

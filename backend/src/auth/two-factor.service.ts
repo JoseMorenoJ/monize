@@ -271,7 +271,7 @@ export class TwoFactorService {
     }
   }
 
-  async setup2FA(userId: string) {
+  async setup2FA(userId: string, currentPassword: string) {
     const user = await this.usersRepository.findOne({
       where: { id: userId },
     });
@@ -284,6 +284,25 @@ export class TwoFactorService {
       throw new BadRequestException(
         "Two-factor authentication is not available for SSO accounts",
       );
+    }
+
+    // SECURITY: Re-verify the current password before generating (and
+    // displaying) a new TOTP secret. Without this a session-hijacker could
+    // force-enroll their own authenticator and lock out the real user.
+    if (!user.passwordHash) {
+      throw new BadRequestException(
+        "Two-factor authentication requires an account password",
+      );
+    }
+    const isPasswordValid = await bcrypt.compare(
+      currentPassword,
+      user.passwordHash,
+    );
+    if (!isPasswordValid) {
+      this.logger.warn(
+        `2FA setup refused: invalid password for user ${userId}`,
+      );
+      throw new UnauthorizedException("Current password is incorrect");
     }
 
     const secret = otplib.generateSecret();

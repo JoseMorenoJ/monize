@@ -4,6 +4,7 @@ import { BadRequestException } from "@nestjs/common";
 import * as bcrypt from "bcryptjs";
 import { AuthEmailService } from "./auth-email.service";
 import { User } from "../users/entities/user.entity";
+import { TrustedDevice } from "../users/entities/trusted-device.entity";
 import { PasswordBreachService } from "./password-breach.service";
 import { TokenService } from "./token.service";
 import { hashToken } from "./crypto.util";
@@ -11,6 +12,7 @@ import { hashToken } from "./crypto.util";
 describe("AuthEmailService", () => {
   let service: AuthEmailService;
   let usersRepository: Record<string, jest.Mock>;
+  let trustedDevicesRepository: Record<string, jest.Mock>;
   let passwordBreachService: { isBreached: jest.Mock };
   let tokenService: { revokeAllUserRefreshTokens: jest.Mock };
 
@@ -31,6 +33,10 @@ describe("AuthEmailService", () => {
       createQueryBuilder: jest.fn(),
     };
 
+    trustedDevicesRepository = {
+      delete: jest.fn(),
+    };
+
     passwordBreachService = {
       isBreached: jest.fn(),
     };
@@ -45,6 +51,10 @@ describe("AuthEmailService", () => {
         {
           provide: getRepositoryToken(User),
           useValue: usersRepository,
+        },
+        {
+          provide: getRepositoryToken(TrustedDevice),
+          useValue: trustedDevicesRepository,
         },
         {
           provide: PasswordBreachService,

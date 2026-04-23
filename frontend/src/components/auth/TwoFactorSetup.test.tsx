@@ -17,6 +17,12 @@ vi.mock('@/lib/auth', () => ({
   },
 }));
 
+async function submitPasswordStep(password = 'correct-password') {
+  const passwordInput = screen.getByLabelText('Current password');
+  fireEvent.change(passwordInput, { target: { value: password } });
+  fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+}
+
 describe('TwoFactorSetup', () => {
   const onComplete = vi.fn();
   const onSkip = vi.fn();
@@ -25,41 +31,42 @@ describe('TwoFactorSetup', () => {
     vi.clearAllMocks();
   });
 
-  it('shows loading state on mount while fetching setup data', async () => {
-    const { authApi } = await import('@/lib/auth');
-    vi.mocked(authApi.setup2FA).mockReturnValue(new Promise(() => {})); // never resolves
-
+  it('shows password prompt before fetching setup data', async () => {
     render(<TwoFactorSetup onComplete={onComplete} />);
 
-    // Should show a spinner (the loading div contains animate-spin)
-    expect(document.querySelector('.animate-spin')).toBeInTheDocument();
+    expect(screen.getByText('Confirm your password')).toBeInTheDocument();
+    expect(screen.getByLabelText('Current password')).toBeInTheDocument();
   });
 
-  it('displays QR code after setup data loads', async () => {
+  it('calls setup2FA with the password and displays QR code after confirmation', async () => {
     const { authApi } = await import('@/lib/auth');
     vi.mocked(authApi.setup2FA).mockResolvedValue(mockSetupData);
 
     render(<TwoFactorSetup onComplete={onComplete} />);
+    await submitPasswordStep('my-password');
 
     await waitFor(() => {
       expect(screen.getByAltText('2FA QR Code')).toBeInTheDocument();
     });
-
+    expect(authApi.setup2FA).toHaveBeenCalledWith('my-password');
     const qrImage = screen.getByAltText('2FA QR Code') as HTMLImageElement;
     expect(qrImage.src).toBe(mockSetupData.qrCodeDataUrl);
   });
 
-  it('shows error state when setup fails', async () => {
+  it('shows error toast and stays on password step when password is wrong', async () => {
     const { authApi } = await import('@/lib/auth');
     vi.mocked(authApi.setup2FA).mockRejectedValue({
-      response: { data: { message: 'Setup failed' } },
+      response: { data: { message: 'Current password is incorrect' } },
     });
 
     render(<TwoFactorSetup onComplete={onComplete} />);
+    await submitPasswordStep('wrong');
 
     await waitFor(() => {
-      expect(screen.getByText('Failed to load 2FA setup. Please try again.')).toBeInTheDocument();
+      expect(toast.error).toHaveBeenCalledWith('Current password is incorrect');
     });
+    expect(screen.getByText('Confirm your password')).toBeInTheDocument();
+    expect(screen.queryByAltText('2FA QR Code')).not.toBeInTheDocument();
   });
 
   it('toggles manual key display when clicked', async () => {
@@ -67,6 +74,7 @@ describe('TwoFactorSetup', () => {
     vi.mocked(authApi.setup2FA).mockResolvedValue(mockSetupData);
 
     render(<TwoFactorSetup onComplete={onComplete} />);
+    await submitPasswordStep();
 
     await waitFor(() => {
       expect(screen.getByText("Can't scan? Enter key manually")).toBeInTheDocument();
@@ -85,6 +93,7 @@ describe('TwoFactorSetup', () => {
     vi.mocked(authApi.setup2FA).mockResolvedValue(mockSetupData);
 
     render(<TwoFactorSetup onComplete={onComplete} />);
+    await submitPasswordStep();
 
     await waitFor(() => {
       expect(screen.getByPlaceholderText('000000')).toBeInTheDocument();
@@ -104,6 +113,7 @@ describe('TwoFactorSetup', () => {
     });
 
     render(<TwoFactorSetup onComplete={onComplete} />);
+    await submitPasswordStep();
 
     await waitFor(() => {
       expect(screen.getByPlaceholderText('000000')).toBeInTheDocument();
@@ -143,6 +153,7 @@ describe('TwoFactorSetup', () => {
     });
 
     render(<TwoFactorSetup onComplete={onComplete} />);
+    await submitPasswordStep();
 
     await waitFor(() => {
       expect(screen.getByPlaceholderText('000000')).toBeInTheDocument();
@@ -166,6 +177,7 @@ describe('TwoFactorSetup', () => {
     });
 
     render(<TwoFactorSetup onComplete={onComplete} />);
+    await submitPasswordStep();
 
     await waitFor(() => {
       expect(screen.getByPlaceholderText('000000')).toBeInTheDocument();
@@ -180,16 +192,10 @@ describe('TwoFactorSetup', () => {
     });
   });
 
-  it('shows skip button when onSkip is provided and not forced', async () => {
-    const { authApi } = await import('@/lib/auth');
-    vi.mocked(authApi.setup2FA).mockResolvedValue(mockSetupData);
-
+  it('shows skip button on password step when onSkip is provided and not forced', async () => {
     render(<TwoFactorSetup onComplete={onComplete} onSkip={onSkip} isForced={false} />);
 
-    await waitFor(() => {
-      expect(screen.getByText('Skip for now')).toBeInTheDocument();
-    });
-
+    expect(screen.getByText('Skip for now')).toBeInTheDocument();
     fireEvent.click(screen.getByText('Skip for now'));
     expect(onSkip).toHaveBeenCalled();
   });
@@ -199,6 +205,7 @@ describe('TwoFactorSetup', () => {
     vi.mocked(authApi.setup2FA).mockResolvedValue(mockSetupData);
 
     render(<TwoFactorSetup onComplete={onComplete} onSkip={onSkip} isForced={true} />);
+    await submitPasswordStep();
 
     await waitFor(() => {
       expect(screen.getByText('Verify and Enable')).toBeInTheDocument();

@@ -11,6 +11,7 @@ import * as bcrypt from "bcryptjs";
 import { UsersService } from "./users.service";
 import { User } from "./entities/user.entity";
 import { UserPreference } from "./entities/user-preference.entity";
+import { TrustedDevice } from "./entities/trusted-device.entity";
 import { RefreshToken } from "../auth/entities/refresh-token.entity";
 import { PersonalAccessToken } from "../auth/entities/personal-access-token.entity";
 import { PasswordBreachService } from "../auth/password-breach.service";
@@ -21,6 +22,7 @@ describe("UsersService", () => {
   let preferencesRepository: Record<string, jest.Mock>;
   let refreshTokensRepository: Record<string, jest.Mock>;
   let patRepository: Record<string, jest.Mock>;
+  let trustedDevicesRepository: Record<string, jest.Mock>;
   let passwordBreachService: { isBreached: jest.Mock };
   let mockQueryRunner: Record<string, jest.Mock>;
 
@@ -79,6 +81,10 @@ describe("UsersService", () => {
       update: jest.fn(),
     };
 
+    trustedDevicesRepository = {
+      delete: jest.fn(),
+    };
+
     passwordBreachService = {
       isBreached: jest.fn().mockResolvedValue(false),
     };
@@ -111,6 +117,10 @@ describe("UsersService", () => {
         {
           provide: getRepositoryToken(PersonalAccessToken),
           useValue: patRepository,
+        },
+        {
+          provide: getRepositoryToken(TrustedDevice),
+          useValue: trustedDevicesRepository,
         },
         { provide: DataSource, useValue: mockDataSource },
         { provide: PasswordBreachService, useValue: passwordBreachService },
