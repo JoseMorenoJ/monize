@@ -15,12 +15,29 @@ export const apiClient = axios.create({
   withCredentials: true,
 });
 
-// Request interceptor to add CSRF token
+function detectBrowserTimezone(): string | undefined {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+// Request interceptor to add CSRF token and the browser's timezone so the
+// backend can compute "today" in the user's local timezone rather than the
+// server's (which would misclassify late-evening tomorrow-dated transactions
+// for users west of UTC).
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
     const csrfToken = Cookies.get('csrf_token');
     if (csrfToken && config.headers) {
       config.headers['X-CSRF-Token'] = csrfToken;
+    }
+    if (config.headers && !config.headers['X-Client-Timezone']) {
+      const tz = detectBrowserTimezone();
+      if (tz) {
+        config.headers['X-Client-Timezone'] = tz;
+      }
     }
     logger.debug(`${config.method?.toUpperCase()} ${config.url}`);
     return config;

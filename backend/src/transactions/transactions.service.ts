@@ -32,7 +32,7 @@ import {
   BulkDeleteResult,
 } from "./transaction-bulk-update.service";
 import { BulkUpdateDto, BulkDeleteDto } from "./dto/bulk-update.dto";
-import { isTransactionInFuture } from "../common/date-utils";
+import { isTransactionInFuture, todayYMD } from "../common/date-utils";
 import { ActionHistoryService } from "../action-history/action-history.service";
 import { getAllCategoryIdsWithChildren } from "../common/category-tree.util";
 
@@ -833,28 +833,15 @@ export class TransactionsService {
   }
 
   /**
-   * Compute projected balance (current balance + future non-void transactions).
+   * Thin delegate to AccountsService.getProjectedBalance -- kept here so the
+   * paging helpers below stay readable. See that method for why balance is
+   * derived live rather than from the stored currentBalance column.
    */
   private async computeProjectedBalance(
     userId: string,
     accountId: string,
   ): Promise<number> {
-    const account = await this.accountsService.findOne(userId, accountId);
-    const currentBalance = Number(account.currentBalance) || 0;
-
-    const now = new Date();
-    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-
-    const futureResult = await this.transactionsRepository
-      .createQueryBuilder("t")
-      .select("COALESCE(SUM(t.amount), 0)", "sum")
-      .where("t.userId = :userId", { userId })
-      .andWhere("t.accountId = :accountId", { accountId })
-      .andWhere("t.transactionDate > :today", { today })
-      .andWhere("t.status != :void", { void: TransactionStatus.VOID })
-      .getRawOne();
-
-    return currentBalance + (Number(futureResult?.sum) || 0);
+    return this.accountsService.getProjectedBalance(userId, accountId);
   }
 
   /**

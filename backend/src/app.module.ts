@@ -16,7 +16,9 @@ import { DemoModeGuard } from "./common/guards/demo-mode.guard";
 import { MustChangePasswordGuard } from "./auth/guards/must-change-password.guard";
 import { PatScopeGuard } from "./auth/guards/pat-scope.guard";
 import { CsrfRefreshInterceptor } from "./common/interceptors/csrf-refresh.interceptor";
+import { RequestContextInterceptor } from "./common/interceptors/request-context.interceptor";
 import { DemoModeModule } from "./common/demo-mode.module";
+import { UserPreference } from "./users/entities/user-preference.entity";
 
 import { AuthModule } from "./auth/auth.module";
 import { UsersModule } from "./users/users.module";
@@ -91,6 +93,10 @@ import { UpdatesModule } from "./updates/updates.module";
     // Demo mode (global — available to all modules)
     DemoModeModule,
 
+    // UserPreference repo for RequestContextInterceptor (resolves the
+    // authenticated user's timezone on every request).
+    TypeOrmModule.forFeature([UserPreference]),
+
     // Feature modules
     HealthModule,
     AuthModule,
@@ -124,6 +130,7 @@ import { UpdatesModule } from "./updates/updates.module";
     { provide: APP_GUARD, useClass: MustChangePasswordGuard },
     { provide: APP_GUARD, useClass: PatScopeGuard },
     { provide: APP_GUARD, useClass: DemoModeGuard },
+    { provide: APP_INTERCEPTOR, useClass: RequestContextInterceptor },
     { provide: APP_INTERCEPTOR, useClass: CsrfRefreshInterceptor },
     {
       provide: APP_INTERCEPTOR,

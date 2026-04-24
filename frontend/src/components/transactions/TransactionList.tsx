@@ -12,6 +12,7 @@ import { TransactionRow } from './TransactionRow';
 import { TransactionActionSheet } from './TransactionActionSheet';
 import { useDateFormat } from '@/hooks/useDateFormat';
 import { useNumberFormat } from '@/hooks/useNumberFormat';
+import { getLocalDateString } from '@/lib/utils';
 import { DensityLevel, nextDensity } from '@/hooks/useTableDensity';
 
 interface TransactionListProps {
@@ -258,10 +259,13 @@ export function TransactionList({
     }
   }, [onRefresh, onTransactionUpdate]);
 
-  // Find the index where future transactions end and today/past begin
-  // Transactions are sorted DESC by date, so future ones come first
+  // Find the index where future transactions end and today/past begin.
+  // Transactions are sorted DESC by date, so future ones come first.
+  // "Today" is the user's local date -- using toISOString() would return
+  // the UTC date and mis-classify a tomorrow-local-dated transaction as
+  // past for users west of UTC in the late evening.
   const futureBoundaryIndex = useMemo(() => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = getLocalDateString();
     for (let i = 0; i < transactions.length; i++) {
       if (transactions[i].transactionDate <= today) {
         return i;
@@ -295,8 +299,12 @@ export function TransactionList({
     return map;
   }, [transactions]);
 
-  // Calculate running balances using the backend-provided starting
-  // balance and display amounts (which may be filtered split totals).
+  // Calculate running balances using the backend-provided starting balance
+  // and display amounts (which may be filtered split totals). The row for
+  // each transaction still displays a running balance, but VOID transactions
+  // and split children (parentTransactionId != null) contribute 0 to the
+  // cumulative sum so the math matches the backend's balance calculations
+  // (which exclude both from currentBalance and futureTransactionsSum).
   const runningBalances = useMemo(() => {
     const safeStart = Number(startingBalance);
     if (isNaN(safeStart) || transactions.length === 0) {
@@ -307,10 +315,14 @@ export function TransactionList({
     let cumulativeCents = 0;
 
     for (const tx of transactions) {
-      const raw = displayAmounts.get(tx.id) ?? Number(tx.amount);
-      const amount = isNaN(raw) ? 0 : raw;
       balances.set(tx.id, Math.round((safeStart * 10000) - cumulativeCents) / 10000);
-      cumulativeCents += Math.round(amount * 10000);
+      const affectsBalance =
+        tx.status !== TransactionStatus.VOID && !tx.parentTransactionId;
+      if (affectsBalance) {
+        const raw = displayAmounts.get(tx.id) ?? Number(tx.amount);
+        const amount = isNaN(raw) ? 0 : raw;
+        cumulativeCents += Math.round(amount * 10000);
+      }
     }
 
     return balances;
