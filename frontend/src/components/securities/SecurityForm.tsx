@@ -138,9 +138,10 @@ export function SecurityForm({ security, onSubmit, onCancel, onDirtyChange, subm
         // Only overwrite Symbol when the backend returned a ticker-shaped value.
         // A value with spaces, extra chars, or excessive length is almost
         // certainly a company name or garbage, not a ticker — leave the user's
-        // existing input alone in that case.
+        // existing input alone in that case. Minimum length 2 rejects
+        // single-letter category / class codes.
         const isTickerShaped = (s: string): boolean =>
-          s.length > 0 && s.length <= 20 && !/\s/.test(s) && /^[A-Za-z0-9._:\-+]+$/.test(s);
+          s.length >= 2 && s.length <= 20 && !/\s/.test(s) && /^[A-Za-z0-9._:\-+]+$/.test(s);
         if (isTickerShaped(result.symbol)) {
           setValue('symbol', result.symbol, setOpts);
         }

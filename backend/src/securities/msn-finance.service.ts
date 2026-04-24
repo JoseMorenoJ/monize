@@ -106,16 +106,20 @@ function getField(
 }
 
 /**
- * Stock tickers are short (typically 1–15 chars), contain no spaces, and are
+ * Stock tickers are short (typically 2–15 chars), contain no spaces, and are
  * dominated by alphanumerics plus the occasional `.` or `-`. When MSN's
  * autosuggest returns a value that looks like a full company name under a
  * "symbol"-shaped field (it happens for fuzzy search matches), we reject it
  * here so symbol stays tidy.
+ *
+ * Minimum length is 2: 1-letter tickers exist (F, T, V) but single-character
+ * values are overwhelmingly category codes or classifications in Bing's
+ * responses, not tickers.
  */
 function looksLikeTicker(s: string | undefined): boolean {
   if (!s) return false;
   const t = s.trim();
-  if (!t || t.length > 20) return false;
+  if (t.length < 2 || t.length > 20) return false;
   if (/\s/.test(t)) return false;
   return /^[A-Za-z0-9._:\-+]+$/.test(t);
 }
@@ -172,10 +176,6 @@ function scanForValue(
   }
   return undefined;
 }
-
-/** Keys that must never be treated as a ticker even if their value is ticker-shaped. */
-const TICKER_SCAN_SKIP =
-  /^(sec(urity)?.?id|exchange|mic|market|currency|type|kind|class|asset|id)/i;
 
 /** Keys that must never be treated as a MIC code even if their value is 4-uppercase-letters. */
 const MIC_SCAN_SKIP =
@@ -436,6 +436,8 @@ export class MsnFinanceService implements QuoteProvider {
       "ticker",
       "TickerSymbol",
       "tickerSymbol",
+      "Ric",
+      "ric",
       "ShortName",
       "shortName",
     ];
@@ -500,14 +502,12 @@ export class MsnFinanceService implements QuoteProvider {
       "tradingCurrency",
     ];
 
+    // Only trust named candidates for ticker extraction. Scanning arbitrary
+    // fields previously caused single-letter category codes (e.g. Class="R")
+    // to surface as the symbol.
     const tickerFor = (s: AutosuggestItem): string | undefined => {
       const named = pickFirst(s, SYMBOL_CANDIDATES, looksLikeTicker);
-      if (named) return named.toUpperCase();
-      // Last-ditch: scan non-ID/exchange fields for anything ticker-shaped.
-      const scanned = scanForValue(s, looksLikeTicker, (k) =>
-        TICKER_SCAN_SKIP.test(k),
-      );
-      return scanned?.toUpperCase();
+      return named?.toUpperCase();
     };
     const nameFor = (s: AutosuggestItem): string | undefined =>
       pickFirst(s, NAME_CANDIDATES, (v) => !looksLikeTicker(v)) ||
@@ -523,8 +523,6 @@ export class MsnFinanceService implements QuoteProvider {
         (k) => MIC_SCAN_SKIP.test(k),
       );
     };
-
-    const upperQuery = query.toUpperCase().trim();
 
     // Reject queries that contain characters that aren't valid in either a
     // ticker or a typical company name. Bing will happily partial-match these

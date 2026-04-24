@@ -521,6 +521,39 @@ describe("MsnFinanceService", () => {
       expect(result?.exchange).toBe("NASDAQ");
     });
 
+    it("does NOT pick up single-letter category/class codes as the ticker", async () => {
+      // Regression: a match with no ticker-shaped value under any SYMBOL
+      // candidate must return null, not scavenge a single-letter field like
+      // Class="R" or Category="A" and put "R" in the Symbol field.
+      global.fetch = jest.fn().mockReturnValueOnce(
+        createResponse({
+          data: {
+            stocks: [
+              {
+                // No Symbol / Ticker / TradingSymbol / etc.
+                SecId: "secid-xyz",
+                DisplayName: "Some Fund",
+                Class: "R",
+                Category: "A",
+              },
+            ],
+          },
+        }),
+      );
+
+      const result = await service.lookupSecurity("SomeFund");
+      expect(result).toBeNull();
+    });
+
+    it("requires ticker length >= 2 (single-letter category codes rejected)", () => {
+      expect(msnInternals.looksLikeTicker("R")).toBe(false);
+      expect(msnInternals.looksLikeTicker("A")).toBe(false);
+      expect(msnInternals.looksLikeTicker("F")).toBe(false);
+      // Two-letter tickers still valid.
+      expect(msnInternals.looksLikeTicker("RY")).toBe(true);
+      expect(msnInternals.looksLikeTicker("BP")).toBe(true);
+    });
+
     it("uses the MIC-scan fallback when exchange is under an unknown field name", async () => {
       global.fetch = jest.fn().mockReturnValueOnce(
         createResponse({
