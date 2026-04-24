@@ -103,6 +103,48 @@ interface AutosuggestItem {
   currency?: string;
   CurrencyCode?: string;
   currencyCode?: string;
+
+  // MSN Finance's internal short-coded fields. These are what Bing actually
+  // returns for mutual fund / equity autosuggest payloads (each stock item
+  // is a stringified JSON blob in the response; keys are abbreviations).
+  //   OS001    → the ticker / fund code (e.g. "AAPL", "BMO692")
+  //   OS01W    → display/short name
+  //   OS0LN    → long / full name
+  //   RT0SN    → also the display name in some responses
+  //   FullInstrument → the MSN Financial Instrument ID (used as SecId)
+  OS001?: string;
+  OS01W?: string;
+  OS0LN?: string;
+  RT0SN?: string;
+  FullInstrument?: string;
+
+  // Catch-all for unknown MSN field codes so TypeScript lets us index into
+  // the raw item.
+  [key: string]: string | undefined;
+}
+
+/**
+ * MSN's autosuggest returns each stock as a stringified JSON blob. Normalise
+ * so every element is an object.
+ */
+function normaliseStocks(raw: unknown): AutosuggestItem[] {
+  if (!Array.isArray(raw)) return [];
+  const out: AutosuggestItem[] = [];
+  for (const entry of raw) {
+    if (entry && typeof entry === "object") {
+      out.push(entry as AutosuggestItem);
+    } else if (typeof entry === "string") {
+      try {
+        const parsed = JSON.parse(entry);
+        if (parsed && typeof parsed === "object") {
+          out.push(parsed as AutosuggestItem);
+        }
+      } catch {
+        // skip unparseable entries
+      }
+    }
+  }
+  return out;
 }
 
 function getField(
@@ -248,9 +290,9 @@ export class MsnFinanceService implements QuoteProvider {
   ): Promise<string | null> {
     const url = `${AUTOSUGGEST_URL}?query=${encodeURIComponent(query)}&market=${encodeURIComponent(market)}&count=5`;
     const data = await this.httpGetJson<{
-      data?: { stocks?: AutosuggestItem[] };
+      data?: { stocks?: unknown };
     }>(url);
-    const stocks = data?.data?.stocks || [];
+    const stocks = normaliseStocks(data?.data?.stocks);
     if (stocks.length === 0) return null;
 
     const match = this.pickBestStock(
@@ -259,7 +301,9 @@ export class MsnFinanceService implements QuoteProvider {
       exchange,
       preferredExchanges,
     );
-    return match ? getField(match, "SecId", "secId") || null : null;
+    return match
+      ? getField(match, "FullInstrument", "SecId", "secId") || null
+      : null;
   }
 
   private pickBestStock(
@@ -271,8 +315,16 @@ export class MsnFinanceService implements QuoteProvider {
     const upperQuery = query.toUpperCase().trim();
 
     const symbolOf = (s: AutosuggestItem) =>
-      (getField(s, "Symbol", "symbol", "TradingSymbol", "tradingSymbol") || "")
-        .toUpperCase();
+      (
+        getField(
+          s,
+          "Symbol",
+          "symbol",
+          "TradingSymbol",
+          "tradingSymbol",
+          "OS001",
+        ) || ""
+      ).toUpperCase();
     const exchangeOf = (s: AutosuggestItem) =>
       (getField(s, "Exchange", "exchange", "Mic", "mic", "ExchangeId", "exchangeId") || "")
         .toUpperCase();
@@ -316,9 +368,9 @@ export class MsnFinanceService implements QuoteProvider {
     for (const market of markets) {
       const url = `${AUTOSUGGEST_URL}?query=${encodeURIComponent(query)}&market=${encodeURIComponent(market)}&count=10`;
       const data = await this.httpGetJson<{
-        data?: { stocks?: AutosuggestItem[] };
+        data?: { stocks?: unknown };
       }>(url);
-      const m = data?.data?.stocks || [];
+      const m = normaliseStocks(data?.data?.stocks);
       if (m.length > 0) {
         stocks = m;
         break;
@@ -336,8 +388,16 @@ export class MsnFinanceService implements QuoteProvider {
 
     const upperQuery = query.toUpperCase().trim();
     const symbolOf = (s: AutosuggestItem) =>
-      (getField(s, "Symbol", "symbol", "TradingSymbol", "tradingSymbol") || "")
-        .toUpperCase();
+      (
+        getField(
+          s,
+          "Symbol",
+          "symbol",
+          "TradingSymbol",
+          "tradingSymbol",
+          "OS001",
+        ) || ""
+      ).toUpperCase();
     const match = sorted.find((s) => symbolOf(s) === upperQuery) || sorted[0];
     if (!match) return null;
 
@@ -350,7 +410,7 @@ export class MsnFinanceService implements QuoteProvider {
     );
 
     const extractedSymbol = symbolOf(match);
-    const extractedSecId = getField(match, "SecId", "secId");
+    const extractedSecId = getField(match, "FullInstrument", "SecId", "secId");
 
     // If MSN returned a hit but neither a ticker-shaped Symbol nor a SecId
     // could be extracted, the result is unusable — don't dump the query
@@ -394,6 +454,10 @@ export class MsnFinanceService implements QuoteProvider {
         "shortName",
         "Description",
         "description",
+        // MSN-encoded name fields:
+        "OS0LN", // long name
+        "OS01W", // short / display name
+        "RT0SN", // mutual fund name
       ) || symbol;
 
     const securityTypeRaw = getField(

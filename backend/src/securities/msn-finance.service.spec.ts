@@ -378,6 +378,50 @@ describe("MsnFinanceService", () => {
       expect(result).toBeNull();
     });
 
+    it("parses MSN's stringified-JSON stock entries with OS001/OS01W/FullInstrument fields", async () => {
+      // Each stocks[] element is a stringified JSON blob with cryptic field
+      // codes — matches what Bing actually returns for mutual fund queries.
+      const stockBlob = JSON.stringify({
+        OS001: "BMO692",
+        OS01W: "BMO Global Dividend Opportunities Fund Series A",
+        OS0LN: "BMO Global Dividend Opportunities Fund Series A",
+        RT0SN: "BMO Global Dividend Opportunities Fund Series A",
+        FullInstrument: "F18068765888",
+        Currency: "CAD",
+      });
+      global.fetch = jest.fn().mockReturnValueOnce(
+        createResponse({ data: { stocks: [stockBlob] } }),
+      );
+
+      const result = await service.lookupSecurity("BMO Dividend Fund");
+      expect(result).not.toBeNull();
+      expect(result!.symbol).toBe("BMO692");
+      expect(result!.name).toBe(
+        "BMO Global Dividend Opportunities Fund Series A",
+      );
+      expect(result!.msnInstrumentId).toBe("F18068765888");
+      expect(result!.currencyCode).toBe("CAD");
+    });
+
+    it("returns null when the match has no Symbol/OS001 and no FullInstrument/SecId", async () => {
+      global.fetch = jest.fn().mockReturnValueOnce(
+        createResponse({
+          data: {
+            stocks: [
+              JSON.stringify({
+                RT00S: "",
+                OS01WIndex: "some index",
+                Currency: "CAD",
+              }),
+            ],
+          },
+        }),
+      );
+
+      const result = await service.lookupSecurity("Bogus Name");
+      expect(result).toBeNull();
+    });
+
     it("returns provider + msnInstrumentId and reads alternate field names", async () => {
       // Bing sometimes returns camelCase fields, a DisplayName instead of Name,
       // and a Mic instead of Exchange. Make sure we still extract everything.
