@@ -386,29 +386,34 @@ describe('SecurityForm', () => {
     });
   });
 
-  it('shows "Looking up..." text during lookup', async () => {
+  it('shows a spinner (button stays same size) during lookup', async () => {
     let resolvePromise: (value: any) => void;
     const lookupPromise = new Promise((resolve) => {
       resolvePromise = resolve;
     });
     (investmentsApi.lookupSecurity as ReturnType<typeof vi.fn>).mockReturnValueOnce(lookupPromise);
 
-    render(<SecurityForm onSubmit={onSubmit} onCancel={onCancel} />);
+    const { container } = render(<SecurityForm onSubmit={onSubmit} onCancel={onCancel} />);
 
     const symbolInput = screen.getByLabelText('Symbol');
     fireEvent.change(symbolInput, { target: { value: 'AAPL' } });
 
     fireEvent.click(screen.getByText('Lookup'));
 
+    // The "Lookup" label is still rendered (as an invisible span that
+    // preserves the button's width) and the spinning circle overlays it.
     await waitFor(() => {
-      expect(screen.getByText('Looking up...')).toBeInTheDocument();
+      expect(container.querySelector('.animate-spin')).toBeInTheDocument();
     });
+    // Button should also not be showing the old "Looking up..." text.
+    expect(screen.queryByText('Looking up...')).not.toBeInTheDocument();
 
-    // Resolve the promise
+    // Resolve the promise — spinner should disappear.
     resolvePromise!(null);
     await waitFor(() => {
-      expect(screen.getByText('Lookup')).toBeInTheDocument();
+      expect(container.querySelector('.animate-spin')).not.toBeInTheDocument();
     });
+    expect(screen.getByText('Lookup')).toBeInTheDocument();
   });
 
   it('calls onDirtyChange when form becomes dirty', async () => {

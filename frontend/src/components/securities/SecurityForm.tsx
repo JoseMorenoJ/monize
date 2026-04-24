@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Combobox } from '@/components/ui/Combobox';
+import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { Security, CreateSecurityData } from '@/types/investment';
 import { investmentsApi } from '@/lib/investments';
 import { exchangeRatesApi, CurrencyInfo } from '@/lib/exchange-rates';
@@ -254,9 +255,14 @@ export function SecurityForm({ security, onSubmit, onCancel, onDirtyChange, subm
             variant="outline"
             onClick={handleLookup}
             disabled={isLookingUp}
-            className="mb-[1px]"
+            className="mb-[1px] relative"
           >
-            {isLookingUp ? 'Looking up...' : 'Lookup'}
+            <span className={isLookingUp ? 'invisible' : ''}>Lookup</span>
+            {isLookingUp && (
+              <span className="absolute inset-0 flex items-center justify-center">
+                <LoadingSpinner size="sm" fullContainer={false} />
+              </span>
+            )}
           </Button>
           {hasLookupResult && (
             <Button
