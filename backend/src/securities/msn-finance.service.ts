@@ -66,94 +66,54 @@ interface CacheEntry {
   expiresAt: number;
 }
 
-// AutosuggestItem is intentionally declared as a loose record because Bing
-// Finance's autosuggest uses inconsistent casing AND occasionally wraps codes
-// in nested objects (e.g. `Mic: { Id: "XNAS" }`). We read fields via helpers
-// that tolerate both shapes.
-type AutosuggestItem = Record<string, unknown>;
+interface AutosuggestItem {
+  // Bing Finance autosuggest uses inconsistent casing across endpoints, so
+  // accept every realistic variant and normalise via getField below.
+  Symbol?: string;
+  symbol?: string;
+  TradingSymbol?: string;
+  tradingSymbol?: string;
+  SecId?: string;
+  secId?: string;
+  Name?: string;
+  name?: string;
+  DisplayName?: string;
+  displayName?: string;
+  ShortName?: string;
+  shortName?: string;
+  LongName?: string;
+  longName?: string;
+  Description?: string;
+  description?: string;
+  Exchange?: string;
+  exchange?: string;
+  ExchangeId?: string;
+  exchangeId?: string;
+  Mic?: string;
+  mic?: string;
+  ExchangeName?: string;
+  exchangeName?: string;
+  SecurityType?: string;
+  securityType?: string;
+  Type?: string;
+  type?: string;
+  InstrumentType?: string;
+  instrumentType?: string;
+  Currency?: string;
+  currency?: string;
+  CurrencyCode?: string;
+  currencyCode?: string;
+}
 
-/**
- * Pluck a string value from an item by trying each candidate key. Tolerates
- * nested objects: if the candidate key points to an object, descend into
- * `Id`/`id`/`Code`/`code`/`Value`/`value`/`Name`/`name` and use that. This
- * matches Bing's occasional `{ Mic: { Id: "XNAS", Name: "Nasdaq" } }` shape.
- */
 function getField(
   item: AutosuggestItem,
-  ...candidates: string[]
+  ...candidates: (keyof AutosuggestItem)[]
 ): string | undefined {
   for (const key of candidates) {
     const val = item[key];
     if (typeof val === "string" && val.trim()) return val.trim();
-    if (val && typeof val === "object") {
-      const obj = val as Record<string, unknown>;
-      for (const inner of [
-        "Id",
-        "id",
-        "Code",
-        "code",
-        "Value",
-        "value",
-        "Name",
-        "name",
-      ]) {
-        const nested = obj[inner];
-        if (typeof nested === "string" && nested.trim()) return nested.trim();
-      }
-    }
   }
   return undefined;
-}
-
-/**
- * Stock tickers are short (typically 1–15 chars), contain no spaces, and are
- * dominated by alphanumerics plus the occasional `.` or `-`. When MSN's
- * autosuggest returns a value that looks like a full company name under a
- * "symbol"-shaped field (it happens for fuzzy search matches), we reject it
- * here so symbol stays tidy.
- */
-function looksLikeTicker(s: string | undefined): boolean {
-  if (!s) return false;
-  const t = s.trim();
-  if (!t || t.length > 20) return false;
-  if (/\s/.test(t)) return false;
-  return /^[A-Za-z0-9._:\-+]+$/.test(t);
-}
-
-function pickFirst(
-  item: AutosuggestItem,
-  candidates: string[],
-  predicate?: (val: string) => boolean,
-): string | undefined {
-  for (const key of candidates) {
-    const val = getField(item, key);
-    if (!val) continue;
-    if (predicate && !predicate(val)) continue;
-    return val;
-  }
-  return undefined;
-}
-
-/**
- * Tolerate multiple response envelopes. Bing-backed finance autosuggest has
- * used { data: { stocks } }, { stocks }, { value }, and { results } across
- * revisions; accept whichever one is populated.
- */
-function extractStocks(data: unknown): AutosuggestItem[] {
-  if (!data || typeof data !== "object") return [];
-  const obj = data as Record<string, unknown>;
-  const paths: unknown[] = [
-    (obj.data as { stocks?: unknown } | undefined)?.stocks,
-    obj.stocks,
-    obj.value,
-    obj.results,
-    (obj.data as { value?: unknown } | undefined)?.value,
-    (obj.data as { results?: unknown } | undefined)?.results,
-  ];
-  for (const p of paths) {
-    if (Array.isArray(p) && p.length > 0) return p as AutosuggestItem[];
-  }
-  return [];
 }
 
 @Injectable()
@@ -287,8 +247,10 @@ export class MsnFinanceService implements QuoteProvider {
     preferredExchanges?: string[],
   ): Promise<string | null> {
     const url = `${AUTOSUGGEST_URL}?query=${encodeURIComponent(query)}&market=${encodeURIComponent(market)}&count=5`;
-    const data = await this.httpGetJson<unknown>(url);
-    const stocks = extractStocks(data);
+    const data = await this.httpGetJson<{
+      data?: { stocks?: AutosuggestItem[] };
+    }>(url);
+    const stocks = data?.data?.stocks || [];
     if (stocks.length === 0) return null;
 
     const match = this.pickBestStock(
@@ -309,21 +271,11 @@ export class MsnFinanceService implements QuoteProvider {
     const upperQuery = query.toUpperCase().trim();
 
     const symbolOf = (s: AutosuggestItem) =>
-      (
-        getField(s, "Symbol", "symbol", "TradingSymbol", "tradingSymbol") || ""
-      ).toUpperCase();
+      (getField(s, "Symbol", "symbol", "TradingSymbol", "tradingSymbol") || "")
+        .toUpperCase();
     const exchangeOf = (s: AutosuggestItem) =>
-      (
-        getField(
-          s,
-          "Exchange",
-          "exchange",
-          "Mic",
-          "mic",
-          "ExchangeId",
-          "exchangeId",
-        ) || ""
-      ).toUpperCase();
+      (getField(s, "Exchange", "exchange", "Mic", "mic", "ExchangeId", "exchangeId") || "")
+        .toUpperCase();
 
     const exactSymbol = stocks.filter((s) => symbolOf(s) === upperQuery);
     const pool = exactSymbol.length > 0 ? exactSymbol : stocks;
@@ -363,8 +315,10 @@ export class MsnFinanceService implements QuoteProvider {
     let stocks: AutosuggestItem[] = [];
     for (const market of markets) {
       const url = `${AUTOSUGGEST_URL}?query=${encodeURIComponent(query)}&market=${encodeURIComponent(market)}&count=10`;
-      const data = await this.httpGetJson<unknown>(url);
-      const m = extractStocks(data);
+      const data = await this.httpGetJson<{
+        data?: { stocks?: AutosuggestItem[] };
+      }>(url);
+      const m = data?.data?.stocks || [];
       if (m.length > 0) {
         stocks = m;
         break;
@@ -380,128 +334,70 @@ export class MsnFinanceService implements QuoteProvider {
       return pa - pb;
     });
 
-    const SYMBOL_CANDIDATES = [
-      "Symbol",
-      "symbol",
-      "TradingSymbol",
-      "tradingSymbol",
-      "Ticker",
-      "ticker",
-      "TickerSymbol",
-      "tickerSymbol",
-      "ShortName",
-      "shortName",
-    ];
-    const NAME_CANDIDATES = [
-      "DisplayName",
-      "displayName",
-      "CompanyName",
-      "companyName",
-      "LongName",
-      "longName",
-      "FullName",
-      "fullName",
-      "Name",
-      "name",
-      "Title",
-      "title",
-      "ShortName",
-      "shortName",
-      "Description",
-      "description",
-    ];
-    const EXCHANGE_CANDIDATES = [
+    const upperQuery = query.toUpperCase().trim();
+    const symbolOf = (s: AutosuggestItem) =>
+      (getField(s, "Symbol", "symbol", "TradingSymbol", "tradingSymbol") || "")
+        .toUpperCase();
+    const match = sorted.find((s) => symbolOf(s) === upperQuery) || sorted[0];
+    if (!match) return null;
+
+    const symbol = symbolOf(match) || query.toUpperCase();
+    const secId = getField(match, "SecId", "secId");
+    if (secId) {
+      this.setCached(this.cacheKey(symbol, null, preferredExchanges), secId);
+    }
+
+    const rawExchange = getField(
+      match,
       "Exchange",
       "exchange",
       "Mic",
       "mic",
-      "MicCode",
-      "micCode",
       "ExchangeId",
       "exchangeId",
-      "ExchangeCode",
-      "exchangeCode",
       "ExchangeName",
       "exchangeName",
-      "MarketIdentifierCode",
-      "marketIdentifierCode",
-    ];
-    const TYPE_CANDIDATES = [
+    );
+    const exchange = this.mapMsnExchangeToMonize(rawExchange);
+
+    const name =
+      getField(
+        match,
+        "DisplayName",
+        "displayName",
+        "LongName",
+        "longName",
+        "Name",
+        "name",
+        "ShortName",
+        "shortName",
+        "Description",
+        "description",
+      ) || symbol;
+
+    const securityTypeRaw = getField(
+      match,
       "SecurityType",
       "securityType",
       "InstrumentType",
       "instrumentType",
       "Type",
       "type",
-      "AssetType",
-      "assetType",
-      "Kind",
-      "kind",
-      "Category",
-      "category",
-      "Class",
-      "class",
-    ];
-    const CURRENCY_CANDIDATES = [
+    );
+
+    const currency = getField(
+      match,
       "Currency",
       "currency",
       "CurrencyCode",
       "currencyCode",
-      "IsoCurrency",
-      "isoCurrency",
-      "TradingCurrency",
-      "tradingCurrency",
-    ];
-
-    const tickerFor = (s: AutosuggestItem): string | undefined =>
-      pickFirst(s, SYMBOL_CANDIDATES, looksLikeTicker)?.toUpperCase();
-
-    const upperQuery = query.toUpperCase().trim();
-    const match = sorted.find((s) => tickerFor(s) === upperQuery) || sorted[0];
-    if (!match) return null;
-
-    // Surface the raw first match at debug level so the operator can adjust
-    // candidate lists when MSN changes its surface.
-    this.logger.debug(
-      `MSN lookup raw match for "${query}": ${JSON.stringify(match).slice(0, 600)}`,
-    );
-
-    const symbol =
-      tickerFor(match) ||
-      (looksLikeTicker(upperQuery) ? upperQuery : null) ||
-      query.toUpperCase();
-
-    const secId = getField(match, "SecId", "secId");
-    if (secId) {
-      this.setCached(this.cacheKey(symbol, null, preferredExchanges), secId);
-    }
-
-    const rawExchange = pickFirst(match, EXCHANGE_CANDIDATES);
-    const exchange = this.mapMsnExchangeToMonize(rawExchange);
-
-    // Only accept name candidates that are NOT themselves ticker-like; fall
-    // through to a generic pickFirst if every candidate looks like a ticker.
-    const nameNonTicker = pickFirst(
-      match,
-      NAME_CANDIDATES,
-      (v) => !looksLikeTicker(v),
-    );
-    const name = nameNonTicker || pickFirst(match, NAME_CANDIDATES) || symbol;
-
-    const securityTypeRaw = pickFirst(match, TYPE_CANDIDATES);
-    const securityType = this.mapMsnSecurityType(securityTypeRaw);
-
-    const currency = pickFirst(match, CURRENCY_CANDIDATES);
-
-    this.logger.log(
-      `MSN lookup "${query}" → symbol=${symbol} name="${name}" exchange=${exchange ?? "(none)"} type=${securityType ?? "(none)"} currency=${currency ?? "(none)"} secId=${secId ?? "(none)"}`,
     );
 
     return {
       symbol,
       name,
       exchange,
-      securityType,
+      securityType: this.mapMsnSecurityType(securityTypeRaw),
       currencyCode: currency || this.currencyFromExchange(exchange),
       provider: "msn",
       msnInstrumentId: secId || null,
@@ -888,7 +784,5 @@ export const msnInternals = {
   mapRangeToMsn,
   parseMsnDate,
   normalizeTimestamp,
-  looksLikeTicker,
-  extractStocks,
   EXCHANGE_TO_MSN,
 };
