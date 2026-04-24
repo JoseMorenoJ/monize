@@ -135,6 +135,53 @@ function pickFirst(
 }
 
 /**
+ * Last-ditch scan over every top-level string value in the match, returning
+ * the first one that passes the predicate. This rescues cases where Bing
+ * stores the ticker (or MIC code) under an unexpected field name that none of
+ * our explicit candidate lists cover.
+ *
+ * Callers pass `skipKey` to exclude fields that would confuse the predicate —
+ * e.g. SecId keys during a ticker scan (SecIds like "aapl-id" happen to look
+ * ticker-shaped), or Symbol/Ticker keys during an exchange scan.
+ */
+function scanForValue(
+  item: AutosuggestItem,
+  predicate: (val: string) => boolean,
+  skipKey: (key: string) => boolean = () => false,
+): string | undefined {
+  for (const key of Object.keys(item)) {
+    if (skipKey(key)) continue;
+    const val = item[key];
+    if (typeof val === "string" && val.trim() && predicate(val.trim())) {
+      return val.trim();
+    }
+    if (val && typeof val === "object") {
+      const obj = val as Record<string, unknown>;
+      for (const nestedKey of Object.keys(obj)) {
+        if (skipKey(nestedKey)) continue;
+        const nested = obj[nestedKey];
+        if (
+          typeof nested === "string" &&
+          nested.trim() &&
+          predicate(nested.trim())
+        ) {
+          return nested.trim();
+        }
+      }
+    }
+  }
+  return undefined;
+}
+
+/** Keys that must never be treated as a ticker even if their value is ticker-shaped. */
+const TICKER_SCAN_SKIP =
+  /^(sec(urity)?.?id|exchange|mic|market|currency|type|kind|class|asset|id)/i;
+
+/** Keys that must never be treated as a MIC code even if their value is 4-uppercase-letters. */
+const MIC_SCAN_SKIP =
+  /^(sec(urity)?.?id|symbol|ticker|name|display|title|description|currency|type|kind|class|asset|short|long|id)/i;
+
+/**
  * Tolerate multiple response envelopes. Bing-backed finance autosuggest has
  * used { data: { stocks } }, { stocks }, { value }, and { results } across
  * revisions; accept whichever one is populated.
@@ -453,40 +500,95 @@ export class MsnFinanceService implements QuoteProvider {
       "tradingCurrency",
     ];
 
-    const tickerFor = (s: AutosuggestItem): string | undefined =>
-      pickFirst(s, SYMBOL_CANDIDATES, looksLikeTicker)?.toUpperCase();
+    const tickerFor = (s: AutosuggestItem): string | undefined => {
+      const named = pickFirst(s, SYMBOL_CANDIDATES, looksLikeTicker);
+      if (named) return named.toUpperCase();
+      // Last-ditch: scan non-ID/exchange fields for anything ticker-shaped.
+      const scanned = scanForValue(s, looksLikeTicker, (k) =>
+        TICKER_SCAN_SKIP.test(k),
+      );
+      return scanned?.toUpperCase();
+    };
+    const nameFor = (s: AutosuggestItem): string | undefined =>
+      pickFirst(s, NAME_CANDIDATES, (v) => !looksLikeTicker(v)) ||
+      pickFirst(s, NAME_CANDIDATES);
+    const exchangeFor = (s: AutosuggestItem): string | undefined => {
+      const named = pickFirst(s, EXCHANGE_CANDIDATES);
+      if (named) return named;
+      // MIC codes are four uppercase letters; skip keys that would likely hold
+      // a ticker or company name with those characteristics.
+      return scanForValue(
+        s,
+        (v) => /^[A-Z]{4}$/.test(v.trim()),
+        (k) => MIC_SCAN_SKIP.test(k),
+      );
+    };
 
     const upperQuery = query.toUpperCase().trim();
-    const match = sorted.find((s) => tickerFor(s) === upperQuery) || sorted[0];
-    if (!match) return null;
 
-    // Surface the raw first match at debug level so the operator can adjust
-    // candidate lists when MSN changes its surface.
-    this.logger.debug(
-      `MSN lookup raw match for "${query}": ${JSON.stringify(match).slice(0, 600)}`,
+    /**
+     * A plausibility gate: when Bing returns partial matches for bogus input
+     * like "CCE*" we shouldn't present them as hits. Require the match to have
+     * a ticker that starts with the query, OR a display name that contains
+     * each non-trivial word of the query (case-insensitively).
+     */
+    const queryIsTickerLike = looksLikeTicker(upperQuery);
+    const queryWords = query
+      .toLowerCase()
+      .split(/\s+/)
+      .map((w) => w.replace(/[^a-z0-9]+/g, ""))
+      .filter((w) => w.length >= 2);
+
+    const matchesQuery = (s: AutosuggestItem): boolean => {
+      const ticker = tickerFor(s);
+      if (ticker) {
+        if (ticker === upperQuery) return true;
+        if (queryIsTickerLike && ticker.startsWith(upperQuery)) return true;
+        if (queryIsTickerLike && upperQuery.startsWith(ticker)) return true;
+      }
+      if (queryWords.length > 0) {
+        const name = (nameFor(s) || "").toLowerCase();
+        if (queryWords.every((w) => name.includes(w))) return true;
+      }
+      return false;
+    };
+
+    const validMatches = sorted.filter(matchesQuery);
+    if (validMatches.length === 0) {
+      this.logger.log(
+        `MSN lookup "${query}" — ${stocks.length} autosuggest hit(s) but none plausibly matched the query; returning null`,
+      );
+      return null;
+    }
+
+    const match = validMatches[0];
+
+    // Surface the raw first match and its extracted keys so operators can
+    // adjust candidate lists when MSN changes its surface.
+    this.logger.log(
+      `MSN lookup "${query}" raw match keys=[${Object.keys(match).join(",")}] body=${JSON.stringify(match).slice(0, 500)}`,
     );
 
-    const symbol =
-      tickerFor(match) ||
-      (looksLikeTicker(upperQuery) ? upperQuery : null) ||
-      query.toUpperCase();
+    const extractedTicker = tickerFor(match);
+    if (!extractedTicker) {
+      // We can't reliably identify the ticker. Better to return null than to
+      // dump a company name into the Symbol field.
+      this.logger.warn(
+        `MSN lookup "${query}": no ticker-shaped value in match; returning null. Match keys=[${Object.keys(match).join(",")}]`,
+      );
+      return null;
+    }
+    const symbol = extractedTicker;
 
     const secId = getField(match, "SecId", "secId");
     if (secId) {
       this.setCached(this.cacheKey(symbol, null, preferredExchanges), secId);
     }
 
-    const rawExchange = pickFirst(match, EXCHANGE_CANDIDATES);
+    const rawExchange = exchangeFor(match);
     const exchange = this.mapMsnExchangeToMonize(rawExchange);
 
-    // Only accept name candidates that are NOT themselves ticker-like; fall
-    // through to a generic pickFirst if every candidate looks like a ticker.
-    const nameNonTicker = pickFirst(
-      match,
-      NAME_CANDIDATES,
-      (v) => !looksLikeTicker(v),
-    );
-    const name = nameNonTicker || pickFirst(match, NAME_CANDIDATES) || symbol;
+    const name = nameFor(match) || symbol;
 
     const securityTypeRaw = pickFirst(match, TYPE_CANDIDATES);
     const securityType = this.mapMsnSecurityType(securityTypeRaw);

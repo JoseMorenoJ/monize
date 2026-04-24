@@ -135,7 +135,15 @@ export function SecurityForm({ security, onSubmit, onCancel, onDirtyChange, subm
       if (result) {
         const setOpts = { shouldDirty: true, shouldTouch: true, shouldValidate: true };
 
-        setValue('symbol', result.symbol, setOpts);
+        // Only overwrite Symbol when the backend returned a ticker-shaped value.
+        // A value with spaces, extra chars, or excessive length is almost
+        // certainly a company name or garbage, not a ticker — leave the user's
+        // existing input alone in that case.
+        const isTickerShaped = (s: string): boolean =>
+          s.length > 0 && s.length <= 20 && !/\s/.test(s) && /^[A-Za-z0-9._:\-+]+$/.test(s);
+        if (isTickerShaped(result.symbol)) {
+          setValue('symbol', result.symbol, setOpts);
+        }
         setValue('name', result.name, setOpts);
         // Only overwrite exchange/type when the lookup actually returned a
         // value; a null from the provider should leave the existing selection
