@@ -842,13 +842,21 @@ export class TransactionsService {
     const account = await this.accountsService.findOne(userId, accountId);
     const currentBalance = Number(account.currentBalance) || 0;
 
+    // Filter shape must match AccountsService.findAll's futureTransactionsSum
+    // query so the projected balance here equals the "current + future" figure
+    // shown on the account list. Differences would desync the running balance
+    // in TransactionList (which subtracts each listed row from startingBalance)
+    // from the account totals displayed elsewhere.
     const futureResult = await this.transactionsRepository
       .createQueryBuilder("t")
       .select("COALESCE(SUM(t.amount), 0)", "sum")
       .where("t.userId = :userId", { userId })
       .andWhere("t.accountId = :accountId", { accountId })
       .andWhere("t.transactionDate > :today", { today: todayYMD() })
-      .andWhere("t.status != :void", { void: TransactionStatus.VOID })
+      .andWhere("(t.status IS NULL OR t.status != :void)", {
+        void: TransactionStatus.VOID,
+      })
+      .andWhere("t.parentTransactionId IS NULL")
       .getRawOne();
 
     return currentBalance + (Number(futureResult?.sum) || 0);

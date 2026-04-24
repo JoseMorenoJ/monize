@@ -28,7 +28,7 @@ import {
   MortgageAmortizationResult,
 } from "./mortgage-amortization.util";
 import { Cron } from "@nestjs/schedule";
-import { formatDateYMD, todayYMD } from "../common/date-utils";
+import { formatDateYMD, todayInTimezone, todayYMD } from "../common/date-utils";
 import { ActionHistoryService } from "../action-history/action-history.service";
 
 @Injectable()
@@ -1125,57 +1125,97 @@ export class AccountsService {
   }
 
   /**
-   * Daily cron job to apply balance effects for transactions whose dates
-   * have become due. Recalculates currentBalance from source of truth
-   * for any account that has transactions dated today.
+   * Hourly cron that rolls deferred balance effects into currentBalance as
+   * transactions become due. "Due" is evaluated per-user in their local
+   * timezone: an EDT user's midnight is 04:00 UTC, so we re-check every
+   * hour and process each timezone as its local day rolls over.
+   *
+   * Running hourly (and re-applying if a user has already been processed
+   * that day) is idempotent because recalculation derives currentBalance
+   * from scratch against transaction_date <= local_today.
    */
-  @Cron("0 0 * * *")
+  @Cron("0 * * * *")
   async applyDueTransactionBalances(): Promise<void> {
-    this.logger.log("Running daily deferred transaction balance application");
-
     try {
-      // Find all accounts that have non-void transactions dated today
-      const accountRows: { account_id: string }[] = await this.dataSource.query(
-        `SELECT DISTINCT account_id
-           FROM transactions
-           WHERE transaction_date::DATE = CURRENT_DATE
-             AND (status IS NULL OR status != 'VOID')
-             AND parent_transaction_id IS NULL`,
-      );
-
-      if (accountRows.length === 0) {
-        this.logger.log("No accounts with transactions due today");
-        return;
-      }
-
-      const accountIds = accountRows.map((r) => r.account_id);
-      const balances: { account_id: string; balance: string }[] =
+      // Group users by their effective timezone. LEFT JOIN keeps users
+      // without a preferences row -- they fall back to UTC.
+      const userRows: { user_id: string; timezone: string | null }[] =
         await this.dataSource.query(
-          `SELECT a.id as account_id,
-                  COALESCE(a.opening_balance, 0) + COALESCE(SUM(t.amount), 0) as balance
-           FROM accounts a
-           LEFT JOIN transactions t ON t.account_id = a.id
-             AND (t.status IS NULL OR t.status != 'VOID')
-             AND t.parent_transaction_id IS NULL
-             AND t.transaction_date <= CURRENT_DATE
-           WHERE a.id = ANY($1)
-           GROUP BY a.id, a.opening_balance`,
-          [accountIds],
+          `SELECT u.id as user_id, p.timezone
+             FROM users u
+             LEFT JOIN user_preferences p ON p.user_id = u.id`,
         );
 
-      for (const row of balances) {
-        const newBalance = Math.round(Number(row.balance) * 10000) / 10000;
-        await this.accountsRepository.update(row.account_id, {
-          currentBalance: newBalance,
-        });
+      if (userRows.length === 0) return;
+
+      const userIdsByTz = new Map<string, string[]>();
+      for (const { user_id, timezone } of userRows) {
+        const normalised = timezone?.trim();
+        const tz =
+          normalised && normalised !== "browser" ? normalised : "UTC";
+        const list = userIdsByTz.get(tz) ?? [];
+        list.push(user_id);
+        userIdsByTz.set(tz, list);
       }
 
-      this.logger.log(
-        `Applied deferred balances for ${accountRows.length} account(s)`,
-      );
+      let totalApplied = 0;
+
+      for (const [tz, userIds] of userIdsByTz) {
+        const today = todayInTimezone(tz);
+        if (!today) {
+          this.logger.warn(
+            `Skipping ${userIds.length} user(s) with invalid timezone "${tz}"`,
+          );
+          continue;
+        }
+
+        const accountRows: { account_id: string }[] =
+          await this.dataSource.query(
+            `SELECT DISTINCT t.account_id
+               FROM transactions t
+               JOIN accounts a ON a.id = t.account_id
+               WHERE a.user_id = ANY($1)
+                 AND t.transaction_date = $2
+                 AND (t.status IS NULL OR t.status != 'VOID')
+                 AND t.parent_transaction_id IS NULL`,
+            [userIds, today],
+          );
+
+        if (accountRows.length === 0) continue;
+
+        const accountIds = accountRows.map((r) => r.account_id);
+        const balances: { account_id: string; balance: string }[] =
+          await this.dataSource.query(
+            `SELECT a.id as account_id,
+                    COALESCE(a.opening_balance, 0) + COALESCE(SUM(t.amount), 0) as balance
+               FROM accounts a
+               LEFT JOIN transactions t ON t.account_id = a.id
+                 AND (t.status IS NULL OR t.status != 'VOID')
+                 AND t.parent_transaction_id IS NULL
+                 AND t.transaction_date <= $2
+               WHERE a.id = ANY($1)
+               GROUP BY a.id, a.opening_balance`,
+            [accountIds, today],
+          );
+
+        for (const row of balances) {
+          const newBalance = Math.round(Number(row.balance) * 10000) / 10000;
+          await this.accountsRepository.update(row.account_id, {
+            currentBalance: newBalance,
+          });
+        }
+
+        totalApplied += balances.length;
+      }
+
+      if (totalApplied > 0) {
+        this.logger.log(
+          `Applied deferred balances for ${totalApplied} account(s)`,
+        );
+      }
     } catch (error) {
       this.logger.error(
-        `Failed to apply deferred transaction balances: ${error.message}`,
+        `Failed to apply deferred transaction balances: ${(error as Error).message}`,
       );
     }
   }
