@@ -159,19 +159,24 @@ export function SecurityForm({ security, onSubmit, onCancel, onDirtyChange, subm
     }
   }, [getValues, setValue, preferredExchanges, lookupProvider]);
 
-  // Clear all looked-up values back to defaults
+  // In edit mode, revert to the original security values. In create mode,
+  // blank everything out (keeping the user's default currency).
   const handleClear = useCallback(() => {
-    reset({
-      symbol: '',
-      name: '',
-      securityType: '',
-      exchange: '',
-      currencyCode: defaultValues?.currencyCode || defaultCurrency,
-      quoteProvider: '',
-      msnInstrumentId: '',
-    });
+    if (security) {
+      reset();
+    } else {
+      reset({
+        symbol: '',
+        name: '',
+        securityType: '',
+        exchange: '',
+        currencyCode: defaultValues?.currencyCode || defaultCurrency,
+        quoteProvider: '',
+        msnInstrumentId: '',
+      });
+    }
     setHasLookupResult(false);
-  }, [reset, defaultValues, defaultCurrency]);
+  }, [reset, defaultValues, defaultCurrency, security]);
 
   const onFormSubmit = async (data: SecurityFormData) => {
     const cleanedData: CreateSecurityData = {
@@ -203,39 +208,37 @@ export function SecurityForm({ security, onSubmit, onCancel, onDirtyChange, subm
             className="uppercase"
           />
         </div>
-        {!security && (
-          <div className="flex gap-1.5">
-            <Select
-              aria-label="Lookup provider"
-              options={lookupProviderOptions}
-              value={lookupProvider}
-              onChange={(e) =>
-                setLookupProvider(e.target.value as 'auto' | 'yahoo' | 'msn')
-              }
-              className="mb-[1px] w-24"
-            />
+        <div className="flex gap-1.5">
+          <Select
+            aria-label="Lookup provider"
+            options={lookupProviderOptions}
+            value={lookupProvider}
+            onChange={(e) =>
+              setLookupProvider(e.target.value as 'auto' | 'yahoo' | 'msn')
+            }
+            className="mb-[1px] w-24"
+          />
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleLookup}
+            disabled={isLookingUp}
+            className="mb-[1px]"
+          >
+            {isLookingUp ? 'Looking up...' : 'Lookup'}
+          </Button>
+          {hasLookupResult && (
             <Button
               type="button"
-              variant="outline"
-              onClick={handleLookup}
-              disabled={isLookingUp}
-              className="mb-[1px]"
+              variant="ghost"
+              onClick={handleClear}
+              className="mb-[1px] text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+              title={security ? 'Revert to original values' : 'Clear all fields'}
             >
-              {isLookingUp ? 'Looking up...' : 'Lookup'}
+              {security ? 'Revert' : 'Clear'}
             </Button>
-            {hasLookupResult && (
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={handleClear}
-                className="mb-[1px] text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-                title="Clear all fields"
-              >
-                Clear
-              </Button>
-            )}
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       <Input

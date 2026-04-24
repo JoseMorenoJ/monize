@@ -136,12 +136,31 @@ describe('SecurityForm', () => {
     });
   });
 
-  it('does not show Lookup button when editing existing security', async () => {
+  it('shows Lookup button when editing existing security', async () => {
     const security = createSecurity();
     render(<SecurityForm security={security} onSubmit={onSubmit} onCancel={onCancel} />);
     await waitFor(() => {
-      expect(screen.queryByText('Lookup')).not.toBeInTheDocument();
+      expect(screen.getByText('Lookup')).toBeInTheDocument();
     });
+  });
+
+  it('uses "Revert" label (not "Clear") when editing after a successful lookup', async () => {
+    const security = createSecurity({ symbol: 'AAPL' });
+    (investmentsApi.lookupSecurity as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      symbol: 'AAPL',
+      name: 'Apple Inc.',
+      exchange: 'NASDAQ',
+      securityType: 'STOCK',
+      currencyCode: 'USD',
+    });
+
+    render(<SecurityForm security={security} onSubmit={onSubmit} onCancel={onCancel} />);
+    fireEvent.click(screen.getByText('Lookup'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Revert')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('Clear')).not.toBeInTheDocument();
   });
 
   it('renders security type options', async () => {
