@@ -1,3 +1,5 @@
+import { getRequestTimezone } from "./request-context";
+
 /**
  * Format a Date object as YYYY-MM-DD string using UTC components.
  * Replaces the common `date.toISOString().split("T")[0]` pattern.
@@ -13,11 +15,39 @@ export function formatDateYMD(date: Date): string {
 }
 
 /**
- * Return today's date as a YYYY-MM-DD string (local time).
- * Uses local date components because "today" is relative to the
- * server's local timezone, not UTC.
+ * Compute today's date as YYYY-MM-DD in the given IANA timezone.
+ * Returns null if the timezone is invalid.
+ */
+export function todayInTimezone(timezone: string): string | null {
+  try {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(new Date());
+    const y = parts.find((p) => p.type === "year")?.value;
+    const m = parts.find((p) => p.type === "month")?.value;
+    const d = parts.find((p) => p.type === "day")?.value;
+    if (!y || !m || !d) return null;
+    return `${y}-${m}-${d}`;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Return today's date as a YYYY-MM-DD string.
+ * If a request-scoped timezone is set (via RequestContextInterceptor),
+ * returns today in that timezone. Otherwise falls back to the server's
+ * local date.
  */
 export function todayYMD(): string {
+  const tz = getRequestTimezone();
+  if (tz) {
+    const inTz = todayInTimezone(tz);
+    if (inTz) return inTz;
+  }
   const now = new Date();
   const y = now.getFullYear();
   const m = String(now.getMonth() + 1).padStart(2, "0");

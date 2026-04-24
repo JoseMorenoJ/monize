@@ -22,6 +22,7 @@ import { isTransactionInFuture } from "../common/date-utils";
 
 jest.mock("../common/date-utils", () => ({
   isTransactionInFuture: jest.fn().mockReturnValue(false),
+  todayYMD: jest.fn().mockReturnValue("2026-01-01"),
 }));
 
 const mockedIsTransactionInFuture =
