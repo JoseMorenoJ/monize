@@ -403,6 +403,38 @@ describe("MsnFinanceService", () => {
       expect(result!.currencyCode).toBe("CAD");
     });
 
+    it("uses OS01W/OS0LN for Name when DisplayName is the ticker (mutual fund case)", async () => {
+      // Real payload from Bing for a TD mutual fund: DisplayName is "TDB164"
+      // (the ticker), but OS01W / OS0LN / RT0SN hold the actual fund name.
+      // OS010="FO" → MUTUAL_FUND, RT0EC/LS01Z="CA" → CAD currency.
+      const stockBlob = JSON.stringify({
+        OS001: "TDB164",
+        OS001Index: "tdb164",
+        OS01W: "TD Canadian Money Market Investor Series",
+        RT0SN: "TD Canadian Money Market Investor Series",
+        OS0LN: "TD Canadian Money Market Investor Series",
+        OS010: "FO",
+        RT0EC: "CA",
+        ExMicCode: "CA",
+        LS01Z: "CA",
+        FriendlyName: "TD Canadian MMkt Inv Srs",
+        DisplayName: "TDB164", // <-- the trap
+        FullInstrument: "F18068004373",
+        SecId: "bb36yc",
+      });
+      global.fetch = jest.fn().mockReturnValueOnce(
+        createResponse({ data: { stocks: [stockBlob] } }),
+      );
+
+      const result = await service.lookupSecurity("TD Canadian Money Market");
+      expect(result).not.toBeNull();
+      expect(result!.symbol).toBe("TDB164");
+      expect(result!.name).toBe("TD Canadian Money Market Investor Series");
+      expect(result!.securityType).toBe("MUTUAL_FUND");
+      expect(result!.currencyCode).toBe("CAD");
+      expect(result!.msnInstrumentId).toBe("F18068004373");
+    });
+
     it("returns null when the match has no Symbol/OS001 and no FullInstrument/SecId", async () => {
       global.fetch = jest.fn().mockReturnValueOnce(
         createResponse({

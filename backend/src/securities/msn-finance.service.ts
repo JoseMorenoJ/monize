@@ -124,6 +124,27 @@ interface AutosuggestItem {
 }
 
 /**
+ * Like getField but skips values equal to the item's ticker symbol. Needed
+ * because MSN's `DisplayName` is sometimes populated with the ticker for
+ * mutual funds — returning it unfiltered would make Name == Symbol in the UI.
+ */
+function pickNameCandidate(
+  item: AutosuggestItem,
+  candidates: string[],
+  symbolUp: string | undefined,
+): string | undefined {
+  for (const key of candidates) {
+    const val = item[key];
+    if (typeof val !== "string") continue;
+    const trimmed = val.trim();
+    if (!trimmed) continue;
+    if (symbolUp && trimmed.toUpperCase() === symbolUp) continue;
+    return trimmed;
+  }
+  return undefined;
+}
+
+/**
  * Last-resort name extractor: pick a non-index, non-symbol string field that
  * looks like a proper company/fund name.
  *
@@ -525,13 +546,17 @@ export class MsnFinanceService implements QuoteProvider {
     const exchange = this.mapMsnExchangeToMonize(rawExchange) ||
       this.scanExchangeCode(item);
 
-    // Name candidates. Description intentionally excluded — it's the company
-    // blurb ("Apple Inc. designs, manufactures, and markets smartphones,
-    // personal computers, tablets, wearables...") rather than the name.
-    const namedName = getField(
-      item,
-      "DisplayName",
-      "displayName",
+    // Name candidates. Ordering matters: MSN's `DisplayName` is unreliable
+    // for mutual funds (it's often the *ticker* like "TDB164", not the
+    // name), so it's deferred to last and gated to values that aren't the
+    // symbol. OS0LN / OS01W / RT0SN consistently hold the full fund name.
+    const SYMBOL_UP = extractedSymbol;
+    const namePickOrder: string[] = [
+      // MSN-encoded full-name fields (observed in responses):
+      "OS0LN", // long name
+      "OS01W", // short / display name
+      "RT0SN", // fund name variant
+      // Standard Bing / MSN name fields:
       "LongName",
       "longName",
       "CompanyName",
@@ -542,17 +567,21 @@ export class MsnFinanceService implements QuoteProvider {
       "legalName",
       "Name",
       "name",
-      "Title",
-      "title",
       "ShortName",
       "shortName",
-      // MSN-encoded name fields observed in the wild:
-      "OS0LN", // long name
-      "OS01W", // short / display name
-      "RT0SN", // mutual fund name
+      "Title",
+      "title",
+      // Fund-abbreviation fields:
+      "FriendlyName",
+      "friendlyName",
+      "AC042",
       "OS0F",
       "OS0FN",
-    );
+      // DisplayName last, and even then only if it isn't the ticker.
+      "DisplayName",
+      "displayName",
+    ];
+    const namedName = pickNameCandidate(item, namePickOrder, SYMBOL_UP);
     // Last-resort: MSN occasionally returns the full name only under a
     // previously-unseen short-coded field. If none of the named candidates
     // hit, pick the longest string value in the item that isn't the
@@ -584,26 +613,32 @@ export class MsnFinanceService implements QuoteProvider {
       "category",
       "Class",
       "class",
-      "OS0IT", // MSN instrument type code (guess)
+      "OS010", // MSN 2-letter instrument code (observed: FO = fund, ST = stock)
+      "os010",
+      "OS0IT",
       "os0IT",
     );
 
-    const currency = getField(
-      item,
-      "Currency",
-      "currency",
-      "CurrencyCode",
-      "currencyCode",
-      "IsoCurrency",
-      "isoCurrency",
-      "TradingCurrency",
-      "tradingCurrency",
-      "BaseCurrency",
-      "baseCurrency",
-      "CUR",
-      "cur",
-      "OS0AP", // MSN asset-price currency (guess)
-    );
+    const currency =
+      getField(
+        item,
+        "Currency",
+        "currency",
+        "CurrencyCode",
+        "currencyCode",
+        "IsoCurrency",
+        "isoCurrency",
+        "TradingCurrency",
+        "tradingCurrency",
+        "BaseCurrency",
+        "baseCurrency",
+        "CUR",
+        "cur",
+        "OS0AP",
+      ) ||
+      // Fund entries often lack an explicit currency field but mark the
+      // country with RT0EC / LS01Z / ExMicCode / locale. Infer from there.
+      this.currencyFromCountryCode(item);
 
     return {
       symbol,
@@ -659,9 +694,54 @@ export class MsnFinanceService implements QuoteProvider {
     return null;
   }
 
+  /**
+   * Infer a trading currency from MSN's country-code fields when no explicit
+   * currency field is populated (common for mutual fund entries).
+   */
+  private currencyFromCountryCode(item: AutosuggestItem): string | null {
+    const code = (
+      getField(item, "RT0EC", "LS01Z", "ExMicCode", "CountryCode", "countryCode") ||
+      ""
+    ).toUpperCase();
+    if (!code) {
+      // `locale: "en-ca"` / "en-us" is a last resort.
+      const locale = (getField(item, "locale", "Locale") || "").toUpperCase();
+      const m = locale.match(/-([A-Z]{2})$/);
+      if (!m) return null;
+      return this.countryToCurrency(m[1]);
+    }
+    return this.countryToCurrency(code);
+  }
+
+  private countryToCurrency(country: string): string | null {
+    const map: Record<string, string> = {
+      CA: "CAD",
+      US: "USD",
+      GB: "GBP",
+      UK: "GBP",
+      AU: "AUD",
+      DE: "EUR",
+      FR: "EUR",
+      IT: "EUR",
+      ES: "EUR",
+      NL: "EUR",
+      JP: "JPY",
+      HK: "HKD",
+      CH: "CHF",
+      SE: "SEK",
+      NO: "NOK",
+      DK: "DKK",
+    };
+    return map[country.toUpperCase()] || null;
+  }
+
   private mapMsnSecurityType(msnType: string | undefined): string | null {
     if (!msnType) return null;
     const t = msnType.toUpperCase().trim();
+    // MSN's 2-letter instrument codes observed in OS010:
+    if (t === "FO") return "MUTUAL_FUND"; // open-end fund
+    if (t === "ST") return "STOCK";
+    if (t === "IX") return null; // index (not a holdable security)
     // ETF before MUTUAL_FUND because "exchange-traded fund" includes "fund".
     if (
       t.includes("ETF") ||
