@@ -369,7 +369,7 @@ export class YahooFinanceService implements QuoteProvider {
     preferredExchanges?: string[],
   ): Promise<SecurityLookupResult[]> {
     try {
-      const url = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=10&newsCount=0`;
+      const url = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=50&newsCount=0`;
 
       const response = await fetch(url, {
         headers: {

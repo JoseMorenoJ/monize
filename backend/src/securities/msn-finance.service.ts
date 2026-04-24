@@ -124,6 +124,34 @@ interface AutosuggestItem {
 }
 
 /**
+ * Last-resort name extractor: pick the longest string value whose key
+ *   a) isn't a lowercase search index (ends in "Index"),
+ *   b) isn't equal to the extracted symbol or SecId,
+ *   c) has at least one space OR is longer than 15 chars (names look that
+ *      way; codes don't).
+ */
+function findLongestNameField(
+  item: AutosuggestItem,
+  symbol: string | null | undefined,
+  secId: string | null | undefined,
+): string | undefined {
+  let best: string | undefined;
+  for (const key of Object.keys(item)) {
+    if (/Index$/i.test(key)) continue;
+    const val = item[key];
+    if (typeof val !== "string") continue;
+    const trimmed = val.trim();
+    if (!trimmed) continue;
+    if (symbol && trimmed === symbol) continue;
+    if (secId && trimmed === secId) continue;
+    // A name either has a space or is long-ish.
+    if (!/\s/.test(trimmed) && trimmed.length < 15) continue;
+    if (!best || trimmed.length > best.length) best = trimmed;
+  }
+  return best;
+}
+
+/**
  * MSN's autosuggest returns each stock as a stringified JSON blob. Normalise
  * so every element is an object.
  */
@@ -374,7 +402,7 @@ export class MsnFinanceService implements QuoteProvider {
     const markets = this.marketOrderFor(null, preferredExchanges);
     let stocks: AutosuggestItem[] = [];
     for (const market of markets) {
-      const url = `${AUTOSUGGEST_URL}?query=${encodeURIComponent(query)}&market=${encodeURIComponent(market)}&count=10`;
+      const url = `${AUTOSUGGEST_URL}?query=${encodeURIComponent(query)}&market=${encodeURIComponent(market)}&count=50`;
       const data = await this.httpGetJson<{
         data?: { stocks?: unknown };
       }>(url);
@@ -449,24 +477,41 @@ export class MsnFinanceService implements QuoteProvider {
     );
     const exchange = this.mapMsnExchangeToMonize(rawExchange);
 
-    const name =
-      getField(
-        item,
-        "DisplayName",
-        "displayName",
-        "LongName",
-        "longName",
-        "Name",
-        "name",
-        "ShortName",
-        "shortName",
-        "Description",
-        "description",
-        // MSN-encoded name fields:
-        "OS0LN", // long name
-        "OS01W", // short / display name
-        "RT0SN", // mutual fund name
-      ) || symbol;
+    const namedName = getField(
+      item,
+      "DisplayName",
+      "displayName",
+      "LongName",
+      "longName",
+      "Name",
+      "name",
+      "ShortName",
+      "shortName",
+      "Description",
+      "description",
+      // MSN-encoded name fields:
+      "OS0LN", // long name
+      "OS01W", // short / display name
+      "RT0SN", // mutual fund name
+      "OS0F",
+      "OS0FN",
+      "LegalName",
+      "legalName",
+    );
+    // Last-resort: MSN occasionally returns the full name only under a
+    // previously-unseen short-coded field. If none of the named candidates
+    // hit, pick the longest string value in the item that isn't the
+    // ticker, SecId, or a lowercase search index. Names are reliably
+    // longer than symbols / codes, so this heuristic is safe.
+    const fallbackName = namedName
+      ? undefined
+      : findLongestNameField(item, symbol, extractedSecId);
+    if (!namedName) {
+      this.logger.warn(
+        `MSN lookup item has no named-candidate name; symbol=${symbol}, fallback=${fallbackName || "(none)"}. Keys=[${Object.keys(item).join(",")}]`,
+      );
+    }
+    const name = namedName || fallbackName || symbol;
 
     const securityTypeRaw = getField(
       item,

@@ -43,7 +43,7 @@ export function SecurityLookupPicker({
   onCancel,
 }: SecurityLookupPickerProps) {
   return (
-    <Modal isOpen={isOpen} onClose={onCancel} maxWidth="2xl">
+    <Modal isOpen={isOpen} onClose={onCancel} maxWidth="6xl">
       <div className="p-4 border-b border-gray-200 dark:border-gray-700">
         <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
           Multiple matches for &quot;{query}&quot;
