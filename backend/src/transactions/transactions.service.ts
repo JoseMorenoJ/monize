@@ -833,33 +833,15 @@ export class TransactionsService {
   }
 
   /**
-   * Compute the account's projected balance -- opening balance plus every
-   * non-void, non-child transaction, regardless of date.
-   *
-   * Derived from raw transactions rather than `account.currentBalance +
-   * futureTransactionsSum` because the stored `currentBalance` can be out
-   * of step with the TZ-aware "today" after a timezone change or a
-   * future-dated create that ran under the old server-UTC logic (in which
-   * case currentBalance already contains a row that futureTransactionsSum
-   * also counts, double-counting once the two are added). Computing the
-   * full sum sidesteps any disagreement about where "today" sits.
+   * Thin delegate to AccountsService.getProjectedBalance -- kept here so the
+   * paging helpers below stay readable. See that method for why balance is
+   * derived live rather than from the stored currentBalance column.
    */
   private async computeProjectedBalance(
     userId: string,
     accountId: string,
   ): Promise<number> {
-    const result: { balance: string }[] = await this.dataSource.query(
-      `SELECT COALESCE(a.opening_balance, 0) + COALESCE(SUM(t.amount), 0) AS balance
-         FROM accounts a
-         LEFT JOIN transactions t ON t.account_id = a.id
-           AND t.user_id = $2
-           AND (t.status IS NULL OR t.status != 'VOID')
-           AND t.parent_transaction_id IS NULL
-        WHERE a.id = $1 AND a.user_id = $2
-        GROUP BY a.id, a.opening_balance`,
-      [accountId, userId],
-    );
-    return Math.round(Number(result?.[0]?.balance ?? 0) * 10000) / 10000;
+    return this.accountsService.getProjectedBalance(userId, accountId);
   }
 
   /**

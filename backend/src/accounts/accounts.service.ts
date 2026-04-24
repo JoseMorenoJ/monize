@@ -793,6 +793,31 @@ export class AccountsService {
   }
 
   /**
+   * Projected balance: opening balance plus every non-void, non-child
+   * transaction regardless of date. Derived live from raw transactions so
+   * the result does not depend on the stored `account.currentBalance`
+   * column, which can lag the TZ-aware "today" after a timezone change or
+   * a future-dated create that ran under the old server-UTC logic.
+   */
+  async getProjectedBalance(
+    userId: string,
+    accountId: string,
+  ): Promise<number> {
+    const result: { balance: string }[] = await this.dataSource.query(
+      `SELECT COALESCE(a.opening_balance, 0) + COALESCE(SUM(t.amount), 0) AS balance
+         FROM accounts a
+         LEFT JOIN transactions t ON t.account_id = a.id
+           AND t.user_id = $2
+           AND (t.status IS NULL OR t.status != 'VOID')
+           AND t.parent_transaction_id IS NULL
+        WHERE a.id = $1 AND a.user_id = $2
+        GROUP BY a.id, a.opening_balance`,
+      [accountId, userId],
+    );
+    return Math.round(Number(result?.[0]?.balance ?? 0) * 10000) / 10000;
+  }
+
+  /**
    * Get account summary statistics for a user
    */
   async getSummary(userId: string): Promise<{

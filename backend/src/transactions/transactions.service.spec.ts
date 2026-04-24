@@ -96,6 +96,7 @@ describe("TransactionsService", () => {
       findOne: jest.fn().mockResolvedValue(mockAccount),
       updateBalance: jest.fn().mockResolvedValue(mockAccount),
       recalculateCurrentBalance: jest.fn().mockResolvedValue(mockAccount),
+      getProjectedBalance: jest.fn().mockResolvedValue(0),
     };
 
     payeesService = {
@@ -1445,6 +1446,7 @@ describe("TransactionsService", () => {
         ...mockAccount,
         currentBalance: 950,
       });
+      accountsService.getProjectedBalance.mockResolvedValue(950);
 
       const result = await service.findAll("user-1", ["account-1"]);
 
@@ -1476,6 +1478,7 @@ describe("TransactionsService", () => {
         ...mockAccount,
         currentBalance: 13000,
       });
+      accountsService.getProjectedBalance.mockResolvedValue(3000);
 
       const result = await service.findAll("user-1", ["account-1"]);
 
@@ -1519,6 +1522,7 @@ describe("TransactionsService", () => {
         ...mockAccount,
         currentBalance: 800,
       });
+      accountsService.getProjectedBalance.mockResolvedValue(800);
 
       const result = await service.findAll(
         "user-1",
@@ -2387,6 +2391,7 @@ describe("TransactionsService", () => {
           ...mockAccount,
           currentBalance: 1000,
         });
+        accountsService.getProjectedBalance.mockResolvedValue(1000);
 
         const result = await service.findAll(
           "user-1",
@@ -2417,6 +2422,7 @@ describe("TransactionsService", () => {
           ...mockAccount,
           currentBalance: 1000,
         });
+        accountsService.getProjectedBalance.mockResolvedValue(1000);
 
         const result = await service.findAll(
           "user-1",
@@ -2448,6 +2454,7 @@ describe("TransactionsService", () => {
           ...mockAccount,
           currentBalance: 1000,
         });
+        accountsService.getProjectedBalance.mockResolvedValue(1500);
 
         const result = await service.findAll(
           "user-1",
@@ -2491,6 +2498,7 @@ describe("TransactionsService", () => {
           ...mockAccount,
           currentBalance: 1000,
         });
+        accountsService.getProjectedBalance.mockResolvedValue(1000);
 
         const result = await service.findAll(
           "user-1",
@@ -2536,6 +2544,7 @@ describe("TransactionsService", () => {
           ...mockAccount,
           currentBalance: 1000,
         });
+        accountsService.getProjectedBalance.mockResolvedValue(1000);
 
         await service.findAll(
           "user-1",
@@ -2583,6 +2592,7 @@ describe("TransactionsService", () => {
           ...mockAccount,
           currentBalance: 1000,
         });
+        accountsService.getProjectedBalance.mockResolvedValue(1000);
 
         const result = await service.findAll(
           "user-1",
@@ -2634,6 +2644,7 @@ describe("TransactionsService", () => {
           ...mockAccount,
           currentBalance: 1000,
         });
+        accountsService.getProjectedBalance.mockResolvedValue(1000);
 
         const result = await service.findAll("user-1", ["account-1"]);
 
@@ -2656,6 +2667,7 @@ describe("TransactionsService", () => {
           ...mockAccount,
           currentBalance: 8000,
         });
+        accountsService.getProjectedBalance.mockResolvedValue(3000);
 
         const result = await service.findAll("user-1", ["account-1"]);
 
@@ -2687,6 +2699,7 @@ describe("TransactionsService", () => {
           ...mockAccount,
           currentBalance: 2000,
         });
+        accountsService.getProjectedBalance.mockResolvedValue(2000);
 
         const result = await service.findAll(
           "user-1",
