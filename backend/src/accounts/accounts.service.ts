@@ -228,11 +228,11 @@ export class AccountsService {
                 COALESCE(SUM(t.amount), 0) as "futureSum"
          FROM transactions t
          WHERE t.account_id = ANY($1)
-           AND t.transaction_date > CURRENT_DATE
+           AND t.transaction_date > $2
            AND (t.status IS NULL OR t.status != 'VOID')
            AND t.parent_transaction_id IS NULL
          GROUP BY t.account_id`,
-        [accountIds],
+        [accountIds, todayYMD()],
       ) as Promise<Array<{ accountId: string; futureSum: string }>>,
     ]);
 
@@ -733,13 +733,19 @@ export class AccountsService {
        WHERE t.account_id = $1
          AND (t.status IS NULL OR t.status != 'VOID')
          AND t.parent_transaction_id IS NULL
-         AND t.transaction_date <= CURRENT_DATE`;
+         AND t.transaction_date <= $3`;
 
+    const today = todayYMD();
     const result: { balance: string }[] = queryRunner
-      ? await queryRunner.query(balanceSql, [accountId, account.openingBalance])
+      ? await queryRunner.query(balanceSql, [
+          accountId,
+          account.openingBalance,
+          today,
+        ])
       : await this.dataSource.query(balanceSql, [
           accountId,
           account.openingBalance,
+          today,
         ]);
 
     const newBalance =

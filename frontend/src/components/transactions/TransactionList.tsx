@@ -12,6 +12,7 @@ import { TransactionRow } from './TransactionRow';
 import { TransactionActionSheet } from './TransactionActionSheet';
 import { useDateFormat } from '@/hooks/useDateFormat';
 import { useNumberFormat } from '@/hooks/useNumberFormat';
+import { getLocalDateString } from '@/lib/utils';
 import { DensityLevel, nextDensity } from '@/hooks/useTableDensity';
 
 interface TransactionListProps {
@@ -258,10 +259,13 @@ export function TransactionList({
     }
   }, [onRefresh, onTransactionUpdate]);
 
-  // Find the index where future transactions end and today/past begin
-  // Transactions are sorted DESC by date, so future ones come first
+  // Find the index where future transactions end and today/past begin.
+  // Transactions are sorted DESC by date, so future ones come first.
+  // "Today" is the user's local date -- using toISOString() would return
+  // the UTC date and mis-classify a tomorrow-local-dated transaction as
+  // past for users west of UTC in the late evening.
   const futureBoundaryIndex = useMemo(() => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = getLocalDateString();
     for (let i = 0; i < transactions.length; i++) {
       if (transactions[i].transactionDate <= today) {
         return i;
