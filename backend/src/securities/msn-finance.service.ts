@@ -526,42 +526,18 @@ export class MsnFinanceService implements QuoteProvider {
 
     const upperQuery = query.toUpperCase().trim();
 
-    /**
-     * A plausibility gate: when Bing returns partial matches for bogus input
-     * like "CCE*" we shouldn't present them as hits. Require the match to have
-     * a ticker that starts with the query, OR a display name that contains
-     * each non-trivial word of the query (case-insensitively).
-     */
-    const queryIsTickerLike = looksLikeTicker(upperQuery);
-    const queryWords = query
-      .toLowerCase()
-      .split(/\s+/)
-      .map((w) => w.replace(/[^a-z0-9]+/g, ""))
-      .filter((w) => w.length >= 2);
-
-    const matchesQuery = (s: AutosuggestItem): boolean => {
-      const ticker = tickerFor(s);
-      if (ticker) {
-        if (ticker === upperQuery) return true;
-        if (queryIsTickerLike && ticker.startsWith(upperQuery)) return true;
-        if (queryIsTickerLike && upperQuery.startsWith(ticker)) return true;
-      }
-      if (queryWords.length > 0) {
-        const name = (nameFor(s) || "").toLowerCase();
-        if (queryWords.every((w) => name.includes(w))) return true;
-      }
-      return false;
-    };
-
-    const validMatches = sorted.filter(matchesQuery);
-    if (validMatches.length === 0) {
+    // Reject queries that contain characters that aren't valid in either a
+    // ticker or a typical company name. Bing will happily partial-match these
+    // ("CCE*" → CCEP, "foo?" → FOOB), which would surface as bogus hits.
+    if (/[*?#%&!@/\\|<>]/.test(query)) {
       this.logger.log(
-        `MSN lookup "${query}" — ${stocks.length} autosuggest hit(s) but none plausibly matched the query; returning null`,
+        `MSN lookup rejected query "${query}" (contains invalid characters)`,
       );
       return null;
     }
 
-    const match = validMatches[0];
+    const match = sorted[0];
+    if (!match) return null;
 
     // Surface the raw first match and its extracted keys so operators can
     // adjust candidate lists when MSN changes its surface.
