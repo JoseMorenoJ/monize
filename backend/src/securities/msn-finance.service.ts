@@ -341,8 +341,29 @@ export class MsnFinanceService implements QuoteProvider {
     const match = sorted.find((s) => symbolOf(s) === upperQuery) || sorted[0];
     if (!match) return null;
 
-    const symbol = symbolOf(match) || query.toUpperCase();
-    const secId = getField(match, "SecId", "secId");
+    // Log the raw first match so the operator can see exactly which field
+    // names MSN used. If a lookup ever produces garbage (e.g. Symbol =
+    // the upper-cased query), pasting this log line reveals which
+    // candidate field name needs to be added.
+    this.logger.log(
+      `MSN lookup "${query}" match keys=[${Object.keys(match).join(",")}] body=${JSON.stringify(match).slice(0, 500)}`,
+    );
+
+    const extractedSymbol = symbolOf(match);
+    const extractedSecId = getField(match, "SecId", "secId");
+
+    // If MSN returned a hit but neither a ticker-shaped Symbol nor a SecId
+    // could be extracted, the result is unusable — don't dump the query
+    // into the Symbol/Name fields.
+    if (!extractedSymbol && !extractedSecId) {
+      this.logger.warn(
+        `MSN lookup "${query}": match has no Symbol or SecId; returning null. Keys=[${Object.keys(match).join(",")}]`,
+      );
+      return null;
+    }
+
+    const symbol = extractedSymbol || query.toUpperCase();
+    const secId = extractedSecId;
     if (secId) {
       this.setCached(this.cacheKey(symbol, null, preferredExchanges), secId);
     }
