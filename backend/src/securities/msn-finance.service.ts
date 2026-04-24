@@ -124,31 +124,55 @@ interface AutosuggestItem {
 }
 
 /**
- * Last-resort name extractor: pick the longest string value whose key
- *   a) isn't a lowercase search index (ends in "Index"),
- *   b) isn't equal to the extracted symbol or SecId,
- *   c) has at least one space OR is longer than 15 chars (names look that
- *      way; codes don't).
+ * Last-resort name extractor: pick a non-index, non-symbol string field that
+ * looks like a proper company/fund name.
+ *
+ * Heuristics, in order of preference:
+ *   1. Contains a space and is 4–80 chars (most company/fund names).
+ *   2. Begins with a capital letter AND is 4–80 chars.
+ *   3. Any non-code string value.
+ *
+ * Very long strings (>150 chars) are always rejected — those are descriptions
+ * or disclaimer text, never a name.
  */
 function findLongestNameField(
   item: AutosuggestItem,
   symbol: string | null | undefined,
   secId: string | null | undefined,
 ): string | undefined {
-  let best: string | undefined;
+  const looksLikeCompanyName = (s: string): boolean =>
+    /\s/.test(s) && s.length >= 4 && s.length <= 80;
+  const looksLikeProperNoun = (s: string): boolean =>
+    /^[A-Z]/.test(s) && s.length >= 4 && s.length <= 80;
+
+  let spaceCandidate: string | undefined;
+  let properCandidate: string | undefined;
+  let anyCandidate: string | undefined;
+
   for (const key of Object.keys(item)) {
     if (/Index$/i.test(key)) continue;
     const val = item[key];
     if (typeof val !== "string") continue;
     const trimmed = val.trim();
-    if (!trimmed) continue;
+    if (!trimmed || trimmed.length > 150) continue;
     if (symbol && trimmed === symbol) continue;
     if (secId && trimmed === secId) continue;
-    // A name either has a space or is long-ish.
-    if (!/\s/.test(trimmed) && trimmed.length < 15) continue;
-    if (!best || trimmed.length > best.length) best = trimmed;
+    // Skip short codes (< 4 chars) and lowercase-only ones (search indices).
+    if (trimmed.length < 4) continue;
+
+    if (looksLikeCompanyName(trimmed)) {
+      if (!spaceCandidate || trimmed.length < spaceCandidate.length) {
+        spaceCandidate = trimmed;
+      }
+    } else if (looksLikeProperNoun(trimmed)) {
+      if (!properCandidate || trimmed.length < properCandidate.length) {
+        properCandidate = trimmed;
+      }
+    } else if (!anyCandidate) {
+      anyCandidate = trimmed;
+    }
   }
-  return best;
+  return spaceCandidate || properCandidate || anyCandidate;
 }
 
 /**
@@ -423,10 +447,13 @@ export class MsnFinanceService implements QuoteProvider {
     });
 
     // Surface what Bing returned so operators can extend candidate lists if
-    // MSN changes their field names.
-    this.logger.log(
-      `MSN lookup "${query}" found ${sorted.length} raw match(es); first keys=[${Object.keys(sorted[0] || {}).join(",")}]`,
-    );
+    // MSN changes their field names. Log the first item's keys AND values so
+    // unfamiliar field codes are easy to identify from a single log line.
+    if (sorted[0]) {
+      this.logger.log(
+        `MSN lookup "${query}" found ${sorted.length} raw match(es); first item body=${JSON.stringify(sorted[0]).slice(0, 1500)}`,
+      );
+    }
 
     const results: SecurityLookupResult[] = [];
     for (const item of sorted) {
@@ -470,33 +497,61 @@ export class MsnFinanceService implements QuoteProvider {
       "exchange",
       "Mic",
       "mic",
+      "MicCode",
+      "micCode",
       "ExchangeId",
       "exchangeId",
+      "ExchangeCode",
+      "exchangeCode",
       "ExchangeName",
       "exchangeName",
+      "Market",
+      "market",
+      "MarketCode",
+      "marketCode",
+      "MarketIdentifier",
+      "marketIdentifier",
+      "MarketIdentifierCode",
+      "marketIdentifierCode",
+      "Venue",
+      "venue",
+      "TradingVenue",
+      "tradingVenue",
+      "CP", // MSN country/venue plate observed in responses
+      "cp",
+      "PrimaryExchange",
+      "primaryExchange",
     );
-    const exchange = this.mapMsnExchangeToMonize(rawExchange);
+    const exchange = this.mapMsnExchangeToMonize(rawExchange) ||
+      this.scanExchangeCode(item);
 
+    // Name candidates. Description intentionally excluded — it's the company
+    // blurb ("Apple Inc. designs, manufactures, and markets smartphones,
+    // personal computers, tablets, wearables...") rather than the name.
     const namedName = getField(
       item,
       "DisplayName",
       "displayName",
       "LongName",
       "longName",
+      "CompanyName",
+      "companyName",
+      "FullName",
+      "fullName",
+      "LegalName",
+      "legalName",
       "Name",
       "name",
+      "Title",
+      "title",
       "ShortName",
       "shortName",
-      "Description",
-      "description",
-      // MSN-encoded name fields:
+      // MSN-encoded name fields observed in the wild:
       "OS0LN", // long name
       "OS01W", // short / display name
       "RT0SN", // mutual fund name
       "OS0F",
       "OS0FN",
-      "LegalName",
-      "legalName",
     );
     // Last-resort: MSN occasionally returns the full name only under a
     // previously-unseen short-coded field. If none of the named candidates
@@ -521,6 +576,16 @@ export class MsnFinanceService implements QuoteProvider {
       "instrumentType",
       "Type",
       "type",
+      "AssetType",
+      "assetType",
+      "Kind",
+      "kind",
+      "Category",
+      "category",
+      "Class",
+      "class",
+      "OS0IT", // MSN instrument type code (guess)
+      "os0IT",
     );
 
     const currency = getField(
@@ -529,6 +594,15 @@ export class MsnFinanceService implements QuoteProvider {
       "currency",
       "CurrencyCode",
       "currencyCode",
+      "IsoCurrency",
+      "isoCurrency",
+      "TradingCurrency",
+      "tradingCurrency",
+      "BaseCurrency",
+      "baseCurrency",
+      "CUR",
+      "cur",
+      "OS0AP", // MSN asset-price currency (guess)
     );
 
     return {
@@ -565,6 +639,24 @@ export class MsnFinanceService implements QuoteProvider {
       if (msn === upper) return monize;
     }
     return msnExchange;
+  }
+
+  /**
+   * Last-resort exchange scan: look for any string value in the item that
+   * matches a known MIC code (e.g. "XNAS", "XNYS", "XTSE"). Skips keys that
+   * would obviously hold a ticker, SecId, name, or currency.
+   */
+  private scanExchangeCode(item: AutosuggestItem): string | null {
+    const skip = /symbol|ticker|name|display|title|description|currency|type|kind|class|asset|short|long|id|sec/i;
+    for (const [key, val] of Object.entries(item)) {
+      if (skip.test(key)) continue;
+      if (typeof val !== "string") continue;
+      const trimmed = val.trim().toUpperCase();
+      if (!/^X[A-Z]{3}$|^[A-Z]{4}$/.test(trimmed)) continue;
+      const monize = this.mapMsnExchangeToMonize(trimmed);
+      if (monize) return monize;
+    }
+    return null;
   }
 
   private mapMsnSecurityType(msnType: string | undefined): string | null {
