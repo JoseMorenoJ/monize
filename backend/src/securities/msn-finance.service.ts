@@ -67,13 +67,53 @@ interface CacheEntry {
 }
 
 interface AutosuggestItem {
+  // Bing Finance autosuggest uses inconsistent casing across endpoints, so
+  // accept every realistic variant and normalise via getField below.
   Symbol?: string;
+  symbol?: string;
+  TradingSymbol?: string;
+  tradingSymbol?: string;
   SecId?: string;
+  secId?: string;
   Name?: string;
+  name?: string;
+  DisplayName?: string;
+  displayName?: string;
+  ShortName?: string;
+  shortName?: string;
+  LongName?: string;
+  longName?: string;
+  Description?: string;
+  description?: string;
   Exchange?: string;
+  exchange?: string;
+  ExchangeId?: string;
+  exchangeId?: string;
+  Mic?: string;
+  mic?: string;
   ExchangeName?: string;
+  exchangeName?: string;
   SecurityType?: string;
+  securityType?: string;
+  Type?: string;
+  type?: string;
+  InstrumentType?: string;
+  instrumentType?: string;
   Currency?: string;
+  currency?: string;
+  CurrencyCode?: string;
+  currencyCode?: string;
+}
+
+function getField(
+  item: AutosuggestItem,
+  ...candidates: (keyof AutosuggestItem)[]
+): string | undefined {
+  for (const key of candidates) {
+    const val = item[key];
+    if (typeof val === "string" && val.trim()) return val.trim();
+  }
+  return undefined;
 }
 
 @Injectable()
@@ -219,7 +259,7 @@ export class MsnFinanceService implements QuoteProvider {
       exchange,
       preferredExchanges,
     );
-    return match?.SecId || null;
+    return match ? getField(match, "SecId", "secId") || null : null;
   }
 
   private pickBestStock(
@@ -230,9 +270,14 @@ export class MsnFinanceService implements QuoteProvider {
   ): AutosuggestItem | null {
     const upperQuery = query.toUpperCase().trim();
 
-    const exactSymbol = stocks.filter(
-      (s) => (s.Symbol || "").toUpperCase() === upperQuery,
-    );
+    const symbolOf = (s: AutosuggestItem) =>
+      (getField(s, "Symbol", "symbol", "TradingSymbol", "tradingSymbol") || "")
+        .toUpperCase();
+    const exchangeOf = (s: AutosuggestItem) =>
+      (getField(s, "Exchange", "exchange", "Mic", "mic", "ExchangeId", "exchangeId") || "")
+        .toUpperCase();
+
+    const exactSymbol = stocks.filter((s) => symbolOf(s) === upperQuery);
     const pool = exactSymbol.length > 0 ? exactSymbol : stocks;
 
     // 1. Direct exchange match (security's stored exchange wins).
@@ -240,9 +285,7 @@ export class MsnFinanceService implements QuoteProvider {
       ? EXCHANGE_TO_MSN[exchange.toUpperCase()]
       : null;
     if (targetExchange) {
-      const exchangeMatch = pool.find(
-        (s) => (s.Exchange || "").toUpperCase() === targetExchange,
-      );
+      const exchangeMatch = pool.find((s) => exchangeOf(s) === targetExchange);
       if (exchangeMatch) return exchangeMatch;
     }
 
@@ -251,9 +294,7 @@ export class MsnFinanceService implements QuoteProvider {
       for (const pref of preferredExchanges) {
         const mapped = EXCHANGE_TO_MSN[pref.toUpperCase()];
         if (!mapped) continue;
-        const prefMatch = pool.find(
-          (s) => (s.Exchange || "").toUpperCase() === mapped,
-        );
+        const prefMatch = pool.find((s) => exchangeOf(s) === mapped);
         if (prefMatch) return prefMatch;
       }
     }
@@ -286,33 +327,80 @@ export class MsnFinanceService implements QuoteProvider {
     if (stocks.length === 0) return null;
 
     const sorted = [...stocks].sort((a, b) => {
-      const pa = this.preferredExchangePriority(a.Exchange, preferredExchanges);
-      const pb = this.preferredExchangePriority(b.Exchange, preferredExchanges);
+      const ea = getField(a, "Exchange", "exchange", "Mic", "mic");
+      const eb = getField(b, "Exchange", "exchange", "Mic", "mic");
+      const pa = this.preferredExchangePriority(ea, preferredExchanges);
+      const pb = this.preferredExchangePriority(eb, preferredExchanges);
       return pa - pb;
     });
 
     const upperQuery = query.toUpperCase().trim();
-    const match =
-      sorted.find((s) => (s.Symbol || "").toUpperCase() === upperQuery) ||
-      sorted[0];
-
+    const symbolOf = (s: AutosuggestItem) =>
+      (getField(s, "Symbol", "symbol", "TradingSymbol", "tradingSymbol") || "")
+        .toUpperCase();
+    const match = sorted.find((s) => symbolOf(s) === upperQuery) || sorted[0];
     if (!match) return null;
 
-    if (match.SecId && match.Symbol) {
-      this.setCached(
-        this.cacheKey(match.Symbol, null, preferredExchanges),
-        match.SecId,
-      );
+    const symbol = symbolOf(match) || query.toUpperCase();
+    const secId = getField(match, "SecId", "secId");
+    if (secId) {
+      this.setCached(this.cacheKey(symbol, null, preferredExchanges), secId);
     }
 
-    const exchange = this.mapMsnExchangeToMonize(match.Exchange);
+    const rawExchange = getField(
+      match,
+      "Exchange",
+      "exchange",
+      "Mic",
+      "mic",
+      "ExchangeId",
+      "exchangeId",
+      "ExchangeName",
+      "exchangeName",
+    );
+    const exchange = this.mapMsnExchangeToMonize(rawExchange);
+
+    const name =
+      getField(
+        match,
+        "DisplayName",
+        "displayName",
+        "LongName",
+        "longName",
+        "Name",
+        "name",
+        "ShortName",
+        "shortName",
+        "Description",
+        "description",
+      ) || symbol;
+
+    const securityTypeRaw = getField(
+      match,
+      "SecurityType",
+      "securityType",
+      "InstrumentType",
+      "instrumentType",
+      "Type",
+      "type",
+    );
+
+    const currency = getField(
+      match,
+      "Currency",
+      "currency",
+      "CurrencyCode",
+      "currencyCode",
+    );
 
     return {
-      symbol: (match.Symbol || query).toUpperCase(),
-      name: match.Name || match.Symbol || query,
+      symbol,
+      name,
       exchange,
-      securityType: this.mapMsnSecurityType(match.SecurityType),
-      currencyCode: match.Currency || this.currencyFromExchange(exchange),
+      securityType: this.mapMsnSecurityType(securityTypeRaw),
+      currencyCode: currency || this.currencyFromExchange(exchange),
+      provider: "msn",
+      msnInstrumentId: secId || null,
     };
   }
 
@@ -343,15 +431,33 @@ export class MsnFinanceService implements QuoteProvider {
 
   private mapMsnSecurityType(msnType: string | undefined): string | null {
     if (!msnType) return null;
-    const t = msnType.toUpperCase();
-    if (t.includes("ETF")) return "ETF";
-    if (t.includes("MUTUAL") || t === "FUND" || t === "MF")
+    const t = msnType.toUpperCase().trim();
+    // ETF before MUTUAL_FUND because "exchange-traded fund" includes "fund".
+    if (
+      t.includes("ETF") ||
+      t === "EXCHANGE TRADED FUND" ||
+      t === "EXCHANGE-TRADED FUND" ||
+      t.includes("ETP")
+    ) {
+      return "ETF";
+    }
+    if (t.includes("MUTUAL") || t === "FUND" || t === "MF" || t === "OEF") {
       return "MUTUAL_FUND";
-    if (t.includes("BOND")) return "BOND";
-    if (t.includes("OPTION")) return "OPTION";
-    if (t.includes("CRYPT")) return "CRYPTO";
-    if (t === "ST" || t.includes("STOCK") || t.includes("EQUITY"))
+    }
+    if (t.includes("BOND") || t.includes("FIXED INCOME")) return "BOND";
+    if (t.includes("OPTION") || t === "OPT") return "OPTION";
+    if (t.includes("CRYPT") || t === "DIGITAL CURRENCY") return "CRYPTO";
+    if (
+      t === "ST" ||
+      t === "CS" || // common stock
+      t === "PS" || // preferred stock
+      t === "ADR" ||
+      t.includes("STOCK") ||
+      t.includes("EQUITY") ||
+      t.includes("SHARE")
+    ) {
       return "STOCK";
+    }
     return null;
   }
 

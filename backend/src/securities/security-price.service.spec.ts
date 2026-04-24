@@ -732,6 +732,7 @@ describe("SecurityPriceService", () => {
         exchange: "NASDAQ", // falls back to exchDisp when no symbol suffix
         securityType: "STOCK",
         currencyCode: "USD",
+        provider: "yahoo",
       });
     });
 

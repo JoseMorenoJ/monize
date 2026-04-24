@@ -134,19 +134,35 @@ export function SecurityForm({ security, onSubmit, onCancel, onDirtyChange, subm
       const result = await investmentsApi.lookupSecurity(query, exchanges, lookupProvider);
       if (result) {
         // Fill in all fields from the lookup result
-        setValue('symbol', result.symbol);
-        setValue('name', result.name);
-        setValue('exchange', result.exchange || '');
-        setValue('securityType', result.securityType || '');
+        setValue('symbol', result.symbol, { shouldDirty: true });
+        setValue('name', result.name, { shouldDirty: true });
+        setValue('exchange', result.exchange || '', { shouldDirty: true });
+        setValue('securityType', result.securityType || '', { shouldDirty: true });
         if (result.currencyCode) {
-          setValue('currencyCode', result.currencyCode);
+          setValue('currencyCode', result.currencyCode, { shouldDirty: true });
         }
+
+        // If the lookup resolved via a provider other than the user's default,
+        // set the per-security override so subsequent refreshes use the same
+        // provider that produced this data.
+        if (result.provider && result.provider !== userDefaultProvider) {
+          setValue('quoteProvider', result.provider, { shouldDirty: true });
+        }
+
+        // Populate the MSN Instrument ID when the lookup resolved via MSN.
+        if (result.msnInstrumentId) {
+          setValue('msnInstrumentId', result.msnInstrumentId, {
+            shouldDirty: true,
+          });
+        }
+
         setHasLookupResult(true);
 
         const details = [`Symbol: ${result.symbol}`, `Name: ${result.name}`];
         if (result.exchange) details.push(`Exchange: ${result.exchange}`);
         if (result.securityType) details.push(`Type: ${result.securityType}`);
         if (result.currencyCode) details.push(`Currency: ${result.currencyCode}`);
+        if (result.provider) details.push(`Provider: ${result.provider === 'msn' ? 'MSN' : 'Yahoo'}`);
         toast.success(`Found: ${details.join(', ')}`);
       } else {
         toast.error(`No security found for "${query}"`);

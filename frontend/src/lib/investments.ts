@@ -254,6 +254,8 @@ export const investmentsApi = {
     exchange: string | null;
     securityType: string | null;
     currencyCode: string | null;
+    provider?: 'yahoo' | 'msn';
+    msnInstrumentId?: string | null;
   } | null> => {
     const params: Record<string, string> = { q: query };
     if (preferredExchanges && preferredExchanges.length > 0) {

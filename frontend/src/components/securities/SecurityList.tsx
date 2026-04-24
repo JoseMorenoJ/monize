@@ -7,7 +7,7 @@ import { Modal } from '@/components/ui/Modal';
 import { DensityLevel, nextDensity } from '@/hooks/useTableDensity';
 import { SortIcon } from '@/components/ui/SortIcon';
 
-export type SecuritySortField = 'symbol' | 'name' | 'type' | 'exchange' | 'currency';
+export type SecuritySortField = 'symbol' | 'name' | 'type' | 'exchange' | 'currency' | 'provider';
 export type SortDirection = 'asc' | 'desc';
 
 // Map of securityId -> total quantity across all accounts
@@ -137,6 +137,21 @@ const SecurityRow = memo(function SecurityRow({
             <span className="text-sm text-gray-500 dark:text-gray-400">
               {security.currencyCode}
             </span>
+          </td>
+          <td className={`${cellPadding} whitespace-nowrap hidden md:table-cell`}>
+            {security.quoteProvider ? (
+              <span
+                className={`inline-flex items-center rounded text-xs font-medium px-2 py-0.5 ${
+                  security.quoteProvider === 'msn'
+                    ? 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
+                    : 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
+                }`}
+              >
+                {security.quoteProvider === 'msn' ? 'MSN' : 'Yahoo'}
+              </span>
+            ) : (
+              <span className="text-sm text-gray-400 dark:text-gray-500">-</span>
+            )}
           </td>
         </>
       )}
@@ -392,6 +407,13 @@ export function SecurityList({
                     onClick={() => handleSort('currency')}
                   >
                     Currency<SortIcon field="currency" sortField={sortField} sortDirection={sortDirection} />
+                  </th>
+                  <th
+                    className={`${headerPadding} text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:text-gray-700 dark:hover:text-gray-200 hidden md:table-cell`}
+                    onClick={() => handleSort('provider')}
+                    title="Per-security quote provider override"
+                  >
+                    Provider<SortIcon field="provider" sortField={sortField} sortDirection={sortDirection} />
                   </th>
                 </>
               )}

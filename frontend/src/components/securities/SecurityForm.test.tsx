@@ -144,6 +144,60 @@ describe('SecurityForm', () => {
     });
   });
 
+  it('auto-sets the Quote Provider override when the lookup resolves via a non-default provider', async () => {
+    // User default is "yahoo" (from the preferences store mock).
+    (investmentsApi.lookupSecurity as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      symbol: 'RBF556',
+      name: 'RBC Canadian Equity Fund',
+      exchange: 'TSX',
+      securityType: 'MUTUAL_FUND',
+      currencyCode: 'CAD',
+      provider: 'msn',
+      msnInstrumentId: 'msn-rbf556',
+    });
+
+    render(<SecurityForm onSubmit={onSubmit} onCancel={onCancel} />);
+    const symbolInput = screen.getByLabelText('Symbol');
+    fireEvent.change(symbolInput, { target: { value: 'RBF556' } });
+    fireEvent.click(screen.getByText('Lookup'));
+
+    await waitFor(() => {
+      // Quote Provider Override select should have been updated to MSN Money.
+      const providerSelect = screen.getByLabelText('Quote Provider Override') as HTMLSelectElement;
+      expect(providerSelect.value).toBe('msn');
+    });
+
+    // MSN Instrument ID field is rendered when provider is MSN and should
+    // be pre-populated from the lookup.
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('msn-rbf556')).toBeInTheDocument();
+    });
+  });
+
+  it('does NOT set the override when the lookup resolves via the default provider', async () => {
+    // User default is "yahoo"; the lookup also came from Yahoo.
+    (investmentsApi.lookupSecurity as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      symbol: 'AAPL',
+      name: 'Apple Inc.',
+      exchange: 'NASDAQ',
+      securityType: 'STOCK',
+      currencyCode: 'USD',
+      provider: 'yahoo',
+    });
+
+    render(<SecurityForm onSubmit={onSubmit} onCancel={onCancel} />);
+    const symbolInput = screen.getByLabelText('Symbol');
+    fireEvent.change(symbolInput, { target: { value: 'AAPL' } });
+    fireEvent.click(screen.getByText('Lookup'));
+
+    await waitFor(() => {
+      expect(investmentsApi.lookupSecurity).toHaveBeenCalled();
+    });
+
+    const providerSelect = screen.getByLabelText('Quote Provider Override') as HTMLSelectElement;
+    expect(providerSelect.value).toBe('');
+  });
+
   it('uses "Revert" label (not "Clear") when editing after a successful lookup', async () => {
     const security = createSecurity({ symbol: 'AAPL' });
     (investmentsApi.lookupSecurity as ReturnType<typeof vi.fn>).mockResolvedValueOnce({

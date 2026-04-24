@@ -26,6 +26,10 @@ export interface SecurityLookupResult {
   exchange: string | null;
   securityType: string | null;
   currencyCode: string | null;
+  /** Provider that produced this result, if known. */
+  provider?: QuoteProviderName;
+  /** MSN Financial Instrument ID, when the result came from MSN. */
+  msnInstrumentId?: string | null;
 }
 
 export interface StockSectorInfo {

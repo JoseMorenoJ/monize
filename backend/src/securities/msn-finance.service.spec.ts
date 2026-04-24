@@ -377,6 +377,38 @@ describe("MsnFinanceService", () => {
       const result = await service.lookupSecurity("BOGUS");
       expect(result).toBeNull();
     });
+
+    it("returns provider + msnInstrumentId and reads alternate field names", async () => {
+      // Bing sometimes returns camelCase fields, a DisplayName instead of Name,
+      // and a Mic instead of Exchange. Make sure we still extract everything.
+      global.fetch = jest.fn().mockReturnValueOnce(
+        createResponse({
+          data: {
+            stocks: [
+              {
+                symbol: "XEQT",
+                secId: "xeqt-mic",
+                displayName: "iShares Core Equity ETF",
+                mic: "XTSE",
+                instrumentType: "ETF",
+                currencyCode: "CAD",
+              },
+            ],
+          },
+        }),
+      );
+
+      const result = await service.lookupSecurity("XEQT", ["TSX"]);
+      expect(result).toEqual({
+        symbol: "XEQT",
+        name: "iShares Core Equity ETF",
+        exchange: "TSX",
+        securityType: "ETF",
+        currencyCode: "CAD",
+        provider: "msn",
+        msnInstrumentId: "xeqt-mic",
+      });
+    });
   });
 
   describe("fetchEtfSectorWeightings", () => {

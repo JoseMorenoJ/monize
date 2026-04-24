@@ -425,6 +425,7 @@ export class YahooFinanceService implements QuoteProvider {
         exchange,
         securityType,
         currencyCode,
+        provider: "yahoo",
       };
     } catch (error) {
       this.logger.error(
