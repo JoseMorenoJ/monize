@@ -1500,11 +1500,8 @@ describe("TransactionsService", () => {
       };
       const mockQb = createMockQueryBuilder();
       mockQb.getManyAndCount.mockResolvedValue([[mockTx], 51]);
-      // Future sum query (no future transactions)
-      const futureQb = createMockQueryBuilder();
-      futureQb.getRawOne.mockResolvedValue({ sum: 0 });
       // For the sum of previous pages queries:
-      // 1st = main query, 2nd = futureQuery, 3rd = previousPagesQuery, 4th = sumResult query
+      // 1st = main query, 2nd = previousPagesQuery, 3rd = sumResult query
       const sumQb = createMockQueryBuilder({
         setParameters: jest.fn().mockReturnThis(),
       });
@@ -1514,7 +1511,6 @@ describe("TransactionsService", () => {
       previousPagesQb.getParameters.mockReturnValue({ userId: "user-1" });
       transactionsRepository.createQueryBuilder
         .mockReturnValueOnce(mockQb)
-        .mockReturnValueOnce(futureQb)
         .mockReturnValueOnce(previousPagesQb)
         .mockReturnValueOnce(sumQb);
       investmentTxRepository.find.mockResolvedValue([]);
@@ -2373,17 +2369,12 @@ describe("TransactionsService", () => {
         const mockQb = createMockQueryBuilder();
         mockQb.getManyAndCount.mockResolvedValue([[mockTx], 1]);
 
-        // computeProjectedBalance: future sum QB
-        const futureQb = createMockQueryBuilder();
-        futureQb.getRawOne.mockResolvedValue({ sum: 0 });
-
         // sumAfterEndDate QB
         const sumAfterQb = createMockQueryBuilder();
         sumAfterQb.getRawOne.mockResolvedValue({ sum: -300 });
 
         transactionsRepository.createQueryBuilder
           .mockReturnValueOnce(mockQb)
-          .mockReturnValueOnce(futureQb)
           .mockReturnValueOnce(sumAfterQb);
 
         investmentTxRepository.find.mockResolvedValue([]);
@@ -2409,13 +2400,7 @@ describe("TransactionsService", () => {
         const mockQb = createMockQueryBuilder();
         mockQb.getManyAndCount.mockResolvedValue([[mockTx], 1]);
 
-        // computeProjectedBalance: future sum QB
-        const futureQb = createMockQueryBuilder();
-        futureQb.getRawOne.mockResolvedValue({ sum: 0 });
-
-        transactionsRepository.createQueryBuilder
-          .mockReturnValueOnce(mockQb)
-          .mockReturnValueOnce(futureQb);
+        transactionsRepository.createQueryBuilder.mockReturnValueOnce(mockQb);
 
         investmentTxRepository.find.mockResolvedValue([]);
         accountsService.findOne.mockResolvedValue({
@@ -2438,15 +2423,11 @@ describe("TransactionsService", () => {
         const mockQb = createMockQueryBuilder();
         mockQb.getManyAndCount.mockResolvedValue([[mockTx], 1]);
 
-        const futureQb = createMockQueryBuilder();
-        futureQb.getRawOne.mockResolvedValue({ sum: 500 });
-
         const sumAfterQb = createMockQueryBuilder();
         sumAfterQb.getRawOne.mockResolvedValue({ sum: 200 });
 
         transactionsRepository.createQueryBuilder
           .mockReturnValueOnce(mockQb)
-          .mockReturnValueOnce(futureQb)
           .mockReturnValueOnce(sumAfterQb);
 
         investmentTxRepository.find.mockResolvedValue([]);
@@ -2472,9 +2453,6 @@ describe("TransactionsService", () => {
         const mockQb = createMockQueryBuilder();
         mockQb.getManyAndCount.mockResolvedValue([[mockTx], 100]);
 
-        const futureQb = createMockQueryBuilder();
-        futureQb.getRawOne.mockResolvedValue({ sum: 0 });
-
         const sumAfterQb = createMockQueryBuilder();
         sumAfterQb.getRawOne.mockResolvedValue({ sum: -300 });
 
@@ -2488,7 +2466,6 @@ describe("TransactionsService", () => {
 
         transactionsRepository.createQueryBuilder
           .mockReturnValueOnce(mockQb)
-          .mockReturnValueOnce(futureQb)
           .mockReturnValueOnce(sumAfterQb)
           .mockReturnValueOnce(prevPagesQb)
           .mockReturnValueOnce(sumQb);
@@ -2520,9 +2497,6 @@ describe("TransactionsService", () => {
         const mockQb = createMockQueryBuilder();
         mockQb.getManyAndCount.mockResolvedValue([[mockTx], 100]);
 
-        const futureQb = createMockQueryBuilder();
-        futureQb.getRawOne.mockResolvedValue({ sum: 0 });
-
         const sumAfterQb = createMockQueryBuilder();
         sumAfterQb.getRawOne.mockResolvedValue({ sum: 0 });
 
@@ -2534,7 +2508,6 @@ describe("TransactionsService", () => {
 
         transactionsRepository.createQueryBuilder
           .mockReturnValueOnce(mockQb)
-          .mockReturnValueOnce(futureQb)
           .mockReturnValueOnce(sumAfterQb)
           .mockReturnValueOnce(prevPagesQb)
           .mockReturnValueOnce(sumQb);
@@ -2572,9 +2545,6 @@ describe("TransactionsService", () => {
         const mockQb = createMockQueryBuilder();
         mockQb.getManyAndCount.mockResolvedValue([[mockTx], 100]);
 
-        const futureQb = createMockQueryBuilder();
-        futureQb.getRawOne.mockResolvedValue({ sum: 0 });
-
         const prevPagesQb = createMockQueryBuilder();
         const sumQb = createMockQueryBuilder({
           setParameters: jest.fn().mockReturnThis(),
@@ -2583,7 +2553,6 @@ describe("TransactionsService", () => {
 
         transactionsRepository.createQueryBuilder
           .mockReturnValueOnce(mockQb)
-          .mockReturnValueOnce(futureQb)
           .mockReturnValueOnce(prevPagesQb)
           .mockReturnValueOnce(sumQb);
 
@@ -2679,9 +2648,6 @@ describe("TransactionsService", () => {
         const mockQb = createMockQueryBuilder();
         mockQb.getManyAndCount.mockResolvedValue([[mockTx], 100]);
 
-        const futureQb = createMockQueryBuilder();
-        futureQb.getRawOne.mockResolvedValue({ sum: 0 });
-
         const prevPagesQb = createMockQueryBuilder();
         const sumQb = createMockQueryBuilder({
           setParameters: jest.fn().mockReturnThis(),
@@ -2690,7 +2656,6 @@ describe("TransactionsService", () => {
 
         transactionsRepository.createQueryBuilder
           .mockReturnValueOnce(mockQb)
-          .mockReturnValueOnce(futureQb)
           .mockReturnValueOnce(prevPagesQb)
           .mockReturnValueOnce(sumQb);
 
