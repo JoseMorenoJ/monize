@@ -60,6 +60,8 @@ function createSecurity(overrides: Partial<Security> = {}): Security {
     sector: null,
     industry: null,
     sectorWeightings: null,
+    quoteProvider: null,
+    msnInstrumentId: null,
     createdAt: '2025-01-01T00:00:00Z',
     updatedAt: '2025-01-01T00:00:00Z',
     ...overrides,
@@ -273,7 +275,7 @@ describe('SecurityForm', () => {
     fireEvent.click(screen.getByText('Lookup'));
 
     await waitFor(() => {
-      expect(investmentsApi.lookupSecurity).toHaveBeenCalledWith('AAPL', undefined);
+      expect(investmentsApi.lookupSecurity).toHaveBeenCalledWith('AAPL', undefined, 'auto');
     });
 
     // After successful lookup, Clear button should appear
@@ -466,7 +468,7 @@ describe('SecurityForm', () => {
     fireEvent.click(screen.getByText('Lookup'));
 
     await waitFor(() => {
-      expect(investmentsApi.lookupSecurity).toHaveBeenCalledWith('Apple Inc', undefined);
+      expect(investmentsApi.lookupSecurity).toHaveBeenCalledWith('Apple Inc', undefined, 'auto');
     });
   });
 });

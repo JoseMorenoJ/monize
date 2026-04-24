@@ -117,7 +117,7 @@ export class SecuritiesController {
 
   @Get("lookup")
   @Throttle({ default: { ttl: 60000, limit: 60 } }) // L2: 60 lookups per minute
-  @ApiOperation({ summary: "Lookup security info from Yahoo Finance" })
+  @ApiOperation({ summary: "Lookup security info from Yahoo Finance or MSN" })
   @ApiQuery({
     name: "q",
     required: true,
@@ -128,6 +128,12 @@ export class SecuritiesController {
     required: false,
     description:
       "Preferred exchanges in priority order, comma-separated (e.g., LSE,TSX,NYSE)",
+  })
+  @ApiQuery({
+    name: "provider",
+    required: false,
+    description:
+      "Quote provider: 'yahoo', 'msn', or 'auto' (default: user preference with fallback)",
   })
   @ApiResponse({
     status: 200,
@@ -145,11 +151,14 @@ export class SecuritiesController {
     },
   })
   lookup(
+    @Request() req,
     @Query("q") query: string,
     @Query("exchanges") exchanges?: string,
+    @Query("provider") provider?: string,
   ): Promise<SecurityLookupResult | null> {
     const q = assertStringParam(query, "q");
     const exch = assertStringParam(exchanges, "exchanges");
+    const prov = assertStringParam(provider, "provider");
     const safeQuery = q ? q.slice(0, 200) : "";
     const preferredExchanges = exch
       ? exch
@@ -158,9 +167,13 @@ export class SecuritiesController {
           .filter(Boolean)
           .slice(0, 3)
       : undefined;
+    const providerChoice =
+      prov === "yahoo" || prov === "msn" || prov === "auto" ? prov : undefined;
     return this.securityPriceService.lookupSecurity(
+      req.user.id,
       safeQuery,
       preferredExchanges,
+      providerChoice,
     );
   }
 

@@ -277,7 +277,8 @@ export class AccountsService {
 
     return accounts.map((account) => ({
       ...account,
-      currentBalance: currentBalanceMap.get(account.id) ?? account.currentBalance,
+      currentBalance:
+        currentBalanceMap.get(account.id) ?? account.currentBalance,
       canDelete:
         !(txCountMap.get(account.id) || 0) &&
         !(invTxCountMap.get(account.id) || 0),
@@ -1203,8 +1204,7 @@ export class AccountsService {
       const userIdsByTz = new Map<string, string[]>();
       for (const { user_id, timezone } of userRows) {
         const normalised = timezone?.trim();
-        const tz =
-          normalised && normalised !== "browser" ? normalised : "UTC";
+        const tz = normalised && normalised !== "browser" ? normalised : "UTC";
         const list = userIdsByTz.get(tz) ?? [];
         list.push(user_id);
         userIdsByTz.set(tz, list);

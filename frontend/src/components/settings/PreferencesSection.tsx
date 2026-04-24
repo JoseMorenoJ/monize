@@ -61,6 +61,11 @@ const THEME_OPTIONS = [
   { value: 'dark', label: 'Dark' },
 ];
 
+const QUOTE_PROVIDER_OPTIONS = [
+  { value: 'yahoo', label: 'Yahoo Finance' },
+  { value: 'msn', label: 'MSN Money' },
+];
+
 interface PreferencesSectionProps {
   preferences: UserPreferences;
   onPreferencesUpdated: (prefs: UserPreferences) => void;
@@ -80,6 +85,9 @@ export function PreferencesSection({ preferences, onPreferencesUpdated }: Prefer
   const [timeFormat, setTimeFormat] = useState<'24h' | '12h'>(preferences.timeFormat ?? '24h');
   const [preferredExchanges, setPreferredExchanges] = useState<string[]>(
     preferences.preferredExchanges ?? [],
+  );
+  const [defaultQuoteProvider, setDefaultQuoteProvider] = useState<'yahoo' | 'msn'>(
+    preferences.defaultQuoteProvider ?? 'yahoo',
   );
   const [isUpdatingPreferences, setIsUpdatingPreferences] = useState(false);
 
@@ -109,6 +117,7 @@ export function PreferencesSection({ preferences, onPreferencesUpdated }: Prefer
         showCreatedAt,
         timeFormat,
         preferredExchanges: preferredExchanges.filter(Boolean),
+        defaultQuoteProvider,
       };
 
       const updated = await userSettingsApi.updatePreferences(data);
@@ -175,6 +184,18 @@ export function PreferencesSection({ preferences, onPreferencesUpdated }: Prefer
               />
             ))}
           </div>
+        </div>
+
+        <div>
+          <Select
+            label="Default Stock Quote Provider"
+            options={QUOTE_PROVIDER_OPTIONS}
+            value={defaultQuoteProvider}
+            onChange={(e) => setDefaultQuoteProvider(e.target.value as 'yahoo' | 'msn')}
+          />
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            Used when a security has no provider override. If the chosen provider fails, Monize automatically tries the other.
+          </p>
         </div>
 
         <Select

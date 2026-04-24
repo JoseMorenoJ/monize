@@ -20,6 +20,7 @@ function getSourceLabel(source: string | null): string {
   if (!source) return 'Unknown';
   switch (source) {
     case 'yahoo_finance': return 'Yahoo';
+    case 'msn_finance': return 'MSN';
     case 'manual': return 'Manual';
     case 'buy': return 'Buy';
     case 'sell': return 'Sell';
@@ -35,6 +36,8 @@ function getSourceColor(source: string | null): string {
   switch (source) {
     case 'yahoo_finance':
       return 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300';
+    case 'msn_finance':
+      return 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300';
     case 'manual':
       return 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300';
     default:

@@ -140,4 +140,14 @@ export class UpdatePreferencesDto {
   @MaxLength(20, { each: true })
   @ArrayMaxSize(3)
   preferredExchanges?: string[];
+
+  @ApiPropertyOptional({
+    description:
+      "Default provider for stock quotes. Per-security overrides fall back to this value.",
+    example: "yahoo",
+    enum: ["yahoo", "msn"],
+  })
+  @IsOptional()
+  @IsIn(["yahoo", "msn"])
+  defaultQuoteProvider?: "yahoo" | "msn";
 }

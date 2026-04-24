@@ -85,6 +85,14 @@ export class UserPreference {
   })
   dismissedUpdateVersion: string | null;
 
+  @Column({
+    name: "default_quote_provider",
+    type: "varchar",
+    length: 20,
+    default: "yahoo",
+  })
+  defaultQuoteProvider: "yahoo" | "msn";
+
   @CreateDateColumn({ name: "created_at" })
   createdAt: Date;
 

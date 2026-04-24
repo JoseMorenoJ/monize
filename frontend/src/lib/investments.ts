@@ -247,6 +247,7 @@ export const investmentsApi = {
   lookupSecurity: async (
     query: string,
     preferredExchanges?: string[],
+    provider?: 'yahoo' | 'msn' | 'auto',
   ): Promise<{
     symbol: string;
     name: string;
@@ -257,6 +258,9 @@ export const investmentsApi = {
     const params: Record<string, string> = { q: query };
     if (preferredExchanges && preferredExchanges.length > 0) {
       params.exchanges = preferredExchanges.join(',');
+    }
+    if (provider) {
+      params.provider = provider;
     }
     const response = await apiClient.get('/securities/lookup', {
       params,

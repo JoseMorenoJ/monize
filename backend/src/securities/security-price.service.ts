@@ -5,17 +5,24 @@ import { Cron } from "@nestjs/schedule";
 import { SecurityPrice } from "./entities/security-price.entity";
 import { Security } from "./entities/security.entity";
 import { NetWorthService } from "../net-worth/net-worth.service";
+import { UserPreference } from "../users/entities/user-preference.entity";
 import {
-  YahooFinanceService,
-  YahooQuoteResult,
-  SecurityLookupResult,
+  QuoteProvider,
+  QuoteProviderName,
+  QuoteResult,
   HistoricalPrice,
-} from "./yahoo-finance.service";
+  SecurityLookupResult,
+} from "./providers/quote-provider.interface";
+import {
+  DEFAULT_QUOTE_PROVIDER,
+  QuoteProviderRegistry,
+} from "./providers/quote-provider.registry";
+import { getTradingDateFromQuote } from "./providers/trading-date.util";
 import { CreateSecurityPriceDto } from "./dto/create-security-price.dto";
 import { UpdateSecurityPriceDto } from "./dto/update-security-price.dto";
 import { formatDateYMD } from "../common/date-utils";
 
-export { SecurityLookupResult } from "./yahoo-finance.service";
+export { SecurityLookupResult } from "./providers/quote-provider.interface";
 
 const TRANSACTION_SOURCES = [
   "buy",
@@ -25,11 +32,16 @@ const TRANSACTION_SOURCES = [
   "transfer_out",
 ];
 
+function sourceFor(provider: QuoteProviderName | undefined): string {
+  return provider === "msn" ? "msn_finance" : "yahoo_finance";
+}
+
 export interface PriceUpdateResult {
   symbol: string;
   success: boolean;
   price?: number;
   error?: string;
+  provider?: QuoteProviderName;
 }
 
 export interface PriceRefreshSummary {
@@ -46,6 +58,7 @@ export interface HistoricalBackfillResult {
   success: boolean;
   pricesLoaded?: number;
   error?: string;
+  provider?: QuoteProviderName;
 }
 
 export interface HistoricalBackfillSummary {
@@ -54,6 +67,16 @@ export interface HistoricalBackfillSummary {
   failed: number;
   totalPricesLoaded: number;
   results: HistoricalBackfillResult[];
+}
+
+interface UserContext {
+  defaultQuoteProvider: QuoteProviderName;
+  preferredExchanges: string[];
+}
+
+interface HistoricalWithProvider {
+  prices: HistoricalPrice[];
+  provider: QuoteProviderName;
 }
 
 @Injectable()
@@ -65,14 +88,173 @@ export class SecurityPriceService {
     private securityPriceRepository: Repository<SecurityPrice>,
     @InjectRepository(Security)
     private securitiesRepository: Repository<Security>,
+    @InjectRepository(UserPreference)
+    private userPreferencesRepository: Repository<UserPreference>,
     private dataSource: DataSource,
     private netWorthService: NetWorthService,
-    private yahooFinance: YahooFinanceService,
+    private providers: QuoteProviderRegistry,
   ) {}
 
+  // ─── User preference loading ─────────────────────────────────────────────
+
   /**
-   * Refresh prices for all active securities
+   * Build a per-user context map (default provider + preferred exchanges) for
+   * the given set of user IDs, in a single query. Missing rows fall back to
+   * the defaults.
    */
+  private async loadUserContexts(
+    userIds: string[],
+  ): Promise<Map<string, UserContext>> {
+    const ctx = new Map<string, UserContext>();
+    if (userIds.length === 0) return ctx;
+
+    const prefs = await this.userPreferencesRepository.find({
+      where: { userId: In([...new Set(userIds)]) },
+    });
+
+    for (const p of prefs) {
+      ctx.set(p.userId, {
+        defaultQuoteProvider:
+          (p.defaultQuoteProvider as QuoteProviderName) ||
+          DEFAULT_QUOTE_PROVIDER,
+        preferredExchanges: p.preferredExchanges || [],
+      });
+    }
+
+    for (const id of userIds) {
+      if (!ctx.has(id)) {
+        ctx.set(id, {
+          defaultQuoteProvider: DEFAULT_QUOTE_PROVIDER,
+          preferredExchanges: [],
+        });
+      }
+    }
+    return ctx;
+  }
+
+  // ─── Quote fetch with provider fallback ──────────────────────────────────
+
+  /**
+   * Try each provider in registry order. Both "throws" and "returns null"
+   * trigger the fallback. Returns the first quote that has a usable price.
+   */
+  private async fetchQuoteWithFallback(
+    security: Security,
+    ctx: UserContext,
+  ): Promise<QuoteResult | null> {
+    const ordered = this.providers.resolveForSecurity(
+      security,
+      ctx.defaultQuoteProvider,
+    );
+
+    for (const provider of ordered) {
+      try {
+        const quote = await provider.fetchQuote(
+          security.symbol,
+          security.exchange,
+          this.optsFor(provider, security, ctx),
+        );
+        if (quote && quote.regularMarketPrice !== undefined) {
+          return { ...quote, provider: provider.name };
+        }
+      } catch (err) {
+        this.logger.warn(
+          `${provider.name} fetchQuote failed for ${security.symbol}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+    return null;
+  }
+
+  private async fetchHistoricalWithFallback(
+    security: Security,
+    range: string,
+    ctx: UserContext,
+  ): Promise<HistoricalWithProvider | null> {
+    const ordered = this.providers.resolveForSecurity(
+      security,
+      ctx.defaultQuoteProvider,
+    );
+
+    for (const provider of ordered) {
+      try {
+        const prices = await provider.fetchHistorical(
+          security.symbol,
+          security.exchange,
+          range,
+          this.optsFor(provider, security, ctx),
+        );
+        if (prices && prices.length > 0) {
+          return { prices, provider: provider.name };
+        }
+      } catch (err) {
+        this.logger.warn(
+          `${provider.name} fetchHistorical failed for ${security.symbol}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+    return null;
+  }
+
+  private optsFor(
+    provider: QuoteProvider,
+    security: Security,
+    ctx: UserContext,
+  ) {
+    return {
+      instrumentId:
+        provider.name === "msn"
+          ? (security.msnInstrumentId ?? undefined)
+          : undefined,
+      currencyCode: security.currencyCode,
+      preferredExchanges: ctx.preferredExchanges,
+    };
+  }
+
+  /**
+   * After MSN resolves a SecId on behalf of a security, cache it on the
+   * Security row so subsequent refreshes skip the autosuggest hop.
+   */
+  private async persistMsnInstrumentIdIfResolved(
+    security: Security,
+    providerName: QuoteProviderName,
+    ctx: UserContext,
+  ): Promise<void> {
+    if (providerName !== "msn" || security.msnInstrumentId) return;
+    const msn = this.providers.getByName("msn");
+    if (!msn.resolveInstrumentId) return;
+    try {
+      const id = await msn.resolveInstrumentId(
+        security.symbol,
+        security.exchange,
+        ctx.preferredExchanges,
+      );
+      if (id) {
+        security.msnInstrumentId = id;
+        await this.securitiesRepository.update(security.id, {
+          msnInstrumentId: id,
+        });
+      }
+    } catch (err) {
+      this.logger.warn(
+        `Failed to cache MSN instrument id for ${security.symbol}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  // ─── Grouping ────────────────────────────────────────────────────────────
+
+  private groupKey(security: Security): string {
+    return [
+      security.symbol,
+      security.exchange || "",
+      security.quoteProvider || "",
+      security.msnInstrumentId || "",
+    ].join("|");
+  }
+
+  // ─── Refresh (current price) ─────────────────────────────────────────────
+
   async refreshAllPrices(): Promise<PriceRefreshSummary> {
     const startTime = Date.now();
     this.logger.log("Starting price refresh for all securities");
@@ -92,26 +274,33 @@ export class SecurityPriceService {
       };
     }
 
+    const userContexts = await this.loadUserContexts(
+      securities.map((s) => s.userId),
+    );
+
     const results: PriceUpdateResult[] = [];
     let updated = 0;
     let failed = 0;
     const skipped = 0;
 
-    // Group securities by (symbol, exchange) to deduplicate API calls
     const symbolGroups = new Map<string, Security[]>();
     for (const security of securities) {
-      const key = `${security.symbol}|${security.exchange || ""}`;
+      const key = this.groupKey(security);
       const group = symbolGroups.get(key) || [];
       group.push(security);
       symbolGroups.set(key, group);
     }
 
-    // Fetch all quotes in parallel so one slow symbol doesn't block the others
     const groups = [...symbolGroups.values()];
     const quotes = await Promise.all(
-      groups.map((group) =>
-        this.fetchQuoteWithFallback(group[0].symbol, group[0].exchange),
-      ),
+      groups.map((group) => {
+        const rep = group[0];
+        const ctx = userContexts.get(rep.userId) || {
+          defaultQuoteProvider: DEFAULT_QUOTE_PROVIDER,
+          preferredExchanges: [],
+        };
+        return this.fetchQuoteWithFallback(rep, ctx);
+      }),
     );
 
     for (let i = 0; i < groups.length; i++) {
@@ -130,9 +319,21 @@ export class SecurityPriceService {
         continue;
       }
 
-      const tradingDate = formatDateYMD(
-        this.yahooFinance.getTradingDate(quote),
-      );
+      // Cache the MSN instrument id on securities that had none resolved yet.
+      if (quote.provider === "msn") {
+        for (const security of group) {
+          await this.persistMsnInstrumentIdIfResolved(
+            security,
+            "msn",
+            userContexts.get(security.userId) || {
+              defaultQuoteProvider: DEFAULT_QUOTE_PROVIDER,
+              preferredExchanges: [],
+            },
+          );
+        }
+      }
+
+      const tradingDate = formatDateYMD(getTradingDateFromQuote(quote));
       for (const security of group) {
         try {
           await this.savePriceData(security.id, tradingDate, quote);
@@ -140,6 +341,7 @@ export class SecurityPriceService {
             symbol: security.symbol,
             success: true,
             price: quote.regularMarketPrice,
+            provider: quote.provider,
           });
           updated++;
         } catch (error) {
@@ -168,9 +370,6 @@ export class SecurityPriceService {
     };
   }
 
-  /**
-   * Refresh prices for specific securities
-   */
   async refreshPricesForSecurities(
     securityIds: string[],
   ): Promise<PriceRefreshSummary> {
@@ -189,15 +388,22 @@ export class SecurityPriceService {
       };
     }
 
+    const userContexts = await this.loadUserContexts(
+      securities.map((s) => s.userId),
+    );
+
     const results: PriceUpdateResult[] = [];
     let updated = 0;
     let failed = 0;
 
-    // Fetch all quotes in parallel so one slow symbol doesn't block the others
     const quotes = await Promise.all(
-      securities.map((security) =>
-        this.fetchQuoteWithFallback(security.symbol, security.exchange),
-      ),
+      securities.map((security) => {
+        const ctx = userContexts.get(security.userId) || {
+          defaultQuoteProvider: DEFAULT_QUOTE_PROVIDER,
+          preferredExchanges: [],
+        };
+        return this.fetchQuoteWithFallback(security, ctx);
+      }),
     );
 
     for (let i = 0; i < securities.length; i++) {
@@ -214,15 +420,25 @@ export class SecurityPriceService {
         continue;
       }
 
-      try {
-        const tradingDate = formatDateYMD(
-          this.yahooFinance.getTradingDate(quote),
+      if (quote.provider === "msn") {
+        await this.persistMsnInstrumentIdIfResolved(
+          security,
+          "msn",
+          userContexts.get(security.userId) || {
+            defaultQuoteProvider: DEFAULT_QUOTE_PROVIDER,
+            preferredExchanges: [],
+          },
         );
+      }
+
+      try {
+        const tradingDate = formatDateYMD(getTradingDateFromQuote(quote));
         await this.savePriceData(security.id, tradingDate, quote);
         results.push({
           symbol: security.symbol,
           success: true,
           price: quote.regularMarketPrice,
+          provider: quote.provider,
         });
         updated++;
       } catch (error) {
@@ -246,13 +462,16 @@ export class SecurityPriceService {
   }
 
   /**
-   * Save price data to the database
+   * Save price data to the database. Source is derived from the quote's
+   * provider tag, defaulting to yahoo_finance for back-compat.
    */
   private async savePriceData(
     securityId: string,
     priceDate: string,
-    quote: YahooQuoteResult,
+    quote: QuoteResult,
   ): Promise<SecurityPrice> {
+    const source = sourceFor(quote.provider);
+
     const existing = await this.securityPriceRepository.findOne({
       where: { securityId, priceDate },
     });
@@ -263,7 +482,7 @@ export class SecurityPriceService {
       existing.lowPrice = quote.regularMarketDayLow ?? existing.lowPrice;
       existing.closePrice = quote.regularMarketPrice!;
       existing.volume = quote.regularMarketVolume ?? existing.volume;
-      existing.source = "yahoo_finance";
+      existing.source = source;
       return this.securityPriceRepository.save(existing);
     }
 
@@ -275,15 +494,14 @@ export class SecurityPriceService {
       lowPrice: quote.regularMarketDayLow,
       closePrice: quote.regularMarketPrice!,
       volume: quote.regularMarketVolume,
-      source: "yahoo_finance",
+      source,
     });
 
     return this.securityPriceRepository.save(priceEntry);
   }
 
-  /**
-   * Get the latest price for a security
-   */
+  // ─── Read helpers ────────────────────────────────────────────────────────
+
   async getLatestPrice(securityId: string): Promise<SecurityPrice | null> {
     return this.securityPriceRepository.findOne({
       where: { securityId },
@@ -291,9 +509,6 @@ export class SecurityPriceService {
     });
   }
 
-  /**
-   * Get price history for a security
-   */
   async getPriceHistory(
     securityId: string,
     startDate?: Date,
@@ -318,18 +533,49 @@ export class SecurityPriceService {
   }
 
   /**
-   * Lookup security information (delegates to Yahoo Finance)
+   * Lookup a security via the user's configured provider(s). With provider
+   * "auto" (the default), try the user's default provider first then fall back
+   * to the other.
    */
   async lookupSecurity(
+    userId: string,
     query: string,
     preferredExchanges?: string[],
+    provider?: "yahoo" | "msn" | "auto",
   ): Promise<SecurityLookupResult | null> {
-    return this.yahooFinance.lookupSecurity(query, preferredExchanges);
+    const contexts = await this.loadUserContexts([userId]);
+    const ctx = contexts.get(userId) || {
+      defaultQuoteProvider: DEFAULT_QUOTE_PROVIDER,
+      preferredExchanges: [],
+    };
+    const exchanges =
+      preferredExchanges && preferredExchanges.length > 0
+        ? preferredExchanges
+        : ctx.preferredExchanges;
+
+    if (provider === "yahoo" || provider === "msn") {
+      return this.providers
+        .getByName(provider)
+        .lookupSecurity(query, exchanges);
+    }
+
+    const ordered = this.providers.resolveForSecurity(
+      { quoteProvider: null },
+      ctx.defaultQuoteProvider,
+    );
+    for (const p of ordered) {
+      try {
+        const result = await p.lookupSecurity(query, exchanges);
+        if (result) return result;
+      } catch (err) {
+        this.logger.warn(
+          `${p.name} lookupSecurity failed for ${query}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+    return null;
   }
 
-  /**
-   * Get the last update timestamp
-   */
   async getLastUpdateTime(): Promise<Date | null> {
     const latest = await this.securityPriceRepository.findOne({
       where: {},
@@ -338,66 +584,16 @@ export class SecurityPriceService {
     return latest?.createdAt ?? null;
   }
 
-  /**
-   * Fetch a current quote with alternate-symbol fallback.
-   * Tries the primary Yahoo symbol, then Canadian suffix variants (.TO/.V/.CN)
-   * when the security had no exchange-based suffix.
-   */
-  private async fetchQuoteWithFallback(
-    symbol: string,
-    exchange: string | null,
-  ): Promise<YahooQuoteResult | null> {
-    const yahooSymbol = this.yahooFinance.getYahooSymbol(symbol, exchange);
-    let quote = await this.yahooFinance.fetchQuote(yahooSymbol);
+  // ─── Historical backfill ─────────────────────────────────────────────────
 
-    if (!quote && yahooSymbol === symbol) {
-      const alternateSymbols = this.yahooFinance.getAlternateSymbols(symbol);
-      for (const altSymbol of alternateSymbols) {
-        quote = await this.yahooFinance.fetchQuote(altSymbol);
-        if (quote) break;
-      }
-    }
-
-    return quote;
-  }
-
-  /**
-   * Fetch historical prices for a symbol with alternate-symbol fallback.
-   * Returns null if no data is available from any symbol variant.
-   */
-  private async fetchWithFallback(
-    symbol: string,
-    exchange: string | null,
-    range: string = "max",
-  ): Promise<HistoricalPrice[] | null> {
-    const yahooSymbol = this.yahooFinance.getYahooSymbol(symbol, exchange);
-    let prices = await this.yahooFinance.fetchHistorical(yahooSymbol, range);
-
-    if (!prices && yahooSymbol === symbol) {
-      const alternateSymbols = this.yahooFinance.getAlternateSymbols(symbol);
-      for (const altSymbol of alternateSymbols) {
-        prices = await this.yahooFinance.fetchHistorical(altSymbol, range);
-        if (prices) break;
-      }
-    }
-
-    return prices;
-  }
-
-  /**
-   * Merge two price arrays, preferring dailyPrices for dates within the last year
-   * and maxPrices for older dates. Deduplicates by date.
-   */
   private mergePrices(
     maxPrices: HistoricalPrice[],
     dailyPrices: HistoricalPrice[],
     oneYearAgo: Date,
   ): HistoricalPrice[] {
-    // Use max-range data for dates before 1Y ago, daily data for the last year
     const olderPrices = maxPrices.filter((p) => p.date < oneYearAgo);
     const merged = [...olderPrices, ...dailyPrices];
 
-    // Deduplicate by date string, keeping the later entry (daily data wins)
     const byDate = new Map<string, HistoricalPrice>();
     for (const p of merged) {
       byDate.set(p.date.toISOString().substring(0, 10), p);
@@ -408,11 +604,6 @@ export class SecurityPriceService {
     );
   }
 
-  /**
-   * Backfill historical prices for all active securities.
-   * Fetches daily prices for the last year and monthly for older periods.
-   * Always backfills at least 1 year, even for securities with no transactions.
-   */
   async backfillHistoricalPrices(): Promise<HistoricalBackfillSummary> {
     const startTime = Date.now();
     this.logger.log("Starting historical price backfill");
@@ -420,6 +611,10 @@ export class SecurityPriceService {
     const securities = await this.securitiesRepository.find({
       where: { isActive: true, skipPriceUpdates: false },
     });
+
+    const userContexts = await this.loadUserContexts(
+      securities.map((s) => s.userId),
+    );
 
     const earliestTxRows: Array<{ security_id: string; earliest: string }> =
       await this.dataSource.query(
@@ -442,10 +637,9 @@ export class SecurityPriceService {
     let failed = 0;
     let totalPricesLoaded = 0;
 
-    // Group securities by (symbol, exchange) to deduplicate API calls
     const symbolGroups = new Map<string, Security[]>();
     for (const security of securities) {
-      const groupKey = `${security.symbol}|${security.exchange || ""}`;
+      const groupKey = this.groupKey(security);
       const group = symbolGroups.get(groupKey) || [];
       group.push(security);
       symbolGroups.set(groupKey, group);
@@ -453,8 +647,11 @@ export class SecurityPriceService {
 
     for (const group of symbolGroups.values()) {
       const representative = group[0];
+      const ctx = userContexts.get(representative.userId) || {
+        defaultQuoteProvider: DEFAULT_QUOTE_PROVIDER,
+        preferredExchanges: [],
+      };
 
-      // Determine the earliest cutoff across the group (min of 1Y ago and earliest tx)
       const groupEarliestDates = group
         .map((s) => earliestTxDate.get(s.id))
         .filter(Boolean) as string[];
@@ -463,24 +660,22 @@ export class SecurityPriceService {
         groupEarliestDates.length > 0 &&
         groupEarliestDates.some((d) => d < oneYearAgoStr);
 
-      // Always fetch daily 1Y data for guaranteed daily granularity
-      const dailyPrices = await this.fetchWithFallback(
-        representative.symbol,
-        representative.exchange,
+      const daily = await this.fetchHistoricalWithFallback(
+        representative,
         "1y",
+        ctx,
       );
 
-      // Also fetch max range if transactions exist before 1Y ago
-      let maxPrices: HistoricalPrice[] | null = null;
+      let maxBundle: HistoricalWithProvider | null = null;
       if (needsOlderData) {
-        maxPrices = await this.fetchWithFallback(
-          representative.symbol,
-          representative.exchange,
+        maxBundle = await this.fetchHistoricalWithFallback(
+          representative,
           "max",
+          ctx,
         );
       }
 
-      if (!dailyPrices && !maxPrices) {
+      if (!daily && !maxBundle) {
         for (const security of group) {
           results.push({
             symbol: security.symbol,
@@ -492,13 +687,22 @@ export class SecurityPriceService {
         continue;
       }
 
-      // Merge: daily 1Y data + monthly older data from max range
-      let allPrices =
-        maxPrices && dailyPrices
-          ? this.mergePrices(maxPrices, dailyPrices, oneYearAgo)
-          : dailyPrices || maxPrices!;
+      const winner = daily || maxBundle!;
+      if (winner.provider === "msn") {
+        for (const security of group) {
+          await this.persistMsnInstrumentIdIfResolved(
+            security,
+            "msn",
+            userContexts.get(security.userId) || ctx,
+          );
+        }
+      }
 
-      // Deduplicate by date
+      let allPrices =
+        maxBundle && daily
+          ? this.mergePrices(maxBundle.prices, daily.prices, oneYearAgo)
+          : (daily?.prices ?? maxBundle!.prices);
+
       const seen = new Set<string>();
       allPrices = allPrices.filter((p) => {
         const key = p.date.toISOString().substring(0, 10);
@@ -507,8 +711,9 @@ export class SecurityPriceService {
         return true;
       });
 
+      const source = sourceFor(winner.provider);
+
       for (const security of group) {
-        // Per-security cutoff: earliest of 1Y ago or earliest transaction
         const secEarliest = earliestTxDate.get(security.id);
         const secCutoffStr = secEarliest
           ? [oneYearAgoStr, secEarliest].sort()[0]
@@ -522,21 +727,23 @@ export class SecurityPriceService {
             symbol: security.symbol,
             success: true,
             pricesLoaded: 0,
+            provider: winner.provider,
           });
           successful++;
           continue;
         }
 
         try {
-          await this.bulkUpsertPrices(security.id, prices);
+          await this.bulkUpsertPrices(security.id, prices, source);
 
           this.logger.log(
-            `Backfilled ${prices.length} prices for ${security.symbol} (from ${secCutoffStr})`,
+            `Backfilled ${prices.length} prices for ${security.symbol} via ${winner.provider} (from ${secCutoffStr})`,
           );
           results.push({
             symbol: security.symbol,
             success: true,
             pricesLoaded: prices.length,
+            provider: winner.provider,
           });
           successful++;
           totalPricesLoaded += prices.length;
@@ -553,7 +760,6 @@ export class SecurityPriceService {
         }
       }
 
-      // Small delay between symbols to avoid rate limiting
       await new Promise((resolve) => setTimeout(resolve, 500));
     }
 
@@ -572,19 +778,21 @@ export class SecurityPriceService {
   }
 
   /**
-   * Bulk upsert historical prices using raw SQL for performance
+   * Bulk upsert historical prices via raw SQL. Accepts the source tag so
+   * MSN-sourced data can be stored with source='msn_finance'.
    */
   private async bulkUpsertPrices(
     securityId: string,
     prices: HistoricalPrice[],
+    source: string,
   ): Promise<void> {
     const batchSize = 500;
     for (let i = 0; i < prices.length; i += batchSize) {
       const batch = prices.slice(i, i + batchSize);
       const values = batch
-        .map((p, idx) => {
-          const offset = idx * 7;
-          return `($${offset + 1}::UUID, $${offset + 2}::DATE, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, 'yahoo_finance')`;
+        .map((_, idx) => {
+          const offset = idx * 8;
+          return `($${offset + 1}::UUID, $${offset + 2}::DATE, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8})`;
         })
         .join(", ");
 
@@ -598,6 +806,7 @@ export class SecurityPriceService {
           p.low,
           p.close,
           p.volume,
+          source,
         );
       }
 
@@ -616,9 +825,6 @@ export class SecurityPriceService {
     }
   }
 
-  /**
-   * Scheduled job to refresh prices daily at 5 PM EST (after market close)
-   */
   @Cron("0 17 * * 1-5", { timeZone: "America/New_York" })
   async scheduledPriceRefresh(): Promise<void> {
     this.logger.log("Running scheduled price refresh");
@@ -636,26 +842,42 @@ export class SecurityPriceService {
   }
 
   /**
-   * Backfill 1 year of daily prices for a single security.
-   * Called when a new security is created (manually or via QIF import).
+   * Backfill 1 year of daily prices for a single security. Called when a
+   * security is newly created (manually or via import). Honors per-security
+   * provider override + user default + preferredExchanges.
    */
   async backfillSecurity(security: Security): Promise<void> {
     if (security.skipPriceUpdates) return;
 
-    const prices = await this.fetchWithFallback(
-      security.symbol,
-      security.exchange,
+    const [ctx] =
+      (await this.loadUserContexts([security.userId])).values() || [];
+    const userCtx = ctx || {
+      defaultQuoteProvider: DEFAULT_QUOTE_PROVIDER,
+      preferredExchanges: [],
+    };
+
+    const bundle = await this.fetchHistoricalWithFallback(
+      security,
       "1y",
+      userCtx,
     );
-    if (!prices || prices.length === 0) {
+    if (!bundle || bundle.prices.length === 0) {
       this.logger.warn(`No historical prices available for ${security.symbol}`);
       return;
     }
 
+    if (bundle.provider === "msn") {
+      await this.persistMsnInstrumentIdIfResolved(security, "msn", userCtx);
+    }
+
     try {
-      await this.bulkUpsertPrices(security.id, prices);
+      await this.bulkUpsertPrices(
+        security.id,
+        bundle.prices,
+        sourceFor(bundle.provider),
+      );
       this.logger.log(
-        `Backfilled ${prices.length} daily prices for ${security.symbol}`,
+        `Backfilled ${bundle.prices.length} daily prices for ${security.symbol} via ${bundle.provider}`,
       );
     } catch (error) {
       this.logger.error(
@@ -667,7 +889,9 @@ export class SecurityPriceService {
   /**
    * Upsert a transaction-derived price for a security on a given date.
    * Computes average price from all price-relevant transactions on that date.
-   * Never overwrites yahoo_finance or manual prices.
+   * Never overwrites provider-sourced (yahoo_finance, msn_finance) or manual
+   * prices — the ON CONFLICT WHERE clause restricts updates to rows whose
+   * existing source is itself a transaction action.
    */
   async upsertTransactionPrice(
     securityId: string,
@@ -697,7 +921,6 @@ export class SecurityPriceService {
     const latestAction = rows[0]?.latest_action;
 
     if (avgPrice === null || latestAction === null) {
-      // No transactions remain -- remove any transaction-sourced price
       await this.dataSource.query(
         `DELETE FROM security_prices
          WHERE security_id = $1 AND price_date = $2
@@ -719,10 +942,6 @@ export class SecurityPriceService {
     );
   }
 
-  /**
-   * Backfill transaction-derived prices for all securities.
-   * Processes all distinct (security_id, transaction_date) pairs.
-   */
   async backfillTransactionPrices(): Promise<{
     processed: number;
     created: number;
@@ -799,10 +1018,6 @@ export class SecurityPriceService {
     return { processed: pairs.length, created, skipped };
   }
 
-  /**
-   * Create a manual price entry (source='manual').
-   * Overwrites any existing price for that date.
-   */
   async createManualPrice(
     securityId: string,
     dto: CreateSecurityPriceDto,
@@ -835,9 +1050,6 @@ export class SecurityPriceService {
     return this.securityPriceRepository.save(priceEntry);
   }
 
-  /**
-   * Update an existing price entry. Sets source to 'manual'.
-   */
   async updatePrice(
     securityId: string,
     priceId: number,
@@ -862,9 +1074,6 @@ export class SecurityPriceService {
     return this.securityPriceRepository.save(price);
   }
 
-  /**
-   * Delete a price entry. Backfills from transactions if available.
-   */
   async deletePrice(securityId: string, priceId: number): Promise<void> {
     const price = await this.securityPriceRepository.findOne({
       where: { id: priceId, securityId },
@@ -878,7 +1087,6 @@ export class SecurityPriceService {
 
     await this.securityPriceRepository.remove(price);
 
-    // Backfill from transactions if available
     await this.upsertTransactionPrice(securityId, priceDate).catch((err) =>
       this.logger.warn(
         `Failed to backfill transaction price after deletion: ${err.message}`,

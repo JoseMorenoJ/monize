@@ -32,6 +32,8 @@ const mockSecurity = {
   sector: null,
   industry: null,
   sectorWeightings: null,
+    quoteProvider: null,
+    msnInstrumentId: null,
   createdAt: '2025-01-01',
   updatedAt: '2025-01-01',
 };

@@ -390,9 +390,13 @@ CREATE TABLE securities (
     industry VARCHAR(100),           -- stock industry (e.g. 'Consumer Electronics')
     sector_weightings JSONB,         -- ETF sector breakdown [{sector, weight}]
     sector_data_updated_at TIMESTAMP, -- cache staleness check
+    quote_provider VARCHAR(20),      -- per-security provider override: 'yahoo' | 'msn' | NULL = user default
+    msn_instrument_id VARCHAR(50),   -- cached MSN Financial Instrument ID (SecId)
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(user_id, symbol)
+    UNIQUE(user_id, symbol),
+    CONSTRAINT securities_quote_provider_check
+      CHECK (quote_provider IS NULL OR quote_provider IN ('yahoo','msn'))
 );
 
 CREATE INDEX idx_securities_user_id ON securities(user_id);
@@ -409,7 +413,7 @@ CREATE TABLE security_prices (
     low_price NUMERIC(20, 6),
     close_price NUMERIC(20, 6) NOT NULL,
     volume BIGINT,
-    source VARCHAR(50), -- yahoo_finance, manual, or transaction action (buy, sell, reinvest, transfer_in, transfer_out)
+    source VARCHAR(50), -- yahoo_finance, msn_finance, manual, or transaction action (buy, sell, reinvest, transfer_in, transfer_out)
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(security_id, price_date)
 );
@@ -492,8 +496,11 @@ CREATE TABLE user_preferences (
     time_format VARCHAR(10) DEFAULT '24h',
     preferred_exchanges TEXT[] DEFAULT '{}',
     dismissed_update_version VARCHAR(50),
+    default_quote_provider VARCHAR(20) NOT NULL DEFAULT 'yahoo',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT user_preferences_default_quote_provider_check
+      CHECK (default_quote_provider IN ('yahoo','msn'))
 );
 
 -- Auto Backup Settings (per-user configuration for automatic backups to a folder)

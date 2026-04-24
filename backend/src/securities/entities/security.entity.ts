@@ -87,6 +87,34 @@ export class Security {
   @Column({ type: "timestamp", nullable: true, name: "sector_data_updated_at" })
   sectorDataUpdatedAt: Date | null;
 
+  @ApiProperty({
+    example: "yahoo",
+    description:
+      "Per-security quote provider override ('yahoo' | 'msn'); NULL = use user default",
+    nullable: true,
+  })
+  @Column({
+    type: "varchar",
+    length: 20,
+    nullable: true,
+    name: "quote_provider",
+  })
+  quoteProvider: "yahoo" | "msn" | null;
+
+  @ApiProperty({
+    example: "a1u3p2",
+    description:
+      "Cached MSN Financial Instrument ID (SecId); auto-resolved from ticker on first MSN call",
+    nullable: true,
+  })
+  @Column({
+    type: "varchar",
+    length: 50,
+    nullable: true,
+    name: "msn_instrument_id",
+  })
+  msnInstrumentId: string | null;
+
   @ApiProperty()
   @CreateDateColumn({ name: "created_at" })
   createdAt: Date;
