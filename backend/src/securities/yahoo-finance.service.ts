@@ -360,6 +360,14 @@ export class YahooFinanceService implements QuoteProvider {
     query: string,
     preferredExchanges?: string[],
   ): Promise<SecurityLookupResult | null> {
+    const all = await this.lookupSecurityMany(query, preferredExchanges);
+    return all[0] || null;
+  }
+
+  async lookupSecurityMany(
+    query: string,
+    preferredExchanges?: string[],
+  ): Promise<SecurityLookupResult[]> {
     try {
       const url = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=10&newsCount=0`;
 
@@ -375,14 +383,14 @@ export class YahooFinanceService implements QuoteProvider {
         this.logger.warn(
           `Yahoo Finance search API returned ${response.status} for query: ${query}`,
         );
-        return null;
+        return [];
       }
 
       const data = await response.json();
       const quotes: YahooSearchResult[] = data.quotes || [];
 
       if (quotes.length === 0) {
-        return null;
+        return [];
       }
 
       const sortedQuotes = [...quotes].sort((a, b) => {
@@ -399,40 +407,38 @@ export class YahooFinanceService implements QuoteProvider {
         return priorityA - priorityB;
       });
 
+      // Float the exact-ticker match (if any) to the front, keep the rest in
+      // preferred-exchange order.
       const upperQuery = query.toUpperCase().trim();
-      let bestMatch = sortedQuotes.find(
+      const exactIdx = sortedQuotes.findIndex(
         (q) => this.extractBaseSymbol(q.symbol).toUpperCase() === upperQuery,
       );
-
-      if (!bestMatch) {
-        bestMatch = sortedQuotes[0];
+      if (exactIdx > 0) {
+        const [exact] = sortedQuotes.splice(exactIdx, 1);
+        sortedQuotes.unshift(exact);
       }
 
-      const baseSymbol = this.extractBaseSymbol(bestMatch.symbol);
-      const exchange =
-        this.extractExchangeFromSymbol(bestMatch.symbol) ||
-        bestMatch.exchDisp ||
-        null;
-      const securityType = this.mapYahooTypeToSecurityType(bestMatch.typeDisp);
-      const currencyCode = this.getCurrencyFromExchange(
-        exchange,
-        bestMatch.symbol,
-      );
-
-      return {
-        symbol: baseSymbol,
-        name: bestMatch.longname || bestMatch.shortname || baseSymbol,
-        exchange,
-        securityType,
-        currencyCode,
-        provider: "yahoo",
-      };
+      return sortedQuotes.map((q) => {
+        const baseSymbol = this.extractBaseSymbol(q.symbol);
+        const exchange =
+          this.extractExchangeFromSymbol(q.symbol) || q.exchDisp || null;
+        const securityType = this.mapYahooTypeToSecurityType(q.typeDisp);
+        const currencyCode = this.getCurrencyFromExchange(exchange, q.symbol);
+        return {
+          symbol: baseSymbol,
+          name: q.longname || q.shortname || baseSymbol,
+          exchange,
+          securityType,
+          currencyCode,
+          provider: "yahoo" as const,
+        };
+      });
     } catch (error) {
       this.logger.error(
         "Failed to lookup security",
         error instanceof Error ? error.stack : undefined,
       );
-      return null;
+      return [];
     }
   }
 

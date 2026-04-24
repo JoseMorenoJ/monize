@@ -70,6 +70,16 @@ export interface QuoteProvider {
     preferredExchanges?: string[],
   ): Promise<SecurityLookupResult | null>;
 
+  /**
+   * Return every plausible match for the query, best first. Lets the UI show
+   * a picker when multiple candidates share the ticker or when the query is
+   * a name that matches several funds/securities.
+   */
+  lookupSecurityMany?(
+    query: string,
+    preferredExchanges?: string[],
+  ): Promise<SecurityLookupResult[]>;
+
   fetchStockSectorInfo(
     symbol: string,
     exchange: string | null,

@@ -360,6 +360,14 @@ export class MsnFinanceService implements QuoteProvider {
     query: string,
     preferredExchanges?: string[],
   ): Promise<SecurityLookupResult | null> {
+    const all = await this.lookupSecurityMany(query, preferredExchanges);
+    return all[0] || null;
+  }
+
+  async lookupSecurityMany(
+    query: string,
+    preferredExchanges?: string[],
+  ): Promise<SecurityLookupResult[]> {
     // Query each market in priority order until we get results. For a user
     // whose top preferred exchange is Canadian, MSN's Canadian market yields
     // far better coverage of Canadian mutual funds than en-us does.
@@ -376,7 +384,7 @@ export class MsnFinanceService implements QuoteProvider {
         break;
       }
     }
-    if (stocks.length === 0) return null;
+    if (stocks.length === 0) return [];
 
     const sorted = [...stocks].sort((a, b) => {
       const ea = getField(a, "Exchange", "exchange", "Mic", "mic");
@@ -386,50 +394,50 @@ export class MsnFinanceService implements QuoteProvider {
       return pa - pb;
     });
 
-    const upperQuery = query.toUpperCase().trim();
-    const symbolOf = (s: AutosuggestItem) =>
-      (
-        getField(
-          s,
-          "Symbol",
-          "symbol",
-          "TradingSymbol",
-          "tradingSymbol",
-          "OS001",
-        ) || ""
-      ).toUpperCase();
-    const match = sorted.find((s) => symbolOf(s) === upperQuery) || sorted[0];
-    if (!match) return null;
-
-    // Log the raw first match so the operator can see exactly which field
-    // names MSN used. If a lookup ever produces garbage (e.g. Symbol =
-    // the upper-cased query), pasting this log line reveals which
-    // candidate field name needs to be added.
+    // Surface what Bing returned so operators can extend candidate lists if
+    // MSN changes their field names.
     this.logger.log(
-      `MSN lookup "${query}" match keys=[${Object.keys(match).join(",")}] body=${JSON.stringify(match).slice(0, 500)}`,
+      `MSN lookup "${query}" found ${sorted.length} raw match(es); first keys=[${Object.keys(sorted[0] || {}).join(",")}]`,
     );
 
-    const extractedSymbol = symbolOf(match);
-    const extractedSecId = getField(match, "FullInstrument", "SecId", "secId");
-
-    // If MSN returned a hit but neither a ticker-shaped Symbol nor a SecId
-    // could be extracted, the result is unusable — don't dump the query
-    // into the Symbol/Name fields.
-    if (!extractedSymbol && !extractedSecId) {
-      this.logger.warn(
-        `MSN lookup "${query}": match has no Symbol or SecId; returning null. Keys=[${Object.keys(match).join(",")}]`,
-      );
-      return null;
+    const results: SecurityLookupResult[] = [];
+    for (const item of sorted) {
+      const converted = this.itemToLookupResult(item, preferredExchanges);
+      if (converted) results.push(converted);
     }
+    return results;
+  }
 
-    const symbol = extractedSymbol || query.toUpperCase();
-    const secId = extractedSecId;
-    if (secId) {
-      this.setCached(this.cacheKey(symbol, null, preferredExchanges), secId);
+  /**
+   * Map one autosuggest entry to a SecurityLookupResult. Returns null when
+   * the entry has neither a symbol-ish nor an instrument-id field — such
+   * entries would pollute the UI (e.g. ticker = upper-cased query).
+   */
+  private itemToLookupResult(
+    item: AutosuggestItem,
+    preferredExchanges: string[] | undefined,
+  ): SecurityLookupResult | null {
+    const extractedSymbol = (
+      getField(
+        item,
+        "Symbol",
+        "symbol",
+        "TradingSymbol",
+        "tradingSymbol",
+        "OS001",
+      ) || ""
+    ).toUpperCase();
+    const extractedSecId = getField(item, "FullInstrument", "SecId", "secId");
+
+    if (!extractedSymbol && !extractedSecId) return null;
+
+    const symbol = extractedSymbol || "";
+    if (extractedSecId && symbol) {
+      this.setCached(this.cacheKey(symbol, null, preferredExchanges), extractedSecId);
     }
 
     const rawExchange = getField(
-      match,
+      item,
       "Exchange",
       "exchange",
       "Mic",
@@ -443,7 +451,7 @@ export class MsnFinanceService implements QuoteProvider {
 
     const name =
       getField(
-        match,
+        item,
         "DisplayName",
         "displayName",
         "LongName",
@@ -461,7 +469,7 @@ export class MsnFinanceService implements QuoteProvider {
       ) || symbol;
 
     const securityTypeRaw = getField(
-      match,
+      item,
       "SecurityType",
       "securityType",
       "InstrumentType",
@@ -471,7 +479,7 @@ export class MsnFinanceService implements QuoteProvider {
     );
 
     const currency = getField(
-      match,
+      item,
       "Currency",
       "currency",
       "CurrencyCode",
@@ -485,7 +493,7 @@ export class MsnFinanceService implements QuoteProvider {
       securityType: this.mapMsnSecurityType(securityTypeRaw),
       currencyCode: currency || this.currencyFromExchange(exchange),
       provider: "msn",
-      msnInstrumentId: secId || null,
+      msnInstrumentId: extractedSecId || null,
     };
   }
 

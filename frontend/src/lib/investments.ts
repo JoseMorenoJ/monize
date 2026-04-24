@@ -270,6 +270,34 @@ export const investmentsApi = {
     return response.data;
   },
 
+  lookupSecurityCandidates: async (
+    query: string,
+    preferredExchanges?: string[],
+    provider?: 'yahoo' | 'msn' | 'auto',
+  ): Promise<
+    Array<{
+      symbol: string;
+      name: string;
+      exchange: string | null;
+      securityType: string | null;
+      currencyCode: string | null;
+      provider?: 'yahoo' | 'msn';
+      msnInstrumentId?: string | null;
+    }>
+  > => {
+    const params: Record<string, string> = { q: query };
+    if (preferredExchanges && preferredExchanges.length > 0) {
+      params.exchanges = preferredExchanges.join(',');
+    }
+    if (provider) {
+      params.provider = provider;
+    }
+    const response = await apiClient.get('/securities/lookup/candidates', {
+      params,
+    });
+    return response.data || [];
+  },
+
   // Refresh all security prices from Yahoo Finance
   refreshPrices: async (): Promise<{
     totalSecurities: number;

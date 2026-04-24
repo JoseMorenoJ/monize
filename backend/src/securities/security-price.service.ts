@@ -543,6 +543,25 @@ export class SecurityPriceService {
     preferredExchanges?: string[],
     provider?: "yahoo" | "msn" | "auto",
   ): Promise<SecurityLookupResult | null> {
+    const all = await this.lookupSecurityCandidates(
+      userId,
+      query,
+      preferredExchanges,
+      provider,
+    );
+    return all[0] || null;
+  }
+
+  /**
+   * Return every plausible candidate for the query so the UI can show a
+   * picker when more than one match exists.
+   */
+  async lookupSecurityCandidates(
+    userId: string,
+    query: string,
+    preferredExchanges?: string[],
+    provider?: "yahoo" | "msn" | "auto",
+  ): Promise<SecurityLookupResult[]> {
     const contexts = await this.loadUserContexts([userId]);
     const ctx = contexts.get(userId) || {
       defaultQuoteProvider: DEFAULT_QUOTE_PROVIDER,
@@ -553,27 +572,37 @@ export class SecurityPriceService {
         ? preferredExchanges
         : ctx.preferredExchanges;
 
+    const fetchFromProvider = async (
+      p: QuoteProvider,
+    ): Promise<SecurityLookupResult[]> => {
+      try {
+        if (p.lookupSecurityMany) {
+          return await p.lookupSecurityMany(query, exchanges);
+        }
+        const single = await p.lookupSecurity(query, exchanges);
+        return single ? [single] : [];
+      } catch (err) {
+        this.logger.warn(
+          `${p.name} lookup failed for ${query}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        return [];
+      }
+    };
+
     if (provider === "yahoo" || provider === "msn") {
-      return this.providers
-        .getByName(provider)
-        .lookupSecurity(query, exchanges);
+      return fetchFromProvider(this.providers.getByName(provider));
     }
 
+    // auto: try each provider in order; first one that returns anything wins.
     const ordered = this.providers.resolveForSecurity(
       { quoteProvider: null },
       ctx.defaultQuoteProvider,
     );
     for (const p of ordered) {
-      try {
-        const result = await p.lookupSecurity(query, exchanges);
-        if (result) return result;
-      } catch (err) {
-        this.logger.warn(
-          `${p.name} lookupSecurity failed for ${query}: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
+      const results = await fetchFromProvider(p);
+      if (results.length > 0) return results;
     }
-    return null;
+    return [];
   }
 
   async getLastUpdateTime(): Promise<Date | null> {

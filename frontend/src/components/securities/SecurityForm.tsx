@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Combobox } from '@/components/ui/Combobox';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
+import { SecurityLookupPicker, LookupCandidate } from './SecurityLookupPicker';
 import { Security, CreateSecurityData } from '@/types/investment';
 import { investmentsApi } from '@/lib/investments';
 import { exchangeRatesApi, CurrencyInfo } from '@/lib/exchange-rates';
@@ -76,6 +77,8 @@ export function SecurityForm({ security, onSubmit, onCancel, onDirtyChange, subm
   const [hasLookupResult, setHasLookupResult] = useState(false);
   const [currencies, setCurrencies] = useState<CurrencyInfo[]>([]);
   const [lookupProvider, setLookupProvider] = useState<'auto' | 'yahoo' | 'msn'>('auto');
+  const [pickerQuery, setPickerQuery] = useState<string>('');
+  const [pickerCandidates, setPickerCandidates] = useState<LookupCandidate[]>([]);
 
   useEffect(() => {
     exchangeRatesApi.getCurrencies().then(setCurrencies).catch(() => {});
@@ -114,7 +117,40 @@ export function SecurityForm({ security, onSubmit, onCancel, onDirtyChange, subm
     },
   });
 
-  // Manual lookup - prioritize symbol, fall back to name
+  const applyLookupResult = useCallback(
+    (result: LookupCandidate) => {
+      const setOpts = { shouldDirty: true, shouldTouch: true, shouldValidate: true };
+
+      setValue('symbol', result.symbol, setOpts);
+      setValue('name', result.name, setOpts);
+      if (result.exchange) setValue('exchange', result.exchange, setOpts);
+      if (result.securityType) setValue('securityType', result.securityType, setOpts);
+      if (result.currencyCode) setValue('currencyCode', result.currencyCode, setOpts);
+
+      if (result.provider) {
+        const explicit = lookupProvider !== 'auto';
+        const differsFromDefault = result.provider !== userDefaultProvider;
+        if (explicit || differsFromDefault) {
+          setValue('quoteProvider', result.provider, setOpts);
+        }
+      }
+
+      if (result.msnInstrumentId) {
+        setValue('msnInstrumentId', result.msnInstrumentId, setOpts);
+      }
+
+      setHasLookupResult(true);
+
+      const details = [`Symbol: ${result.symbol}`, `Name: ${result.name}`];
+      if (result.exchange) details.push(`Exchange: ${result.exchange}`);
+      if (result.securityType) details.push(`Type: ${result.securityType}`);
+      if (result.currencyCode) details.push(`Currency: ${result.currencyCode}`);
+      if (result.provider) details.push(`Provider: ${result.provider === 'msn' ? 'MSN' : 'Yahoo'}`);
+      toast.success(`Found: ${details.join(', ')}`);
+    },
+    [setValue, lookupProvider, userDefaultProvider],
+  );
+
   const handleLookup = useCallback(async () => {
     const { symbol, name, exchange: currentExchange } = getValues();
     const query = (symbol?.trim() || name?.trim() || '');
@@ -123,7 +159,6 @@ export function SecurityForm({ security, onSubmit, onCancel, onDirtyChange, subm
       return;
     }
 
-    // Merge current exchange selection with preferred exchanges
     const exchanges = currentExchange
       ? [currentExchange, ...preferredExchanges.filter((e) => e !== currentExchange)]
       : preferredExchanges.length > 0
@@ -132,47 +167,18 @@ export function SecurityForm({ security, onSubmit, onCancel, onDirtyChange, subm
 
     setIsLookingUp(true);
     try {
-      const result = await investmentsApi.lookupSecurity(query, exchanges, lookupProvider);
-      if (result) {
-        const setOpts = { shouldDirty: true, shouldTouch: true, shouldValidate: true };
-
-        setValue('symbol', result.symbol, setOpts);
-        setValue('name', result.name, setOpts);
-        // Only overwrite exchange/type when the lookup actually returned a
-        // value; a null from the provider should leave the existing selection
-        // alone rather than blank it out.
-        if (result.exchange) setValue('exchange', result.exchange, setOpts);
-        if (result.securityType) setValue('securityType', result.securityType, setOpts);
-        if (result.currencyCode) setValue('currencyCode', result.currencyCode, setOpts);
-
-        // Set the per-security Quote Provider Override when:
-        //   (a) the user explicitly picked a provider for the lookup, or
-        //   (b) the auto-lookup resolved via a provider other than the user's
-        //       default
-        // so subsequent refreshes use the provider that produced this data.
-        if (result.provider) {
-          const explicit = lookupProvider !== 'auto';
-          const differsFromDefault = result.provider !== userDefaultProvider;
-          if (explicit || differsFromDefault) {
-            setValue('quoteProvider', result.provider, setOpts);
-          }
-        }
-
-        // Populate the MSN Instrument ID when the lookup resolved via MSN.
-        if (result.msnInstrumentId) {
-          setValue('msnInstrumentId', result.msnInstrumentId, setOpts);
-        }
-
-        setHasLookupResult(true);
-
-        const details = [`Symbol: ${result.symbol}`, `Name: ${result.name}`];
-        if (result.exchange) details.push(`Exchange: ${result.exchange}`);
-        if (result.securityType) details.push(`Type: ${result.securityType}`);
-        if (result.currencyCode) details.push(`Currency: ${result.currencyCode}`);
-        if (result.provider) details.push(`Provider: ${result.provider === 'msn' ? 'MSN' : 'Yahoo'}`);
-        toast.success(`Found: ${details.join(', ')}`);
-      } else {
+      const candidates = await investmentsApi.lookupSecurityCandidates(
+        query,
+        exchanges,
+        lookupProvider,
+      );
+      if (candidates.length === 0) {
         toast.error(`No security found for "${query}"`);
+      } else if (candidates.length === 1) {
+        applyLookupResult(candidates[0]);
+      } else {
+        setPickerQuery(query);
+        setPickerCandidates(candidates);
       }
     } catch (error) {
       logger.error('Security lookup failed:', error);
@@ -180,7 +186,7 @@ export function SecurityForm({ security, onSubmit, onCancel, onDirtyChange, subm
     } finally {
       setIsLookingUp(false);
     }
-  }, [getValues, setValue, preferredExchanges, lookupProvider]);
+  }, [getValues, preferredExchanges, lookupProvider, applyLookupResult]);
 
   // In edit mode, revert to the original security values. In create mode,
   // blank everything out (keeping the user's default currency).
@@ -219,6 +225,21 @@ export function SecurityForm({ security, onSubmit, onCancel, onDirtyChange, subm
   useFormSubmitRef(submitRef, handleSubmit, onFormSubmit);
 
   return (
+    <>
+    <SecurityLookupPicker
+      isOpen={pickerCandidates.length > 0}
+      query={pickerQuery}
+      candidates={pickerCandidates}
+      onPick={(c) => {
+        applyLookupResult(c);
+        setPickerCandidates([]);
+        setPickerQuery('');
+      }}
+      onCancel={() => {
+        setPickerCandidates([]);
+        setPickerQuery('');
+      }}
+    />
     <form onSubmit={handleSubmit(onFormSubmit)} className="space-y-4">
       {/* Symbol + Lookup / Clear buttons */}
       <div className="flex gap-2 items-end">
@@ -335,5 +356,6 @@ export function SecurityForm({ security, onSubmit, onCancel, onDirtyChange, subm
 
       <FormActions onCancel={onCancel} submitLabel={security ? 'Update Security' : 'Create Security'} isSubmitting={isSubmitting} />
     </form>
+    </>
   );
 }
