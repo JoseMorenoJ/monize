@@ -208,7 +208,9 @@ export class AccountsService {
     // Batch check deletability: count transactions + investment transactions per account in 2 queries
     const accountIds = accounts.map((a) => a.id);
 
-    const [txCounts, invTxCounts, futureSums] = await Promise.all([
+    const today = todayYMD();
+
+    const [txCounts, invTxCounts, futureSums, currentSums] = await Promise.all([
       this.transactionRepository
         .createQueryBuilder("t")
         .select("t.accountId", "accountId")
@@ -232,8 +234,26 @@ export class AccountsService {
            AND (t.status IS NULL OR t.status != 'VOID')
            AND t.parent_transaction_id IS NULL
          GROUP BY t.account_id`,
-        [accountIds, todayYMD()],
+        [accountIds, today],
       ) as Promise<Array<{ accountId: string; futureSum: string }>>,
+      // Compute currentBalance live rather than trusting the stored column.
+      // The stored value can lag the TZ-aware definition of "today" (e.g.
+      // after a timezone change, or after a future-dated create that ran
+      // under the old server-UTC logic), and if it does, adding it to the
+      // live futureTransactionsSum below would double-count any transactions
+      // that wandered across the boundary.
+      this.dataSource.query(
+        `SELECT a.id as "accountId",
+                COALESCE(a.opening_balance, 0) + COALESCE(SUM(t.amount), 0) as "currentBalance"
+         FROM accounts a
+         LEFT JOIN transactions t ON t.account_id = a.id
+           AND (t.status IS NULL OR t.status != 'VOID')
+           AND t.parent_transaction_id IS NULL
+           AND t.transaction_date <= $2
+         WHERE a.id = ANY($1)
+         GROUP BY a.id, a.opening_balance`,
+        [accountIds, today],
+      ) as Promise<Array<{ accountId: string; currentBalance: string }>>,
     ]);
 
     const txCountMap = new Map<string, number>();
@@ -248,9 +268,16 @@ export class AccountsService {
         row.accountId,
         Math.round(Number(row.futureSum) * 10000) / 10000,
       );
+    const currentBalanceMap = new Map<string, number>();
+    for (const row of currentSums)
+      currentBalanceMap.set(
+        row.accountId,
+        Math.round(Number(row.currentBalance) * 10000) / 10000,
+      );
 
     return accounts.map((account) => ({
       ...account,
+      currentBalance: currentBalanceMap.get(account.id) ?? account.currentBalance,
       canDelete:
         !(txCountMap.get(account.id) || 0) &&
         !(invTxCountMap.get(account.id) || 0),

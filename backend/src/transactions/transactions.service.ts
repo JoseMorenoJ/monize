@@ -833,33 +833,33 @@ export class TransactionsService {
   }
 
   /**
-   * Compute projected balance (current balance + future non-void transactions).
+   * Compute the account's projected balance -- opening balance plus every
+   * non-void, non-child transaction, regardless of date.
+   *
+   * Derived from raw transactions rather than `account.currentBalance +
+   * futureTransactionsSum` because the stored `currentBalance` can be out
+   * of step with the TZ-aware "today" after a timezone change or a
+   * future-dated create that ran under the old server-UTC logic (in which
+   * case currentBalance already contains a row that futureTransactionsSum
+   * also counts, double-counting once the two are added). Computing the
+   * full sum sidesteps any disagreement about where "today" sits.
    */
   private async computeProjectedBalance(
     userId: string,
     accountId: string,
   ): Promise<number> {
-    const account = await this.accountsService.findOne(userId, accountId);
-    const currentBalance = Number(account.currentBalance) || 0;
-
-    // Filter shape must match AccountsService.findAll's futureTransactionsSum
-    // query so the projected balance here equals the "current + future" figure
-    // shown on the account list. Differences would desync the running balance
-    // in TransactionList (which subtracts each listed row from startingBalance)
-    // from the account totals displayed elsewhere.
-    const futureResult = await this.transactionsRepository
-      .createQueryBuilder("t")
-      .select("COALESCE(SUM(t.amount), 0)", "sum")
-      .where("t.userId = :userId", { userId })
-      .andWhere("t.accountId = :accountId", { accountId })
-      .andWhere("t.transactionDate > :today", { today: todayYMD() })
-      .andWhere("(t.status IS NULL OR t.status != :void)", {
-        void: TransactionStatus.VOID,
-      })
-      .andWhere("t.parentTransactionId IS NULL")
-      .getRawOne();
-
-    return currentBalance + (Number(futureResult?.sum) || 0);
+    const result: { balance: string }[] = await this.dataSource.query(
+      `SELECT COALESCE(a.opening_balance, 0) + COALESCE(SUM(t.amount), 0) AS balance
+         FROM accounts a
+         LEFT JOIN transactions t ON t.account_id = a.id
+           AND t.user_id = $2
+           AND (t.status IS NULL OR t.status != 'VOID')
+           AND t.parent_transaction_id IS NULL
+        WHERE a.id = $1 AND a.user_id = $2
+        GROUP BY a.id, a.opening_balance`,
+      [accountId, userId],
+    );
+    return Math.round(Number(result?.[0]?.balance ?? 0) * 10000) / 10000;
   }
 
   /**
