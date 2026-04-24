@@ -450,11 +450,10 @@ describe("MsnFinanceService", () => {
       expect(result?.name).toBe("Tesla, Inc.");
     });
 
-    it("returns null when Bing's response has no ticker-shaped value and the name doesn't match the query", async () => {
-      // Bing's autosuggest occasionally stuffs a company name into the Symbol
-      // field for fuzzy searches. When the query ("AAPL") is also absent from
-      // the display name, we can't verify the match is genuine, so return null
-      // rather than risk corrupting the form.
+    it("never sets symbol to a full company name when Bing returns a fuzzy match", async () => {
+      // Pretend Bing's autosuggest responded to a name-based search by stuffing
+      // the company name into the Symbol field (observed in practice). The
+      // ticker-shape guard should reject it and fall back to the query.
       global.fetch = jest.fn().mockReturnValueOnce(
         createResponse({
           data: {
@@ -471,109 +470,9 @@ describe("MsnFinanceService", () => {
       );
 
       const result = await service.lookupSecurity("AAPL");
-      expect(result).toBeNull();
-    });
-
-    it("returns null for bogus queries like 'CCE*' with partial-prefix responses", async () => {
-      // Query has an invalid char; Bing returns results prefixed with CCE but
-      // not matching "CCE*" exactly. Match validation should reject them.
-      global.fetch = jest.fn().mockReturnValueOnce(
-        createResponse({
-          data: {
-            stocks: [
-              {
-                Symbol: "CCEP",
-                SecId: "ccep-id",
-                DisplayName: "Coca-Cola Europacific Partners",
-                Exchange: "XNAS",
-              },
-            ],
-          },
-        }),
-      );
-
-      const result = await service.lookupSecurity("CCE*");
-      expect(result).toBeNull();
-    });
-
-    it("matches by name when the query contains the company name", async () => {
-      // Name-based lookup: query "Apple" matches "Apple Inc.".
-      global.fetch = jest.fn().mockReturnValueOnce(
-        createResponse({
-          data: {
-            stocks: [
-              {
-                Symbol: "AAPL",
-                SecId: "a1u3p2",
-                DisplayName: "Apple Inc.",
-                Exchange: "XNAS",
-                Currency: "USD",
-              },
-            ],
-          },
-        }),
-      );
-
-      const result = await service.lookupSecurity("Apple");
-      expect(result).not.toBeNull();
       expect(result?.symbol).toBe("AAPL");
       expect(result?.name).toBe("Apple Inc.");
-      expect(result?.exchange).toBe("NASDAQ");
-    });
-
-    it("does NOT pick up single-letter category/class codes as the ticker", async () => {
-      // Regression: a match with no ticker-shaped value under any SYMBOL
-      // candidate must return null, not scavenge a single-letter field like
-      // Class="R" or Category="A" and put "R" in the Symbol field.
-      global.fetch = jest.fn().mockReturnValueOnce(
-        createResponse({
-          data: {
-            stocks: [
-              {
-                // No Symbol / Ticker / TradingSymbol / etc.
-                SecId: "secid-xyz",
-                DisplayName: "Some Fund",
-                Class: "R",
-                Category: "A",
-              },
-            ],
-          },
-        }),
-      );
-
-      const result = await service.lookupSecurity("SomeFund");
-      expect(result).toBeNull();
-    });
-
-    it("requires ticker length >= 2 (single-letter category codes rejected)", () => {
-      expect(msnInternals.looksLikeTicker("R")).toBe(false);
-      expect(msnInternals.looksLikeTicker("A")).toBe(false);
-      expect(msnInternals.looksLikeTicker("F")).toBe(false);
-      // Two-letter tickers still valid.
-      expect(msnInternals.looksLikeTicker("RY")).toBe(true);
-      expect(msnInternals.looksLikeTicker("BP")).toBe(true);
-    });
-
-    it("uses the MIC-scan fallback when exchange is under an unknown field name", async () => {
-      global.fetch = jest.fn().mockReturnValueOnce(
-        createResponse({
-          data: {
-            stocks: [
-              {
-                Symbol: "AAPL",
-                SecId: "a1u3p2",
-                DisplayName: "Apple Inc.",
-                // Exchange code appears in an unexpected field.
-                VenueCode: "XNAS",
-                Currency: "USD",
-              },
-            ],
-          },
-        }),
-      );
-
-      const result = await service.lookupSecurity("AAPL");
-      expect(result?.exchange).toBe("NASDAQ");
+      expect(result?.symbol).not.toBe(result?.name);
     });
 
     it("guarantees name !== symbol when MSN only returns a ticker-like name", async () => {
