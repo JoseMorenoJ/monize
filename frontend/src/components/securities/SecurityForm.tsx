@@ -133,27 +133,33 @@ export function SecurityForm({ security, onSubmit, onCancel, onDirtyChange, subm
     try {
       const result = await investmentsApi.lookupSecurity(query, exchanges, lookupProvider);
       if (result) {
-        // Fill in all fields from the lookup result
-        setValue('symbol', result.symbol, { shouldDirty: true });
-        setValue('name', result.name, { shouldDirty: true });
-        setValue('exchange', result.exchange || '', { shouldDirty: true });
-        setValue('securityType', result.securityType || '', { shouldDirty: true });
-        if (result.currencyCode) {
-          setValue('currencyCode', result.currencyCode, { shouldDirty: true });
-        }
+        const setOpts = { shouldDirty: true, shouldTouch: true, shouldValidate: true };
 
-        // If the lookup resolved via a provider other than the user's default,
-        // set the per-security override so subsequent refreshes use the same
-        // provider that produced this data.
-        if (result.provider && result.provider !== userDefaultProvider) {
-          setValue('quoteProvider', result.provider, { shouldDirty: true });
+        setValue('symbol', result.symbol, setOpts);
+        setValue('name', result.name, setOpts);
+        // Only overwrite exchange/type when the lookup actually returned a
+        // value; a null from the provider should leave the existing selection
+        // alone rather than blank it out.
+        if (result.exchange) setValue('exchange', result.exchange, setOpts);
+        if (result.securityType) setValue('securityType', result.securityType, setOpts);
+        if (result.currencyCode) setValue('currencyCode', result.currencyCode, setOpts);
+
+        // Set the per-security Quote Provider Override when:
+        //   (a) the user explicitly picked a provider for the lookup, or
+        //   (b) the auto-lookup resolved via a provider other than the user's
+        //       default
+        // so subsequent refreshes use the provider that produced this data.
+        if (result.provider) {
+          const explicit = lookupProvider !== 'auto';
+          const differsFromDefault = result.provider !== userDefaultProvider;
+          if (explicit || differsFromDefault) {
+            setValue('quoteProvider', result.provider, setOpts);
+          }
         }
 
         // Populate the MSN Instrument ID when the lookup resolved via MSN.
         if (result.msnInstrumentId) {
-          setValue('msnInstrumentId', result.msnInstrumentId, {
-            shouldDirty: true,
-          });
+          setValue('msnInstrumentId', result.msnInstrumentId, setOpts);
         }
 
         setHasLookupResult(true);

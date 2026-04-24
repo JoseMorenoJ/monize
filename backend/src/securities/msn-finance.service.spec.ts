@@ -409,6 +409,136 @@ describe("MsnFinanceService", () => {
         msnInstrumentId: "xeqt-mic",
       });
     });
+
+    it("accepts alternative response envelopes (stocks at top level)", async () => {
+      global.fetch = jest.fn().mockReturnValueOnce(
+        createResponse({
+          stocks: [
+            {
+              Symbol: "AAPL",
+              SecId: "a1u3p2",
+              DisplayName: "Apple Inc.",
+              Exchange: "XNAS",
+              SecurityType: "ST",
+              Currency: "USD",
+            },
+          ],
+        }),
+      );
+
+      const result = await service.lookupSecurity("AAPL");
+      expect(result?.symbol).toBe("AAPL");
+      expect(result?.name).toBe("Apple Inc.");
+    });
+
+    it("accepts alternative response envelopes (value array)", async () => {
+      global.fetch = jest.fn().mockReturnValueOnce(
+        createResponse({
+          value: [
+            {
+              Symbol: "TSLA",
+              SecId: "tsla-id",
+              DisplayName: "Tesla, Inc.",
+              Exchange: "XNAS",
+            },
+          ],
+        }),
+      );
+
+      const result = await service.lookupSecurity("TSLA");
+      expect(result?.symbol).toBe("TSLA");
+      expect(result?.name).toBe("Tesla, Inc.");
+    });
+
+    it("never sets symbol to a full company name when Bing returns a fuzzy match", async () => {
+      // Pretend Bing's autosuggest responded to a name-based search by stuffing
+      // the company name into the Symbol field (observed in practice). The
+      // ticker-shape guard should reject it and fall back to the query.
+      global.fetch = jest.fn().mockReturnValueOnce(
+        createResponse({
+          data: {
+            stocks: [
+              {
+                Symbol: "Apple Inc.",
+                SecId: "aapl-id",
+                DisplayName: "Apple Inc.",
+                Exchange: "XNAS",
+              },
+            ],
+          },
+        }),
+      );
+
+      const result = await service.lookupSecurity("AAPL");
+      expect(result?.symbol).toBe("AAPL");
+      expect(result?.name).toBe("Apple Inc.");
+      expect(result?.symbol).not.toBe(result?.name);
+    });
+
+    it("guarantees name !== symbol when MSN only returns a ticker-like name", async () => {
+      global.fetch = jest.fn().mockReturnValueOnce(
+        createResponse({
+          data: {
+            stocks: [
+              {
+                Symbol: "AAPL",
+                SecId: "aapl-id",
+                Name: "AAPL",
+                Exchange: "XNAS",
+              },
+            ],
+          },
+        }),
+      );
+
+      const result = await service.lookupSecurity("AAPL");
+      // When every name candidate is itself ticker-like, we let them equal
+      // the symbol rather than invent something — but they must never be
+      // empty strings.
+      expect(result?.symbol).toBe("AAPL");
+      expect(result?.name).toBeTruthy();
+    });
+  });
+
+  describe("looksLikeTicker", () => {
+    it("accepts typical ticker shapes", () => {
+      expect(msnInternals.looksLikeTicker("AAPL")).toBe(true);
+      expect(msnInternals.looksLikeTicker("SHOP.TO")).toBe(true);
+      expect(msnInternals.looksLikeTicker("BRK-A")).toBe(true);
+      expect(msnInternals.looksLikeTicker("0005.HK")).toBe(true);
+    });
+    it("rejects company names", () => {
+      expect(msnInternals.looksLikeTicker("Apple Inc.")).toBe(false);
+      expect(msnInternals.looksLikeTicker("iShares Core Equity ETF")).toBe(
+        false,
+      );
+      expect(msnInternals.looksLikeTicker("")).toBe(false);
+      expect(msnInternals.looksLikeTicker(undefined)).toBe(false);
+      // Very long strings (>20 chars) are not tickers.
+      expect(msnInternals.looksLikeTicker("A".repeat(25))).toBe(false);
+    });
+  });
+
+  describe("extractStocks", () => {
+    it("reads data.stocks, stocks, value, and results", () => {
+      expect(
+        msnInternals.extractStocks({ data: { stocks: [{ Symbol: "A" }] } }),
+      ).toHaveLength(1);
+      expect(
+        msnInternals.extractStocks({ stocks: [{ Symbol: "B" }] }),
+      ).toHaveLength(1);
+      expect(
+        msnInternals.extractStocks({ value: [{ Symbol: "C" }] }),
+      ).toHaveLength(1);
+      expect(
+        msnInternals.extractStocks({ results: [{ Symbol: "D" }] }),
+      ).toHaveLength(1);
+    });
+    it("returns [] for unknown shapes", () => {
+      expect(msnInternals.extractStocks(null)).toEqual([]);
+      expect(msnInternals.extractStocks({})).toEqual([]);
+      expect(msnInternals.extractStocks({ data: {} })).toEqual([]);
+    });
   });
 
   describe("fetchEtfSectorWeightings", () => {

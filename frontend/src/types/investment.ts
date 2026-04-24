@@ -27,6 +27,8 @@ export interface Security {
   sectorWeightings: { sector: string; weight: number }[] | null;
   quoteProvider: QuoteProviderName | null;
   msnInstrumentId: string | null;
+  /** Source of the most recent price row for this security (e.g. "yahoo_finance", "msn_finance", "manual"), or null if no prices exist. */
+  lastPriceSource?: string | null;
   createdAt: string;
   updatedAt: string;
 }

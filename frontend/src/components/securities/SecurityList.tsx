@@ -7,7 +7,42 @@ import { Modal } from '@/components/ui/Modal';
 import { DensityLevel, nextDensity } from '@/hooks/useTableDensity';
 import { SortIcon } from '@/components/ui/SortIcon';
 
-export type SecuritySortField = 'symbol' | 'name' | 'type' | 'exchange' | 'currency' | 'provider';
+export type SecuritySortField = 'symbol' | 'name' | 'type' | 'exchange' | 'currency' | 'provider' | 'source';
+
+/** Format a security_prices.source value into a short human label. */
+function formatPriceSource(source: string | null | undefined): string {
+  if (!source) return '';
+  switch (source) {
+    case 'yahoo_finance': return 'Yahoo';
+    case 'msn_finance': return 'MSN';
+    case 'manual': return 'Manual';
+    case 'buy':
+    case 'sell':
+    case 'reinvest':
+    case 'transfer_in':
+    case 'transfer_out': return 'Txn';
+    default: return source;
+  }
+}
+
+function priceSourceBadgeClass(source: string | null | undefined): string {
+  switch (source) {
+    case 'yahoo_finance':
+      return 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300';
+    case 'msn_finance':
+      return 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300';
+    case 'manual':
+      return 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300';
+    case 'buy':
+    case 'sell':
+    case 'reinvest':
+    case 'transfer_in':
+    case 'transfer_out':
+      return 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300';
+    default:
+      return 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300';
+  }
+}
 export type SortDirection = 'asc' | 'desc';
 
 // Map of securityId -> total quantity across all accounts
@@ -148,6 +183,18 @@ const SecurityRow = memo(function SecurityRow({
                 }`}
               >
                 {security.quoteProvider === 'msn' ? 'MSN' : 'Yahoo'}
+              </span>
+            ) : (
+              <span className="text-sm text-gray-400 dark:text-gray-500">-</span>
+            )}
+          </td>
+          <td className={`${cellPadding} whitespace-nowrap hidden md:table-cell`}>
+            {security.lastPriceSource ? (
+              <span
+                className={`inline-flex items-center rounded text-xs font-medium px-2 py-0.5 ${priceSourceBadgeClass(security.lastPriceSource)}`}
+                title={security.lastPriceSource}
+              >
+                {formatPriceSource(security.lastPriceSource)}
               </span>
             ) : (
               <span className="text-sm text-gray-400 dark:text-gray-500">-</span>
@@ -414,6 +461,13 @@ export function SecurityList({
                     title="Per-security quote provider override"
                   >
                     Provider<SortIcon field="provider" sortField={sortField} sortDirection={sortDirection} />
+                  </th>
+                  <th
+                    className={`${headerPadding} text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:text-gray-700 dark:hover:text-gray-200 hidden md:table-cell`}
+                    onClick={() => handleSort('source')}
+                    title="Source of the most recent price"
+                  >
+                    Source<SortIcon field="source" sortField={sortField} sortDirection={sortDirection} />
                   </th>
                 </>
               )}

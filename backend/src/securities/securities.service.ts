@@ -72,12 +72,41 @@ export class SecuritiesService {
   async findAll(
     userId: string,
     includeInactive: boolean = false,
-  ): Promise<Security[]> {
+  ): Promise<Array<Security & { lastPriceSource: string | null }>> {
     const where: Record<string, unknown> = { userId };
     if (!includeInactive) {
       where.isActive = true;
     }
-    return this.securitiesRepository.find({ where, order: { symbol: "ASC" } });
+    const securities = await this.securitiesRepository.find({
+      where,
+      order: { symbol: "ASC" },
+    });
+    return this.attachLastPriceSource(securities);
+  }
+
+  /**
+   * Decorate each security with the `source` from its most recent price row
+   * (via a single grouped query for efficiency). Returns null when the
+   * security has no prices yet.
+   */
+  private async attachLastPriceSource(
+    securities: Security[],
+  ): Promise<Array<Security & { lastPriceSource: string | null }>> {
+    if (securities.length === 0) return [];
+    const ids = securities.map((s) => s.id);
+    const rows: Array<{ security_id: string; source: string | null }> =
+      await this.securitiesRepository.manager.query(
+        `SELECT DISTINCT ON (security_id) security_id, source
+         FROM security_prices
+         WHERE security_id = ANY($1::uuid[])
+         ORDER BY security_id, price_date DESC, created_at DESC`,
+        [ids],
+      );
+    const sourceById = new Map(rows.map((r) => [r.security_id, r.source]));
+    return securities.map((s) => ({
+      ...s,
+      lastPriceSource: sourceById.get(s.id) ?? null,
+    }));
   }
 
   async findOne(userId: string, id: string): Promise<Security> {
@@ -136,6 +165,10 @@ export class SecuritiesService {
       security.currencyCode = updateSecurityDto.currencyCode;
     if (updateSecurityDto.isActive !== undefined)
       security.isActive = updateSecurityDto.isActive;
+    if (updateSecurityDto.quoteProvider !== undefined)
+      security.quoteProvider = updateSecurityDto.quoteProvider ?? null;
+    if (updateSecurityDto.msnInstrumentId !== undefined)
+      security.msnInstrumentId = updateSecurityDto.msnInstrumentId ?? null;
 
     const saved = await this.securitiesRepository.save(security);
 
