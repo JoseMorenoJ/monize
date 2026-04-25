@@ -124,6 +124,10 @@ function ImportContent() {
             isMultiAccountImport={!!wizard.multiAccountData}
             isLoading={wizard.isLoading}
             onMultiAccountImport={wizard.handleMultiAccountImport}
+            lookupPickerQuery={wizard.lookupPickerQuery}
+            lookupPickerCandidates={wizard.lookupPickerCandidates}
+            handleLookupPickerPick={wizard.handleLookupPickerPick}
+            handleLookupPickerCancel={wizard.handleLookupPickerCancel}
           />
         );
 

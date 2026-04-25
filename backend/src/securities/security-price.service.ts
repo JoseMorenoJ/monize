@@ -670,16 +670,19 @@ export class SecurityPriceService {
       return fetchFromProvider(this.providers.getByName(provider));
     }
 
-    // auto: query every provider in parallel and concatenate results so the
-    // user sees candidates from both Yahoo and MSN in one picker. Order by
-    // the user's default provider first (so that provider's matches show up
-    // at the top of the list).
+    // auto: try the user's primary provider first; only fall back to the
+    // secondary provider when the primary returns no candidates. Mirrors
+    // fetchQuoteWithFallback so lookups respect the same Primary/Secondary
+    // preference used during price refresh.
     const ordered = this.providers.resolveForSecurity(
       { quoteProvider: null },
       ctx.defaultQuoteProvider,
     );
-    const allResults = await Promise.all(ordered.map(fetchFromProvider));
-    return ordered.flatMap((_, i) => allResults[i]);
+    for (const p of ordered) {
+      const results = await fetchFromProvider(p);
+      if (results.length > 0) return results;
+    }
+    return [];
   }
 
   async getLastUpdateTime(): Promise<Date | null> {
