@@ -814,7 +814,7 @@ export class MsnFinanceService implements QuoteProvider {
     this.logger.log(
       `MSN fetchQuote entered for ${symbol}/${exchange ?? "(none)"} (suppliedId=${opts?.instrumentId ?? "(none)"})`,
     );
-    const instrumentId =
+    let instrumentId =
       opts?.instrumentId ||
       (await this.resolveInstrumentId(
         symbol,
@@ -827,21 +827,15 @@ export class MsnFinanceService implements QuoteProvider {
       );
       return null;
     }
-    this.logger.log(
-      `MSN fetchQuote: using instrumentId=${instrumentId} for ${symbol}`,
-    );
 
-    // Strategy 1 — direct quote endpoint. May or may not work depending on
-    // MSN's surface; if it does, prefer it because it carries open/high/low.
-    let direct = await this.tryDirectQuote(instrumentId, symbol, opts);
-    if (direct) return direct;
-
-    // Strategy 1b — the saved ID may be in the wrong format (FullInstrument
-    // instead of SecId, common for older QIF imports). Re-resolve via
-    // autosuggest using the symbol and retry once with the fresh SecId.
+    // Pro-active upgrade: if the stored ID is in the FullInstrument form
+    // (e.g. "F0CAN05MQP"), the Quotes endpoint will 404. Re-resolve via
+    // autosuggest BEFORE the first call so we don't waste a round trip on
+    // a known-bad request. The autosuggest result populates the SecId-style
+    // short form (e.g. "a1xzim").
     if (looksLikeFullInstrument(instrumentId)) {
       this.logger.log(
-        `MSN fetchQuote: stored id "${instrumentId}" looks like FullInstrument; re-resolving via autosuggest`,
+        `MSN fetchQuote: stored id "${instrumentId}" looks like FullInstrument; re-resolving via autosuggest before calling Quotes`,
       );
       const refreshed = await this.resolveInstrumentId(
         symbol,
@@ -850,11 +844,28 @@ export class MsnFinanceService implements QuoteProvider {
       );
       if (refreshed && refreshed !== instrumentId) {
         this.logger.log(
-          `MSN fetchQuote: re-resolved ${symbol} to ${refreshed} (was ${instrumentId}); retrying Quotes endpoint`,
+          `MSN fetchQuote: upgraded id ${instrumentId} → ${refreshed} for ${symbol}`,
         );
-        direct = await this.tryDirectQuote(refreshed, symbol, opts);
-        if (direct) return direct;
+        instrumentId = refreshed;
+      } else if (!refreshed) {
+        this.logger.warn(
+          `MSN fetchQuote: autosuggest returned no SecId for ${symbol}; will still try ${instrumentId}`,
+        );
       }
+    }
+
+    this.logger.log(
+      `MSN fetchQuote: using instrumentId=${instrumentId} for ${symbol}`,
+    );
+
+    // Strategy 1 — direct quote endpoint. May or may not work depending on
+    // MSN's surface; if it does, prefer it because it carries open/high/low.
+    let direct = await this.tryDirectQuote(instrumentId, symbol, opts);
+    if (direct) {
+      // Stamp the resolved id on the result so the caller can persist any
+      // upgrade (FullInstrument → SecId) back to the Security row.
+      direct.msnResolvedInstrumentId = instrumentId;
+      return direct;
     }
 
     // Strategy 2 — fall back to the chart-timeseries endpoint with a short

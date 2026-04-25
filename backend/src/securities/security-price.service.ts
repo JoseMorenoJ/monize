@@ -242,6 +242,30 @@ export class SecurityPriceService {
   }
 
   /**
+   * If the quote came back with a different SecId than the stored one
+   * (because we upgraded a legacy FullInstrument), persist the upgrade.
+   */
+  private async persistMsnIdUpgrade(
+    security: Security,
+    upgradedId: string,
+  ): Promise<void> {
+    if (!upgradedId || upgradedId === security.msnInstrumentId) return;
+    try {
+      this.logger.log(
+        `Persisting upgraded MSN instrumentId for ${security.symbol}: ${security.msnInstrumentId ?? "(none)"} → ${upgradedId}`,
+      );
+      security.msnInstrumentId = upgradedId;
+      await this.securitiesRepository.update(security.id, {
+        msnInstrumentId: upgradedId,
+      });
+    } catch (err) {
+      this.logger.warn(
+        `Failed to persist upgraded MSN id for ${security.symbol}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  /**
    * After MSN resolves a SecId on behalf of a security, cache it on the
    * Security row so subsequent refreshes skip the autosuggest hop.
    */
@@ -350,7 +374,10 @@ export class SecurityPriceService {
         continue;
       }
 
-      // Cache the MSN instrument id on securities that had none resolved yet.
+
+
+      // Cache the MSN instrument id on securities that had none resolved yet,
+      // and persist any FullInstrument → SecId upgrade.
       if (quote.provider === "msn") {
         for (const security of group) {
           await this.persistMsnInstrumentIdIfResolved(
@@ -361,6 +388,9 @@ export class SecurityPriceService {
               preferredExchanges: [],
             },
           );
+          if (quote.msnResolvedInstrumentId) {
+            await this.persistMsnIdUpgrade(security, quote.msnResolvedInstrumentId);
+          }
         }
       }
 
@@ -473,6 +503,9 @@ export class SecurityPriceService {
             preferredExchanges: [],
           },
         );
+        if (quote.msnResolvedInstrumentId) {
+          await this.persistMsnIdUpgrade(security, quote.msnResolvedInstrumentId);
+        }
       }
 
       try {

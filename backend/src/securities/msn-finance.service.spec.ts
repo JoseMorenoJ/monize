@@ -225,7 +225,7 @@ describe("MsnFinanceService", () => {
       global.fetch = jest.fn().mockReturnValueOnce(
         createResponse([
           {
-            SecId: "vod-lse",
+            SecId: "voduk1",
             price: 12050, // pence
             priceDayOpen: 12000,
             currency: "GBX",
@@ -233,8 +233,9 @@ describe("MsnFinanceService", () => {
         ]),
       );
 
+      // SecId-shaped instrumentId so the proactive re-resolve doesn't fire.
       const quote = await service.fetchQuote("VOD", "LSE", {
-        instrumentId: "vod-lse",
+        instrumentId: "voduk1",
       });
 
       // 12050 pence → 120.50 GBP
@@ -245,13 +246,11 @@ describe("MsnFinanceService", () => {
     it("re-resolves to SecId via autosuggest when stored ID is the FullInstrument form", async () => {
       // Existing user data may carry FullInstrument-style IDs (e.g.
       // "F0CAN05MQP") because earlier versions extracted that field. The
-      // Quotes endpoint 404s on those — so we re-resolve via autosuggest
-      // and retry once with the fresh short SecId.
+      // Quotes endpoint 404s on those — so we PROACTIVELY re-resolve via
+      // autosuggest before the first Quotes call.
       global.fetch = jest
         .fn()
-        // First Quotes call with the long ID — empty result.
-        .mockReturnValueOnce(createResponse([]))
-        // Autosuggest re-resolution returns the short SecId.
+        // 1. Autosuggest returns the short SecId.
         .mockReturnValueOnce(
           createResponse({
             data: {
@@ -259,7 +258,7 @@ describe("MsnFinanceService", () => {
             },
           }),
         )
-        // Retry with the short SecId — succeeds.
+        // 2. Quotes call with the SecId returns price.
         .mockReturnValueOnce(
           createResponse([
             { SecId: "abc12y", price: 12.34, currency: "CAD" },
@@ -272,6 +271,8 @@ describe("MsnFinanceService", () => {
       expect(quote).not.toBeNull();
       expect(quote!.regularMarketPrice).toBe(12.34);
       expect(quote!.provider).toBe("msn");
+      // The upgraded SecId is exposed so the caller can persist it.
+      expect(quote!.msnResolvedInstrumentId).toBe("abc12y");
     });
 
     it("returns null when MSN returns HTTP error", async () => {

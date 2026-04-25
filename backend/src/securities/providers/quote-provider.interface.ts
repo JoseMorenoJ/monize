@@ -9,6 +9,13 @@ export interface QuoteResult {
   regularMarketVolume?: number;
   regularMarketTime?: number;
   provider?: QuoteProviderName;
+  /**
+   * For MSN, the SecId actually used to fetch this quote. May differ from
+   * the security's stored msnInstrumentId when the stored value was in the
+   * legacy FullInstrument form and we re-resolved on the fly. Lets the
+   * caller persist the upgraded ID back to the Security row.
+   */
+  msnResolvedInstrumentId?: string;
 }
 
 export interface HistoricalPrice {
