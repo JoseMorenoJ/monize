@@ -99,7 +99,8 @@
     "lodash": "4.18.1",
     "ajv@>=7": "8.18.0",
     "picomatch": "4.0.4",
-    "path-to-regexp": "8.4.0"
+    "path-to-regexp": "8.4.0",
+    "uuid": "^14.0.0"
   },
   "jest": {
     "moduleFileExtensions": [
@@ -129,7 +130,7 @@
     ],
     "coverageDirectory": "./coverage",
     "transformIgnorePatterns": [
-      "node_modules/(?!(@scure|@otplib|otplib|@noble|openid-client|oauth4webapi|jose)/)"
+      "node_modules/(?!(@scure|@otplib|otplib|@noble|openid-client|oauth4webapi|jose|uuid)/)"
     ],
     "coverageThreshold": {
       "global": {

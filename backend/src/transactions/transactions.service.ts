@@ -32,7 +32,7 @@ import {
   BulkDeleteResult,
 } from "./transaction-bulk-update.service";
 import { BulkUpdateDto, BulkDeleteDto } from "./dto/bulk-update.dto";
-import { isTransactionInFuture, todayYMD } from "../common/date-utils";
+import { isTransactionInFuture } from "../common/date-utils";
 import { ActionHistoryService } from "../action-history/action-history.service";
 import { getAllCategoryIdsWithChildren } from "../common/category-tree.util";
 
