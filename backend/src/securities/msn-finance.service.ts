@@ -806,15 +806,48 @@ export class MsnFinanceService implements QuoteProvider {
         exchange,
         opts?.preferredExchanges,
       ));
-    if (!instrumentId) return null;
+    if (!instrumentId) {
+      this.logger.warn(
+        `MSN fetchQuote: no instrument id resolved for ${symbol}/${exchange ?? "(none)"}`,
+      );
+      return null;
+    }
 
+    // Strategy 1 — direct quote endpoint. May or may not work depending on
+    // MSN's surface; if it does, prefer it because it carries open/high/low.
+    const direct = await this.tryDirectQuote(instrumentId, symbol, opts);
+    if (direct) return direct;
+
+    // Strategy 2 — fall back to the chart-timeseries endpoint with a short
+    // range and use the most recent point. The chart endpoint is the same
+    // one used by fetchHistorical, so if backfill works for an instrument,
+    // on-demand refresh works too.
+    const fromChart = await this.quoteFromChart(instrumentId, symbol, opts);
+    if (fromChart) return fromChart;
+
+    this.logger.warn(
+      `MSN fetchQuote: no price data via direct or chart endpoints for ${symbol} (id=${instrumentId})`,
+    );
+    return null;
+  }
+
+  private async tryDirectQuote(
+    instrumentId: string,
+    symbol: string,
+    opts: QuoteProviderOptions | undefined,
+  ): Promise<QuoteResult | null> {
     const url = `${QUOTE_URL}?ids=${encodeURIComponent(instrumentId)}&type=All&apikey=&ocid=finance-peregrine`;
     const data = await this.httpGetJson<{ value?: MsnQuoteItem[] }>(url);
     const item = data?.value?.[0];
     if (!item) return null;
 
     const raw = extractQuoteFields(item);
-    if (raw.price == null) return null;
+    if (raw.price == null) {
+      this.logger.debug(
+        `MSN direct quote for ${symbol} returned an item with no price; falling back to chart.`,
+      );
+      return null;
+    }
 
     const shouldConvertGbx =
       isGbxCurrency(raw.currency) ||
@@ -830,6 +863,41 @@ export class MsnFinanceService implements QuoteProvider {
       regularMarketDayLow: convert(raw.low),
       regularMarketVolume: raw.volume,
       regularMarketTime: raw.time,
+      provider: "msn",
+    };
+  }
+
+  /**
+   * Build a current-price QuoteResult by hitting the chart-timeseries endpoint
+   * and reading the most recent OHLCV row. Same endpoint as fetchHistorical
+   * so any instrument that backfills correctly also refreshes correctly.
+   */
+  private async quoteFromChart(
+    instrumentId: string,
+    symbol: string,
+    opts: QuoteProviderOptions | undefined,
+  ): Promise<QuoteResult | null> {
+    const prices = await this.fetchHistorical(symbol, null, "5d", {
+      ...opts,
+      instrumentId,
+    });
+    if (!prices || prices.length === 0) return null;
+
+    const latest = prices[prices.length - 1];
+    if (latest.close == null || Number.isNaN(latest.close)) return null;
+
+    this.logger.log(
+      `MSN fetchQuote ${symbol} (id=${instrumentId}) via chart: close=${latest.close} on ${latest.date.toISOString().slice(0, 10)}`,
+    );
+
+    return {
+      symbol: symbol.toUpperCase(),
+      regularMarketPrice: latest.close,
+      regularMarketOpen: latest.open ?? undefined,
+      regularMarketDayHigh: latest.high ?? undefined,
+      regularMarketDayLow: latest.low ?? undefined,
+      regularMarketVolume: latest.volume ?? undefined,
+      regularMarketTime: Math.floor(latest.date.getTime() / 1000),
       provider: "msn",
     };
   }
@@ -855,7 +923,15 @@ export class MsnFinanceService implements QuoteProvider {
     const url = `${CHART_URL}?id=${encodeURIComponent(instrumentId)}&ohlcv=true&timeFrame=${encodeURIComponent(msnRange)}`;
     const data = await this.httpGetJson<MsnChartResponse>(url);
     const series = data?.series || data?.Series || [];
-    if (!Array.isArray(series) || series.length === 0) return null;
+    if (!Array.isArray(series) || series.length === 0) {
+      this.logger.warn(
+        `MSN fetchHistorical: empty series for ${symbol} (id=${instrumentId}, range=${msnRange}). Body keys=${data ? Object.keys(data).join(",") : "(no body)"}`,
+      );
+      return null;
+    }
+    this.logger.debug(
+      `MSN fetchHistorical: ${series.length} point(s) for ${symbol} (range=${msnRange})`,
+    );
 
     const currency = data?.currency || data?.Currency;
     const shouldConvertGbx =

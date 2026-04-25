@@ -236,6 +236,36 @@ describe("MsnFinanceService", () => {
       expect(quote).toBeNull();
     });
 
+    it("falls back to chart-timeseries when the direct quote endpoint has no price", async () => {
+      global.fetch = jest
+        .fn()
+        // direct quote endpoint: no usable price
+        .mockReturnValueOnce(
+          createResponse({ value: [{ Symbol: "AAPL" }] }),
+        )
+        // chart-timeseries endpoint: returns a recent OHLCV point
+        .mockReturnValueOnce(
+          createResponse({
+            series: [
+              { Time: "2024-06-15", Close: 178, Open: 176, High: 179, Low: 175.5 },
+              { Time: "2024-06-17", Close: 181, Open: 180, High: 182, Low: 179.5 },
+            ],
+            Currency: "USD",
+          }),
+        );
+
+      const quote = await service.fetchQuote("AAPL", "NASDAQ", {
+        instrumentId: "a1u3p2",
+      });
+      expect(quote).not.toBeNull();
+      // Latest point wins.
+      expect(quote!.regularMarketPrice).toBe(181);
+      expect(quote!.regularMarketOpen).toBe(180);
+      expect(quote!.regularMarketDayHigh).toBe(182);
+      expect(quote!.regularMarketDayLow).toBe(179.5);
+      expect(quote!.provider).toBe("msn");
+    });
+
     it("returns null when the price field is missing", async () => {
       global.fetch = jest
         .fn()
