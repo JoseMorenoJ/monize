@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { DensityLevel, nextDensity } from '@/hooks/useTableDensity';
 import { SortIcon } from '@/components/ui/SortIcon';
+import { usePreferencesStore } from '@/store/preferencesStore';
 
 export type SecuritySortField = 'symbol' | 'name' | 'type' | 'exchange' | 'currency' | 'provider' | 'source';
 
@@ -81,6 +82,7 @@ interface SecurityRowProps {
   onLongPressEnd: () => void;
   onTouchMove: (e: React.TouchEvent) => void;
   index: number;
+  defaultQuoteProvider: 'yahoo' | 'msn';
 }
 
 const formatSecurityType = (type: string | null, dense: boolean = false): string => {
@@ -114,6 +116,7 @@ const SecurityRow = memo(function SecurityRow({
   onLongPressEnd,
   onTouchMove,
   index,
+  defaultQuoteProvider,
 }: SecurityRowProps) {
   const canDelete = !hasHoldings && !hasTransactions;
 
@@ -174,19 +177,28 @@ const SecurityRow = memo(function SecurityRow({
             </span>
           </td>
           <td className={`${cellPadding} whitespace-nowrap hidden md:table-cell`}>
-            {security.quoteProvider ? (
-              <span
-                className={`inline-flex items-center rounded text-xs font-medium px-2 py-0.5 ${
-                  security.quoteProvider === 'msn'
-                    ? 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
-                    : 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
-                }`}
-              >
-                {security.quoteProvider === 'msn' ? 'MSN' : 'Yahoo'}
-              </span>
-            ) : (
-              <span className="text-sm text-gray-400 dark:text-gray-500">-</span>
-            )}
+            {(() => {
+              const effective = security.quoteProvider ?? defaultQuoteProvider;
+              const isOverride = !!security.quoteProvider;
+              const baseClass =
+                effective === 'msn'
+                  ? 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
+                  : 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300';
+              return (
+                <span
+                  className={`inline-flex items-center rounded text-xs font-medium px-2 py-0.5 ${baseClass} ${
+                    isOverride ? '' : 'italic opacity-70'
+                  }`}
+                  title={
+                    isOverride
+                      ? 'Per-security provider override'
+                      : 'Inherited from your default Quote Provider preference'
+                  }
+                >
+                  {effective === 'msn' ? 'MSN' : 'Yahoo'}
+                </span>
+              );
+            })()}
           </td>
           <td className={`${cellPadding} whitespace-nowrap hidden md:table-cell`}>
             {security.lastPriceSource ? (
@@ -282,6 +294,9 @@ export function SecurityList({
   const [localDensity, setLocalDensity] = useState<DensityLevel>('normal');
   const [localSortField, setLocalSortField] = useState<SecuritySortField>('symbol');
   const [localSortDirection, setLocalSortDirection] = useState<SortDirection>('asc');
+
+  const defaultQuoteProvider =
+    usePreferencesStore((s) => s.preferences?.defaultQuoteProvider) ?? 'yahoo';
 
   // Use prop sort state if provided (controlled), otherwise use local state
   const sortField = propSortField ?? localSortField;
@@ -497,6 +512,7 @@ export function SecurityList({
                 onLongPressEnd={handleLongPressEnd}
                 onTouchMove={handleTouchMove}
                 index={index}
+                defaultQuoteProvider={defaultQuoteProvider}
               />
             ))}
           </tbody>

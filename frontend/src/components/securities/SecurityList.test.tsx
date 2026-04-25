@@ -333,6 +333,17 @@ describe('SecurityList', () => {
     expect(screen.getByText('Yahoo')).toBeInTheDocument();
   });
 
+  it('shows the default provider (inherited) when security has no override', () => {
+    const securities = [makeSecurity({ quoteProvider: null })];
+    render(<SecurityList securities={securities} onEdit={onEdit} onToggleActive={onToggleActive} density="normal" />);
+    // Default in tests is "yahoo" (preferences store mock returns undefined → '?? yahoo').
+    const yahooBadge = screen.getByText('Yahoo');
+    expect(yahooBadge).toBeInTheDocument();
+    // Italic class indicates the value is inherited from the default rather than an override.
+    expect(yahooBadge.className).toContain('italic');
+    expect(yahooBadge.title).toMatch(/default/i);
+  });
+
   it('hides exchange and currency headers in compact density', () => {
     const securities = [makeSecurity()];
 
