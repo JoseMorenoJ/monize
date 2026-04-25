@@ -1,4 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
+import { randomUUID } from "node:crypto";
 import { isGbxCurrency, convertGbxToGbp } from "../common/gbx-currency.util";
 import {
   QuoteProvider,
@@ -12,32 +13,19 @@ import {
 } from "./providers/quote-provider.interface";
 import { getTradingDateFromQuote } from "./providers/trading-date.util";
 
-// MSN / Bing Finance API endpoints. The autosuggest and Market/Get endpoints
-// are confirmed working; the chart-timeseries and stockdetails-page URLs are
-// retained as best-effort fallbacks.
+// MSN / Bing Finance API endpoints. The autosuggest and Quotes endpoints are
+// the same ones MSMoneyQuotes.exe uses (reverse-engineered from the v3.0
+// binary, 2023-09-17). Chart-timeseries and stockdetails-page URLs are kept
+// as best-effort fallbacks.
 const AUTOSUGGEST_URL =
   "https://services.bingapis.com/contentservices-finance.csautosuggest/api/v1/Query";
 /** Live quote endpoint (returns OHLC + last price for one or more SecIds). */
-const MARKET_GET_URL = "https://finance.services.appex.bing.com/Market/Get";
-/** Comma-separated field list for MARKET_GET_URL. */
-const MARKET_GET_FIELDS = [
-  "price",
-  "priceChange",
-  "priceChangePct",
-  "priceDayOpen",
-  "priceDayHigh",
-  "priceDayLow",
-  "price52wHigh",
-  "price52wLow",
-  "marketCap",
-  "accumulatedVolume",
-  "peRatio",
-  "currency",
-  "timeLastTraded",
-  "timeLastUpdated",
-  "FriendlyName",
-  "FullInstrument",
-].join(",");
+const QUOTES_URL = "https://assets.msn.com/service/Finance/Quotes";
+/**
+ * Public MSN/Peregrine finance API key extracted from MSMoneyQuotes.exe and
+ * also used by MSN Money web widgets. Microsoft can rotate it at any time.
+ */
+const MSN_API_KEY = "REDACTED-MSN-API-KEY";
 const CHART_URL = "https://assets.msn.com/service/Finance/Charts/timeseries";
 const STOCK_DETAILS_PAGE = "https://www.msn.com/en-us/money/stockdetails";
 
@@ -862,8 +850,23 @@ export class MsnFinanceService implements QuoteProvider {
     symbol: string,
     opts: QuoteProviderOptions | undefined,
   ): Promise<QuoteResult | null> {
-    const url = `${MARKET_GET_URL}?ids=${encodeURIComponent(instrumentId)}&Fields=${encodeURIComponent(MARKET_GET_FIELDS)}`;
-    const data = await this.httpGetJson<unknown>(url);
+    // Endpoint reverse-engineered from MSMoneyQuotes.exe v3.0. The apikey is
+    // a public Microsoft key shared across MSN Money web widgets; activityId
+    // is a fresh GUID per request.
+    const params = new URLSearchParams({
+      apikey: MSN_API_KEY,
+      activityId: randomUUID(),
+      ocid: "finance-utils-peregrine",
+      cm: "en-us",
+      it: "app",
+      ids: instrumentId,
+      wrapodata: "false",
+    });
+    const url = `${QUOTES_URL}?${params.toString()}`;
+    const data = await this.httpGetJson<unknown>(url, {
+      // MSMoneyQuotes.exe spoofs this exact User-Agent.
+      "User-Agent": "FinanceWindows/4.29.10701",
+    });
 
     // The response structure can be:
     //   [ { ...instrument fields... }, ... ]
@@ -871,8 +874,8 @@ export class MsnFinanceService implements QuoteProvider {
     //   { data: [ { stocks: [ ... ] } ] }
     const instruments = extractMarketInstruments(data, instrumentId);
     if (!instruments.length) {
-      this.logger.debug(
-        `MSN Market/Get for ${symbol} (id=${instrumentId}) returned no instruments`,
+      this.logger.warn(
+        `MSN Quotes for ${symbol} (id=${instrumentId}) returned no instruments. Body keys=${data && typeof data === "object" ? Object.keys(data as Record<string, unknown>).join(",") : "(no body)"}`,
       );
       return null;
     }
@@ -880,8 +883,8 @@ export class MsnFinanceService implements QuoteProvider {
 
     const price = parseNumberMaybe(item.price ?? item.Price ?? item.lastPrice);
     if (price == null || Number.isNaN(price)) {
-      this.logger.debug(
-        `MSN Market/Get for ${symbol} (id=${instrumentId}) had no usable price; falling back to chart.`,
+      this.logger.warn(
+        `MSN Quotes for ${symbol} (id=${instrumentId}) had no usable price; falling back to chart. Item keys=${Object.keys(item).join(",")}`,
       );
       return null;
     }
@@ -920,7 +923,7 @@ export class MsnFinanceService implements QuoteProvider {
       v !== undefined && shouldConvertGbx ? convertGbxToGbp(v) : v;
 
     this.logger.log(
-      `MSN Market/Get ${symbol} (id=${instrumentId}): price=${price} currency=${currency ?? "(none)"}`,
+      `MSN Quotes ${symbol} (id=${instrumentId}): price=${price} currency=${currency ?? "(none)"}`,
     );
 
     return {
@@ -1228,7 +1231,7 @@ function normalizeTimestamp(raw: unknown): number | undefined {
 }
 
 /**
- * Pull instrument records out of a Market/Get response. Tolerates the three
+ * Pull instrument records out of a Quotes response. Tolerates the three
  * shapes Bing's endpoint has used: a bare array, `{ stocks: [...] }`, or
  * `{ data: [ { stocks: [...] } ] }`. Filters by SecId when one's known so we
  * don't pick up an unrelated row.
