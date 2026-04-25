@@ -32,6 +32,10 @@ vi.mock('@/lib/investments', () => ({
   investmentsApi: {
     lookupSecurity: vi.fn().mockResolvedValue(null),
     lookupSecurityCandidates: vi.fn().mockResolvedValue([]),
+    getProviderStatus: vi.fn().mockResolvedValue({
+      yahoo: { ready: true },
+      msn: { ready: true },
+    }),
   },
 }));
 

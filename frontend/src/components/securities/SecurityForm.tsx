@@ -79,9 +79,17 @@ export function SecurityForm({ security, onSubmit, onCancel, onDirtyChange, subm
   const [lookupProvider, setLookupProvider] = useState<'auto' | 'yahoo' | 'msn'>('auto');
   const [pickerQuery, setPickerQuery] = useState<string>('');
   const [pickerCandidates, setPickerCandidates] = useState<LookupCandidate[]>([]);
+  const [msnReady, setMsnReady] = useState<boolean | null>(null);
 
   useEffect(() => {
     exchangeRatesApi.getCurrencies().then(setCurrencies).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    investmentsApi
+      .getProviderStatus()
+      .then((status) => setMsnReady(status.msn.ready))
+      .catch(() => setMsnReady(null));
   }, []);
 
   const currencyOptions = useMemo(() => {
@@ -343,6 +351,18 @@ export function SecurityForm({ security, onSubmit, onCancel, onDirtyChange, subm
         <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
           Override the provider for this security. Leave on default to use your preferences.
         </p>
+        {watch('quoteProvider') === 'msn' && msnReady === false && (
+          <p
+            role="alert"
+            className="text-sm text-red-600 dark:text-red-400 mt-2"
+            data-testid="msn-not-configured-error"
+          >
+            MSN is selected as the default quote provider, but{' '}
+            <code>MSN_API_KEY</code> is not configured on the server. MSN
+            quotes will fail until an administrator sets the env var and
+            restarts the backend.
+          </p>
+        )}
       </div>
 
       {watch('quoteProvider') === 'msn' && (
