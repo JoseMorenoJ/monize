@@ -130,7 +130,7 @@
     ],
     "coverageDirectory": "./coverage",
     "transformIgnorePatterns": [
-      "node_modules/(?!(@scure|@otplib|otplib|@noble|openid-client|oauth4webapi|jose)/)"
+      "node_modules/(?!(@scure|@otplib|otplib|@noble|openid-client|oauth4webapi|jose|uuid)/)"
     ],
     "coverageThreshold": {
       "global": {
