@@ -2,7 +2,9 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
+import toast from 'react-hot-toast';
 import { investmentsApi } from '@/lib/investments';
+import { getErrorMessage } from '@/lib/errors';
 import { transactionsApi } from '@/lib/transactions';
 import { accountsApi } from '@/lib/accounts';
 import { categoriesApi } from '@/lib/categories';
@@ -356,7 +358,9 @@ export function useInvestmentData() {
       setPortfolioSummary(summary);
     } catch (error) {
       logger.error('Failed to delete transaction:', error);
-      window.alert('Failed to delete transaction');
+      // Surface the backend's reason (e.g. "would cause holdings to go
+      // negative") via toast instead of a native browser alert.
+      toast.error(getErrorMessage(error, 'Failed to delete transaction'));
       loadAllPortfolioData(selectedAccountIds, currentPage, transactionFilters);
     }
   };

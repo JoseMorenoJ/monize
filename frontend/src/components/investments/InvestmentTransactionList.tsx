@@ -505,18 +505,18 @@ export function InvestmentTransactionList({
               </select>
             </div>
 
-            {/* Date Range */}
+            {/* Date Range — onDateChange always emits an ISO date string;
+                pairing it with a manual onChange caused the user's date
+                format preference to be ignored on these two inputs. */}
             <DateInput
               label="From"
               value={filters?.startDate || ''}
               onDateChange={(date) => handleFilterChange('startDate', date)}
-              onChange={(e) => handleFilterChange('startDate', e.target.value)}
             />
             <DateInput
               label="To"
               value={filters?.endDate || ''}
               onDateChange={(date) => handleFilterChange('endDate', date)}
-              onChange={(e) => handleFilterChange('endDate', e.target.value)}
             />
           </div>
 
