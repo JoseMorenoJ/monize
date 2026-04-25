@@ -383,7 +383,7 @@ export class MsnFinanceService implements QuoteProvider {
       preferredExchanges,
     );
     return match
-      ? getField(match, "FullInstrument", "SecId", "secId") || null
+      ? getField(match, "SecId", "secId", "FullInstrument") || null
       : null;
   }
 
@@ -511,7 +511,11 @@ export class MsnFinanceService implements QuoteProvider {
         "OS001",
       ) || ""
     ).toUpperCase();
-    const extractedSecId = getField(item, "FullInstrument", "SecId", "secId");
+    // SecId (short form, e.g. "a1xzim" / "bb36yc") is what MSN's Quotes
+    // endpoint expects. FullInstrument (e.g. "F18068765888") is a different
+    // identifier MSN uses internally and the Quotes endpoint 404s on it.
+    // Prefer SecId; fall back to FullInstrument only if SecId is absent.
+    const extractedSecId = getField(item, "SecId", "secId", "FullInstrument");
 
     if (!extractedSymbol && !extractedSecId) return null;
 
@@ -829,8 +833,29 @@ export class MsnFinanceService implements QuoteProvider {
 
     // Strategy 1 — direct quote endpoint. May or may not work depending on
     // MSN's surface; if it does, prefer it because it carries open/high/low.
-    const direct = await this.tryDirectQuote(instrumentId, symbol, opts);
+    let direct = await this.tryDirectQuote(instrumentId, symbol, opts);
     if (direct) return direct;
+
+    // Strategy 1b — the saved ID may be in the wrong format (FullInstrument
+    // instead of SecId, common for older QIF imports). Re-resolve via
+    // autosuggest using the symbol and retry once with the fresh SecId.
+    if (looksLikeFullInstrument(instrumentId)) {
+      this.logger.log(
+        `MSN fetchQuote: stored id "${instrumentId}" looks like FullInstrument; re-resolving via autosuggest`,
+      );
+      const refreshed = await this.resolveInstrumentId(
+        symbol,
+        exchange,
+        opts?.preferredExchanges,
+      );
+      if (refreshed && refreshed !== instrumentId) {
+        this.logger.log(
+          `MSN fetchQuote: re-resolved ${symbol} to ${refreshed} (was ${instrumentId}); retrying Quotes endpoint`,
+        );
+        direct = await this.tryDirectQuote(refreshed, symbol, opts);
+        if (direct) return direct;
+      }
+    }
 
     // Strategy 2 — fall back to the chart-timeseries endpoint with a short
     // range and use the most recent point. The chart endpoint is the same
@@ -1272,6 +1297,19 @@ function extractMarketInstruments(
     if (exact) return [exact, ...out.filter((r) => r !== exact)];
   }
   return out;
+}
+
+/**
+ * Detect MSN's "FullInstrument" identifier shape (e.g. "F18068765888",
+ * "F0CAN05MQP") so we can re-resolve to a SecId. SecIds are 5–8 lowercase
+ * alphanumerics (e.g. "a1xzim", "bb36yc"); FullInstrument starts with an
+ * uppercase letter and is typically 7+ chars with mixed case.
+ */
+function looksLikeFullInstrument(id: string): boolean {
+  if (!id) return false;
+  // SecIds are short, lowercase, all alphanumeric — anything that doesn't fit
+  // that pattern is treated as a FullInstrument-style ID.
+  return !/^[a-z0-9]{4,8}$/.test(id);
 }
 
 function parseNumberMaybe(v: unknown): number | undefined {

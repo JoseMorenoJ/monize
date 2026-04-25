@@ -242,6 +242,38 @@ describe("MsnFinanceService", () => {
       expect(quote!.regularMarketOpen).toBeCloseTo(120, 2);
     });
 
+    it("re-resolves to SecId via autosuggest when stored ID is the FullInstrument form", async () => {
+      // Existing user data may carry FullInstrument-style IDs (e.g.
+      // "F0CAN05MQP") because earlier versions extracted that field. The
+      // Quotes endpoint 404s on those — so we re-resolve via autosuggest
+      // and retry once with the fresh short SecId.
+      global.fetch = jest
+        .fn()
+        // First Quotes call with the long ID — empty result.
+        .mockReturnValueOnce(createResponse([]))
+        // Autosuggest re-resolution returns the short SecId.
+        .mockReturnValueOnce(
+          createResponse({
+            data: {
+              stocks: [{ Symbol: "ATL8021", SecId: "abc12y" }],
+            },
+          }),
+        )
+        // Retry with the short SecId — succeeds.
+        .mockReturnValueOnce(
+          createResponse([
+            { SecId: "abc12y", price: 12.34, currency: "CAD" },
+          ]),
+        );
+
+      const quote = await service.fetchQuote("ATL8021", null, {
+        instrumentId: "F0CAN05MQP",
+      });
+      expect(quote).not.toBeNull();
+      expect(quote!.regularMarketPrice).toBe(12.34);
+      expect(quote!.provider).toBe("msn");
+    });
+
     it("returns null when MSN returns HTTP error", async () => {
       global.fetch = jest
         .fn()
@@ -479,7 +511,9 @@ describe("MsnFinanceService", () => {
       expect(result!.name).toBe("TD Canadian Money Market Investor Series");
       expect(result!.securityType).toBe("MUTUAL_FUND");
       expect(result!.currencyCode).toBe("CAD");
-      expect(result!.msnInstrumentId).toBe("F18068004373");
+      // SecId (short form) is what MSN's Quotes endpoint accepts; we prefer
+      // it over FullInstrument (which the endpoint 404s on).
+      expect(result!.msnInstrumentId).toBe("bb36yc");
     });
 
     it("returns null when the match has no Symbol/OS001 and no FullInstrument/SecId", async () => {
