@@ -170,6 +170,13 @@ export class SecuritiesService {
     if (updateSecurityDto.msnInstrumentId !== undefined)
       security.msnInstrumentId = updateSecurityDto.msnInstrumentId ?? null;
 
+    // The user explicitly opted into a quote source — auto-clear the
+    // skipPriceUpdates flag that QIF/OFX import sets on auto-generated
+    // symbols so refresh actually picks them up afterwards.
+    if (security.quoteProvider || security.msnInstrumentId) {
+      security.skipPriceUpdates = false;
+    }
+
     const saved = await this.securitiesRepository.save(security);
 
     this.actionHistoryService.record(userId, {

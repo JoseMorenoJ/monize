@@ -36,6 +36,23 @@ function sourceFor(provider: QuoteProviderName | undefined): string {
   return provider === "msn" ? "msn_finance" : "yahoo_finance";
 }
 
+/**
+ * A security is eligible for price refresh when skipPriceUpdates is false,
+ * OR the user has explicitly opted in by setting a per-security provider
+ * override or supplying an MSN Instrument ID. The latter exists because
+ * QIF/OFX imports auto-flag securities with skipPriceUpdates=true (since the
+ * symbol is auto-generated and may not be a real ticker), and we don't want
+ * the user to also have to manually clear that flag after picking a provider.
+ */
+function isRefreshEligible(s: {
+  skipPriceUpdates: boolean;
+  quoteProvider: string | null;
+  msnInstrumentId: string | null;
+}): boolean {
+  if (!s.skipPriceUpdates) return true;
+  return Boolean(s.quoteProvider) || Boolean(s.msnInstrumentId);
+}
+
 export interface PriceUpdateResult {
   symbol: string;
   success: boolean;
@@ -272,9 +289,10 @@ export class SecurityPriceService {
     const startTime = Date.now();
     this.logger.log("Starting price refresh for all securities");
 
-    const securities = await this.securitiesRepository.find({
-      where: { isActive: true, skipPriceUpdates: false },
+    const allActive = await this.securitiesRepository.find({
+      where: { isActive: true },
     });
+    const securities = allActive.filter((s) => isRefreshEligible(s));
 
     if (securities.length === 0) {
       return {
@@ -387,8 +405,21 @@ export class SecurityPriceService {
     securityIds: string[],
   ): Promise<PriceRefreshSummary> {
     const securities = await this.securitiesRepository.find({
-      where: { id: In(securityIds), isActive: true, skipPriceUpdates: false },
+      where: { id: In(securityIds), isActive: true },
     });
+    const eligible = securities.filter((s) => isRefreshEligible(s));
+    const skipped = securities.length - eligible.length;
+    if (skipped > 0) {
+      const skippedSymbols = securities
+        .filter((s) => !isRefreshEligible(s))
+        .map((s) => s.symbol)
+        .join(", ");
+      this.logger.log(
+        `Skipping ${skipped} security/securities flagged with skipPriceUpdates and no explicit provider override: ${skippedSymbols}`,
+      );
+    }
+    securities.length = 0;
+    securities.push(...eligible);
 
     if (securities.length === 0) {
       return {
@@ -650,9 +681,10 @@ export class SecurityPriceService {
     const startTime = Date.now();
     this.logger.log("Starting historical price backfill");
 
-    const securities = await this.securitiesRepository.find({
-      where: { isActive: true, skipPriceUpdates: false },
+    const allActive = await this.securitiesRepository.find({
+      where: { isActive: true },
     });
+    const securities = allActive.filter((s) => isRefreshEligible(s));
 
     const userContexts = await this.loadUserContexts(
       securities.map((s) => s.userId),
