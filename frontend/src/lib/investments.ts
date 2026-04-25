@@ -247,21 +247,55 @@ export const investmentsApi = {
   lookupSecurity: async (
     query: string,
     preferredExchanges?: string[],
+    provider?: 'yahoo' | 'msn' | 'auto',
   ): Promise<{
     symbol: string;
     name: string;
     exchange: string | null;
     securityType: string | null;
     currencyCode: string | null;
+    provider?: 'yahoo' | 'msn';
+    msnInstrumentId?: string | null;
   } | null> => {
     const params: Record<string, string> = { q: query };
     if (preferredExchanges && preferredExchanges.length > 0) {
       params.exchanges = preferredExchanges.join(',');
     }
+    if (provider) {
+      params.provider = provider;
+    }
     const response = await apiClient.get('/securities/lookup', {
       params,
     });
     return response.data;
+  },
+
+  lookupSecurityCandidates: async (
+    query: string,
+    preferredExchanges?: string[],
+    provider?: 'yahoo' | 'msn' | 'auto',
+  ): Promise<
+    Array<{
+      symbol: string;
+      name: string;
+      exchange: string | null;
+      securityType: string | null;
+      currencyCode: string | null;
+      provider?: 'yahoo' | 'msn';
+      msnInstrumentId?: string | null;
+    }>
+  > => {
+    const params: Record<string, string> = { q: query };
+    if (preferredExchanges && preferredExchanges.length > 0) {
+      params.exchanges = preferredExchanges.join(',');
+    }
+    if (provider) {
+      params.provider = provider;
+    }
+    const response = await apiClient.get('/securities/lookup/candidates', {
+      params,
+    });
+    return response.data || [];
   },
 
   // Refresh all security prices from Yahoo Finance
@@ -305,6 +339,18 @@ export const investmentsApi = {
   // Get price update status
   getPriceStatus: async (): Promise<{ lastUpdated: string | null }> => {
     const response = await apiClient.get('/securities/prices/status');
+    return response.data;
+  },
+
+  // Quote provider configuration status (e.g. whether MSN_API_KEY is set)
+  getProviderStatus: async (): Promise<{
+    yahoo: { ready: boolean };
+    msn: { ready: boolean };
+  }> => {
+    const response = await apiClient.get<{
+      yahoo: { ready: boolean };
+      msn: { ready: boolean };
+    }>('/securities/providers/status');
     return response.data;
   },
 

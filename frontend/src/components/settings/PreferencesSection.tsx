@@ -10,6 +10,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { UserPreferences, UpdatePreferencesData } from '@/types/auth';
 import { getErrorMessage } from '@/lib/errors';
 import { exchangeRatesApi, CurrencyInfo } from '@/lib/exchange-rates';
+import { investmentsApi } from '@/lib/investments';
 import { Combobox } from '@/components/ui/Combobox';
 import { DATE_FORMAT_OPTIONS, EXCHANGE_OPTIONS } from '@/lib/constants';
 
@@ -61,6 +62,11 @@ const THEME_OPTIONS = [
   { value: 'dark', label: 'Dark' },
 ];
 
+const QUOTE_PROVIDER_OPTIONS = [
+  { value: 'yahoo', label: 'Yahoo Finance' },
+  { value: 'msn', label: 'MSN Money' },
+];
+
 interface PreferencesSectionProps {
   preferences: UserPreferences;
   onPreferencesUpdated: (prefs: UserPreferences) => void;
@@ -81,12 +87,23 @@ export function PreferencesSection({ preferences, onPreferencesUpdated }: Prefer
   const [preferredExchanges, setPreferredExchanges] = useState<string[]>(
     preferences.preferredExchanges ?? [],
   );
+  const [defaultQuoteProvider, setDefaultQuoteProvider] = useState<'yahoo' | 'msn'>(
+    preferences.defaultQuoteProvider ?? 'yahoo',
+  );
   const [isUpdatingPreferences, setIsUpdatingPreferences] = useState(false);
 
   const [availableCurrencies, setAvailableCurrencies] = useState<CurrencyInfo[]>([]);
+  const [msnReady, setMsnReady] = useState<boolean | null>(null);
 
   useEffect(() => {
     exchangeRatesApi.getCurrencies().then(setAvailableCurrencies).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    investmentsApi
+      .getProviderStatus()
+      .then((status) => setMsnReady(status.msn.ready))
+      .catch(() => setMsnReady(null));
   }, []);
 
   const currencyOptions = useMemo(() => {
@@ -109,6 +126,7 @@ export function PreferencesSection({ preferences, onPreferencesUpdated }: Prefer
         showCreatedAt,
         timeFormat,
         preferredExchanges: preferredExchanges.filter(Boolean),
+        defaultQuoteProvider,
       };
 
       const updated = await userSettingsApi.updatePreferences(data);
@@ -175,6 +193,30 @@ export function PreferencesSection({ preferences, onPreferencesUpdated }: Prefer
               />
             ))}
           </div>
+        </div>
+
+        <div>
+          <Select
+            label="Default Stock Quote Provider"
+            options={QUOTE_PROVIDER_OPTIONS}
+            value={defaultQuoteProvider}
+            onChange={(e) => setDefaultQuoteProvider(e.target.value as 'yahoo' | 'msn')}
+          />
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            Used when a security has no provider override. If the chosen provider fails, Monize automatically tries the other.
+          </p>
+          {defaultQuoteProvider === 'msn' && msnReady === false && (
+            <p
+              role="alert"
+              className="text-sm text-red-600 dark:text-red-400 mt-2"
+              data-testid="msn-not-configured-error"
+            >
+              MSN is selected as the default quote provider, but{' '}
+              <code>MSN_API_KEY</code> is not configured on the server. MSN
+              quotes will fail until an administrator sets the env var and
+              restarts the backend.
+            </p>
+          )}
         </div>
 
         <Select

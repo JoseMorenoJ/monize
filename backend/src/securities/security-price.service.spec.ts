@@ -6,11 +6,17 @@ import { SecurityPrice } from "./entities/security-price.entity";
 import { Security } from "./entities/security.entity";
 import { NetWorthService } from "../net-worth/net-worth.service";
 import { YahooFinanceService } from "./yahoo-finance.service";
+import { MsnFinanceService } from "./msn-finance.service";
+import { QuoteProviderRegistry } from "./providers/quote-provider.registry";
+import { UserPreference } from "../users/entities/user-preference.entity";
+
+const TEST_USER_ID = "user-1";
 
 describe("SecurityPriceService", () => {
   let service: SecurityPriceService;
   let securityPriceRepository: Record<string, jest.Mock>;
   let securitiesRepository: Record<string, jest.Mock>;
+  let userPreferenceRepository: Record<string, jest.Mock>;
   let dataSourceMock: Record<string, jest.Mock>;
   let netWorthService: Record<string, jest.Mock>;
   let originalFetch: typeof global.fetch;
@@ -143,6 +149,11 @@ describe("SecurityPriceService", () => {
     securitiesRepository = {
       findOne: jest.fn(),
       find: jest.fn(),
+      update: jest.fn().mockResolvedValue({ affected: 1 }),
+    };
+
+    userPreferenceRepository = {
+      find: jest.fn().mockResolvedValue([]),
     };
 
     dataSourceMock = {
@@ -165,6 +176,10 @@ describe("SecurityPriceService", () => {
           useValue: securitiesRepository,
         },
         {
+          provide: getRepositoryToken(UserPreference),
+          useValue: userPreferenceRepository,
+        },
+        {
           provide: DataSource,
           useValue: dataSourceMock,
         },
@@ -173,6 +188,29 @@ describe("SecurityPriceService", () => {
           useValue: netWorthService,
         },
         YahooFinanceService,
+        {
+          // Mock MSN to always return null so these tests stay Yahoo-focused.
+          // The registry fallback still calls these methods, but they're no-ops.
+          provide: MsnFinanceService,
+          useValue: {
+            name: "msn",
+            fetchQuote: jest.fn().mockResolvedValue(null),
+            fetchHistorical: jest.fn().mockResolvedValue(null),
+            lookupSecurity: jest.fn().mockResolvedValue(null),
+            fetchStockSectorInfo: jest.fn().mockResolvedValue(null),
+            fetchEtfSectorWeightings: jest.fn().mockResolvedValue(null),
+            resolveInstrumentId: jest.fn().mockResolvedValue(null),
+            getTradingDate: jest.fn((q: { regularMarketTime?: number }) => {
+              if (q.regularMarketTime) {
+                const d = new Date(q.regularMarketTime * 1000);
+                d.setUTCHours(0, 0, 0, 0);
+                return d;
+              }
+              return new Date();
+            }),
+          },
+        },
+        QuoteProviderRegistry,
       ],
     }).compile();
 
@@ -686,7 +724,7 @@ describe("SecurityPriceService", () => {
         .fn()
         .mockResolvedValue(createMockFetchResponse(searchData)) as jest.Mock;
 
-      const result = await service.lookupSecurity("AAPL");
+      const result = await service.lookupSecurity(TEST_USER_ID, "AAPL");
 
       expect(result).toEqual({
         symbol: "AAPL",
@@ -694,6 +732,7 @@ describe("SecurityPriceService", () => {
         exchange: "NASDAQ", // falls back to exchDisp when no symbol suffix
         securityType: "STOCK",
         currencyCode: "USD",
+        provider: "yahoo",
       });
     });
 
@@ -703,7 +742,7 @@ describe("SecurityPriceService", () => {
         .fn()
         .mockResolvedValue(createMockFetchResponse(searchData)) as jest.Mock;
 
-      const result = await service.lookupSecurity("ZZZZZZ");
+      const result = await service.lookupSecurity(TEST_USER_ID, "ZZZZZZ");
 
       expect(result).toBeNull();
     });
@@ -715,7 +754,7 @@ describe("SecurityPriceService", () => {
           createMockFetchResponse({}, false, 500),
         ) as jest.Mock;
 
-      const result = await service.lookupSecurity("AAPL");
+      const result = await service.lookupSecurity(TEST_USER_ID, "AAPL");
 
       expect(result).toBeNull();
     });
@@ -725,7 +764,7 @@ describe("SecurityPriceService", () => {
         .fn()
         .mockRejectedValue(new Error("Network failure")) as jest.Mock;
 
-      const result = await service.lookupSecurity("AAPL");
+      const result = await service.lookupSecurity(TEST_USER_ID, "AAPL");
 
       expect(result).toBeNull();
     });
@@ -758,7 +797,7 @@ describe("SecurityPriceService", () => {
         .fn()
         .mockResolvedValue(createMockFetchResponse(searchData)) as jest.Mock;
 
-      const result = await service.lookupSecurity("RY");
+      const result = await service.lookupSecurity(TEST_USER_ID, "RY");
 
       // After sorting by priority, TSX (.TO) is priority 1, then US (no suffix) priority 2, then LSE (.L) priority 3
       // Exact match for "RY" base symbol: RY.TO has base "RY", RY has base "RY"
@@ -794,7 +833,7 @@ describe("SecurityPriceService", () => {
         .mockResolvedValue(createMockFetchResponse(searchData)) as jest.Mock;
 
       // Query "Shopify" won't match any base symbol exactly
-      const result = await service.lookupSecurity("Shopify");
+      const result = await service.lookupSecurity(TEST_USER_ID, "Shopify");
 
       // SHOP.TO is TSX (priority 1), so it sorts first
       expect(result).toEqual(
@@ -820,7 +859,7 @@ describe("SecurityPriceService", () => {
         .fn()
         .mockResolvedValue(createMockFetchResponse(searchData)) as jest.Mock;
 
-      const result = await service.lookupSecurity("SPY");
+      const result = await service.lookupSecurity(TEST_USER_ID, "SPY");
 
       expect(result).toEqual(
         expect.objectContaining({
@@ -841,7 +880,7 @@ describe("SecurityPriceService", () => {
         .fn()
         .mockResolvedValue(createMockFetchResponse(searchData)) as jest.Mock;
 
-      const result = await service.lookupSecurity("VFIAX");
+      const result = await service.lookupSecurity(TEST_USER_ID, "VFIAX");
 
       expect(result!.securityType).toBe("MUTUAL_FUND");
     });
@@ -858,7 +897,7 @@ describe("SecurityPriceService", () => {
         .fn()
         .mockResolvedValue(createMockFetchResponse(searchData)) as jest.Mock;
 
-      const result = await service.lookupSecurity("X");
+      const result = await service.lookupSecurity(TEST_USER_ID, "X");
 
       expect(result!.securityType).toBeNull();
     });
@@ -874,7 +913,7 @@ describe("SecurityPriceService", () => {
         .fn()
         .mockResolvedValue(createMockFetchResponse(searchData)) as jest.Mock;
 
-      const result = await service.lookupSecurity("TSLA");
+      const result = await service.lookupSecurity(TEST_USER_ID, "TSLA");
 
       expect(result!.name).toBe("Tesla Inc");
     });
@@ -889,7 +928,7 @@ describe("SecurityPriceService", () => {
         .fn()
         .mockResolvedValue(createMockFetchResponse(searchData)) as jest.Mock;
 
-      const result = await service.lookupSecurity("XYZ");
+      const result = await service.lookupSecurity(TEST_USER_ID, "XYZ");
 
       expect(result!.name).toBe("XYZ");
     });
@@ -908,7 +947,7 @@ describe("SecurityPriceService", () => {
         .fn()
         .mockResolvedValue(createMockFetchResponse(searchData)) as jest.Mock;
 
-      const result = await service.lookupSecurity("BHP");
+      const result = await service.lookupSecurity(TEST_USER_ID, "BHP");
 
       expect(result).toEqual(
         expect.objectContaining({
@@ -931,7 +970,7 @@ describe("SecurityPriceService", () => {
         .fn()
         .mockResolvedValue(createMockFetchResponse(searchData)) as jest.Mock;
 
-      const result = await service.lookupSecurity("0005");
+      const result = await service.lookupSecurity(TEST_USER_ID, "0005");
 
       expect(result).toEqual(
         expect.objectContaining({
@@ -1687,7 +1726,7 @@ describe("SecurityPriceService", () => {
         .fn()
         .mockResolvedValue(createMockFetchResponse(searchData)) as jest.Mock;
 
-      const result = await service.lookupSecurity("TD");
+      const result = await service.lookupSecurity(TEST_USER_ID, "TD");
 
       // TD.TO (TSX, priority 1) should win over TD (US, priority 2)
       expect(result!.exchange).toBe("TSX");
@@ -1712,7 +1751,7 @@ describe("SecurityPriceService", () => {
         .fn()
         .mockResolvedValue(createMockFetchResponse(searchData)) as jest.Mock;
 
-      const result = await service.lookupSecurity("VOD");
+      const result = await service.lookupSecurity(TEST_USER_ID, "VOD");
 
       // US (priority 2) should win over LSE (priority 3), and exact symbol match "VOD"
       expect(result!.exchange).toBe("NASDAQ"); // Falls back to exchDisp when no symbol suffix
@@ -1733,7 +1772,7 @@ describe("SecurityPriceService", () => {
         .fn()
         .mockResolvedValue(createMockFetchResponse(searchData)) as jest.Mock;
 
-      const result = await service.lookupSecurity("X");
+      const result = await service.lookupSecurity(TEST_USER_ID, "X");
 
       // "Canada" in exchDisp maps to priority 1
       expect(result!.name).toBe("X Canada");

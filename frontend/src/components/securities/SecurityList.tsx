@@ -6,8 +6,44 @@ import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { DensityLevel, nextDensity } from '@/hooks/useTableDensity';
 import { SortIcon } from '@/components/ui/SortIcon';
+import { usePreferencesStore } from '@/store/preferencesStore';
 
-export type SecuritySortField = 'symbol' | 'name' | 'type' | 'exchange' | 'currency';
+export type SecuritySortField = 'symbol' | 'name' | 'type' | 'exchange' | 'currency' | 'provider' | 'source';
+
+/** Format a security_prices.source value into a short human label. */
+function formatPriceSource(source: string | null | undefined): string {
+  if (!source) return '';
+  switch (source) {
+    case 'yahoo_finance': return 'Yahoo';
+    case 'msn_finance': return 'MSN';
+    case 'manual': return 'Manual';
+    case 'buy':
+    case 'sell':
+    case 'reinvest':
+    case 'transfer_in':
+    case 'transfer_out': return 'Txn';
+    default: return source;
+  }
+}
+
+function priceSourceBadgeClass(source: string | null | undefined): string {
+  switch (source) {
+    case 'yahoo_finance':
+      return 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300';
+    case 'msn_finance':
+      return 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300';
+    case 'manual':
+      return 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300';
+    case 'buy':
+    case 'sell':
+    case 'reinvest':
+    case 'transfer_in':
+    case 'transfer_out':
+      return 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300';
+    default:
+      return 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300';
+  }
+}
 export type SortDirection = 'asc' | 'desc';
 
 // Map of securityId -> total quantity across all accounts
@@ -46,6 +82,7 @@ interface SecurityRowProps {
   onLongPressEnd: () => void;
   onTouchMove: (e: React.TouchEvent) => void;
   index: number;
+  defaultQuoteProvider: 'yahoo' | 'msn';
 }
 
 const formatSecurityType = (type: string | null, dense: boolean = false): string => {
@@ -79,6 +116,7 @@ const SecurityRow = memo(function SecurityRow({
   onLongPressEnd,
   onTouchMove,
   index,
+  defaultQuoteProvider,
 }: SecurityRowProps) {
   const canDelete = !hasHoldings && !hasTransactions;
 
@@ -137,6 +175,42 @@ const SecurityRow = memo(function SecurityRow({
             <span className="text-sm text-gray-500 dark:text-gray-400">
               {security.currencyCode}
             </span>
+          </td>
+          <td className={`${cellPadding} whitespace-nowrap hidden md:table-cell`}>
+            {(() => {
+              const effective = security.quoteProvider ?? defaultQuoteProvider;
+              const isOverride = !!security.quoteProvider;
+              const baseClass =
+                effective === 'msn'
+                  ? 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
+                  : 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300';
+              return (
+                <span
+                  className={`inline-flex items-center rounded text-xs font-medium px-2 py-0.5 ${baseClass} ${
+                    isOverride ? '' : 'italic opacity-70'
+                  }`}
+                  title={
+                    isOverride
+                      ? 'Per-security provider override'
+                      : 'Inherited from your default Quote Provider preference'
+                  }
+                >
+                  {effective === 'msn' ? 'MSN' : 'Yahoo'}
+                </span>
+              );
+            })()}
+          </td>
+          <td className={`${cellPadding} whitespace-nowrap hidden md:table-cell`}>
+            {security.lastPriceSource ? (
+              <span
+                className={`inline-flex items-center rounded text-xs font-medium px-2 py-0.5 ${priceSourceBadgeClass(security.lastPriceSource)}`}
+                title={security.lastPriceSource}
+              >
+                {formatPriceSource(security.lastPriceSource)}
+              </span>
+            ) : (
+              <span className="text-sm text-gray-400 dark:text-gray-500">-</span>
+            )}
           </td>
         </>
       )}
@@ -220,6 +294,9 @@ export function SecurityList({
   const [localDensity, setLocalDensity] = useState<DensityLevel>('normal');
   const [localSortField, setLocalSortField] = useState<SecuritySortField>('symbol');
   const [localSortDirection, setLocalSortDirection] = useState<SortDirection>('asc');
+
+  const defaultQuoteProvider =
+    usePreferencesStore((s) => s.preferences?.defaultQuoteProvider) ?? 'yahoo';
 
   // Use prop sort state if provided (controlled), otherwise use local state
   const sortField = propSortField ?? localSortField;
@@ -393,6 +470,20 @@ export function SecurityList({
                   >
                     Currency<SortIcon field="currency" sortField={sortField} sortDirection={sortDirection} />
                   </th>
+                  <th
+                    className={`${headerPadding} text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:text-gray-700 dark:hover:text-gray-200 hidden md:table-cell`}
+                    onClick={() => handleSort('provider')}
+                    title="Per-security quote provider override"
+                  >
+                    Provider<SortIcon field="provider" sortField={sortField} sortDirection={sortDirection} />
+                  </th>
+                  <th
+                    className={`${headerPadding} text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:text-gray-700 dark:hover:text-gray-200 hidden md:table-cell`}
+                    onClick={() => handleSort('source')}
+                    title="Source of the most recent price"
+                  >
+                    Source<SortIcon field="source" sortField={sortField} sortDirection={sortDirection} />
+                  </th>
                 </>
               )}
               <th className={`${headerPadding} text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden sm:table-cell`}>
@@ -421,6 +512,7 @@ export function SecurityList({
                 onLongPressEnd={handleLongPressEnd}
                 onTouchMove={handleTouchMove}
                 index={index}
+                defaultQuoteProvider={defaultQuoteProvider}
               />
             ))}
           </tbody>

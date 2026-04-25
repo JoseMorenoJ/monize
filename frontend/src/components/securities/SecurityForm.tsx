@@ -10,6 +10,8 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Combobox } from '@/components/ui/Combobox';
+import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
+import { SecurityLookupPicker, LookupCandidate } from './SecurityLookupPicker';
 import { Security, CreateSecurityData } from '@/types/investment';
 import { investmentsApi } from '@/lib/investments';
 import { exchangeRatesApi, CurrencyInfo } from '@/lib/exchange-rates';
@@ -29,9 +31,23 @@ const securitySchema = z.object({
   securityType: z.string().optional(),
   exchange: z.string().optional(),
   currencyCode: z.string().min(1, 'Currency is required'),
+  quoteProvider: z.enum(['', 'yahoo', 'msn']).optional(),
+  msnInstrumentId: z.string().max(50).optional(),
 });
 
 type SecurityFormData = z.infer<typeof securitySchema>;
+
+const quoteProviderOverrideOptions = [
+  { value: '', label: 'Use default' },
+  { value: 'yahoo', label: 'Yahoo Finance' },
+  { value: 'msn', label: 'MSN Money' },
+];
+
+const lookupProviderOptions = [
+  { value: 'auto', label: 'Auto' },
+  { value: 'yahoo', label: 'Yahoo' },
+  { value: 'msn', label: 'MSN' },
+];
 
 interface SecurityFormProps {
   security?: Security;
@@ -56,9 +72,13 @@ export function SecurityForm({ security, onSubmit, onCancel, onDirtyChange, subm
   const { defaultCurrency } = useNumberFormat();
   const rawPreferredExchanges = usePreferencesStore((s) => s.preferences?.preferredExchanges);
   const preferredExchanges = useMemo(() => rawPreferredExchanges || [], [rawPreferredExchanges]);
+  const userDefaultProvider = usePreferencesStore((s) => s.preferences?.defaultQuoteProvider) ?? 'yahoo';
   const [isLookingUp, setIsLookingUp] = useState(false);
   const [hasLookupResult, setHasLookupResult] = useState(false);
   const [currencies, setCurrencies] = useState<CurrencyInfo[]>([]);
+  const [lookupProvider, setLookupProvider] = useState<'auto' | 'yahoo' | 'msn'>('auto');
+  const [pickerQuery, setPickerQuery] = useState<string>('');
+  const [pickerCandidates, setPickerCandidates] = useState<LookupCandidate[]>([]);
 
   useEffect(() => {
     exchangeRatesApi.getCurrencies().then(setCurrencies).catch(() => {});
@@ -92,10 +112,45 @@ export function SecurityForm({ security, onSubmit, onCancel, onDirtyChange, subm
       securityType: security?.securityType || '',
       exchange: security?.exchange || '',
       currencyCode: security?.currencyCode || defaultCurrency,
+      quoteProvider: security?.quoteProvider || '',
+      msnInstrumentId: security?.msnInstrumentId || '',
     },
   });
 
-  // Manual lookup - prioritize symbol, fall back to name
+  const applyLookupResult = useCallback(
+    (result: LookupCandidate) => {
+      const setOpts = { shouldDirty: true, shouldTouch: true, shouldValidate: true };
+
+      setValue('symbol', result.symbol, setOpts);
+      setValue('name', result.name, setOpts);
+      if (result.exchange) setValue('exchange', result.exchange, setOpts);
+      if (result.securityType) setValue('securityType', result.securityType, setOpts);
+      if (result.currencyCode) setValue('currencyCode', result.currencyCode, setOpts);
+
+      if (result.provider) {
+        const explicit = lookupProvider !== 'auto';
+        const differsFromDefault = result.provider !== userDefaultProvider;
+        if (explicit || differsFromDefault) {
+          setValue('quoteProvider', result.provider, setOpts);
+        }
+      }
+
+      if (result.msnInstrumentId) {
+        setValue('msnInstrumentId', result.msnInstrumentId, setOpts);
+      }
+
+      setHasLookupResult(true);
+
+      const details = [`Symbol: ${result.symbol}`, `Name: ${result.name}`];
+      if (result.exchange) details.push(`Exchange: ${result.exchange}`);
+      if (result.securityType) details.push(`Type: ${result.securityType}`);
+      if (result.currencyCode) details.push(`Currency: ${result.currencyCode}`);
+      if (result.provider) details.push(`Provider: ${result.provider === 'msn' ? 'MSN' : 'Yahoo'}`);
+      toast.success(`Found: ${details.join(', ')}`);
+    },
+    [setValue, lookupProvider, userDefaultProvider],
+  );
+
   const handleLookup = useCallback(async () => {
     const { symbol, name, exchange: currentExchange } = getValues();
     const query = (symbol?.trim() || name?.trim() || '');
@@ -104,7 +159,6 @@ export function SecurityForm({ security, onSubmit, onCancel, onDirtyChange, subm
       return;
     }
 
-    // Merge current exchange selection with preferred exchanges
     const exchanges = currentExchange
       ? [currentExchange, ...preferredExchanges.filter((e) => e !== currentExchange)]
       : preferredExchanges.length > 0
@@ -113,25 +167,18 @@ export function SecurityForm({ security, onSubmit, onCancel, onDirtyChange, subm
 
     setIsLookingUp(true);
     try {
-      const result = await investmentsApi.lookupSecurity(query, exchanges);
-      if (result) {
-        // Fill in all fields from the lookup result
-        setValue('symbol', result.symbol);
-        setValue('name', result.name);
-        setValue('exchange', result.exchange || '');
-        setValue('securityType', result.securityType || '');
-        if (result.currencyCode) {
-          setValue('currencyCode', result.currencyCode);
-        }
-        setHasLookupResult(true);
-
-        const details = [`Symbol: ${result.symbol}`, `Name: ${result.name}`];
-        if (result.exchange) details.push(`Exchange: ${result.exchange}`);
-        if (result.securityType) details.push(`Type: ${result.securityType}`);
-        if (result.currencyCode) details.push(`Currency: ${result.currencyCode}`);
-        toast.success(`Found: ${details.join(', ')}`);
-      } else {
+      const candidates = await investmentsApi.lookupSecurityCandidates(
+        query,
+        exchanges,
+        lookupProvider,
+      );
+      if (candidates.length === 0) {
         toast.error(`No security found for "${query}"`);
+      } else if (candidates.length === 1) {
+        applyLookupResult(candidates[0]);
+      } else {
+        setPickerQuery(query);
+        setPickerCandidates(candidates);
       }
     } catch (error) {
       logger.error('Security lookup failed:', error);
@@ -139,28 +186,36 @@ export function SecurityForm({ security, onSubmit, onCancel, onDirtyChange, subm
     } finally {
       setIsLookingUp(false);
     }
-  }, [getValues, setValue, preferredExchanges]);
+  }, [getValues, preferredExchanges, lookupProvider, applyLookupResult]);
 
-  // Clear all looked-up values back to defaults
+  // In edit mode, revert to the original security values. In create mode,
+  // blank everything out (keeping the user's default currency).
   const handleClear = useCallback(() => {
-    reset({
-      symbol: '',
-      name: '',
-      securityType: '',
-      exchange: '',
-      currencyCode: defaultValues?.currencyCode || defaultCurrency,
-    });
+    if (security) {
+      reset();
+    } else {
+      reset({
+        symbol: '',
+        name: '',
+        securityType: '',
+        exchange: '',
+        currencyCode: defaultValues?.currencyCode || defaultCurrency,
+        quoteProvider: '',
+        msnInstrumentId: '',
+      });
+    }
     setHasLookupResult(false);
-  }, [reset, defaultValues, defaultCurrency]);
+  }, [reset, defaultValues, defaultCurrency, security]);
 
-  const onFormSubmit = async (data: CreateSecurityData) => {
-    // Clean up empty strings
+  const onFormSubmit = async (data: SecurityFormData) => {
     const cleanedData: CreateSecurityData = {
-      ...data,
       symbol: data.symbol.toUpperCase().trim(),
       name: data.name.trim(),
       securityType: data.securityType || undefined,
       exchange: data.exchange?.trim() || undefined,
+      currencyCode: data.currencyCode,
+      quoteProvider: data.quoteProvider === '' ? undefined : data.quoteProvider,
+      msnInstrumentId: data.msnInstrumentId?.trim() || undefined,
     };
     await onSubmit(cleanedData);
   };
@@ -170,6 +225,21 @@ export function SecurityForm({ security, onSubmit, onCancel, onDirtyChange, subm
   useFormSubmitRef(submitRef, handleSubmit, onFormSubmit);
 
   return (
+    <>
+    <SecurityLookupPicker
+      isOpen={pickerCandidates.length > 0}
+      query={pickerQuery}
+      candidates={pickerCandidates}
+      onPick={(c) => {
+        applyLookupResult(c);
+        setPickerCandidates([]);
+        setPickerQuery('');
+      }}
+      onCancel={() => {
+        setPickerCandidates([]);
+        setPickerQuery('');
+      }}
+    />
     <form onSubmit={handleSubmit(onFormSubmit)} className="space-y-4">
       {/* Symbol + Lookup / Clear buttons */}
       <div className="flex gap-2 items-end">
@@ -182,30 +252,42 @@ export function SecurityForm({ security, onSubmit, onCancel, onDirtyChange, subm
             className="uppercase"
           />
         </div>
-        {!security && (
-          <div className="flex gap-1.5">
+        <div className="flex gap-1.5">
+          <Select
+            aria-label="Lookup provider"
+            options={lookupProviderOptions}
+            value={lookupProvider}
+            onChange={(e) =>
+              setLookupProvider(e.target.value as 'auto' | 'yahoo' | 'msn')
+            }
+            className="mb-[1px] w-24"
+          />
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleLookup}
+            disabled={isLookingUp}
+            className="mb-[1px] relative"
+          >
+            <span className={isLookingUp ? 'invisible' : ''}>Lookup</span>
+            {isLookingUp && (
+              <span className="absolute inset-0 flex items-center justify-center">
+                <LoadingSpinner size="sm" fullContainer={false} />
+              </span>
+            )}
+          </Button>
+          {hasLookupResult && (
             <Button
               type="button"
-              variant="outline"
-              onClick={handleLookup}
-              disabled={isLookingUp}
-              className="mb-[1px]"
+              variant="ghost"
+              onClick={handleClear}
+              className="mb-[1px] text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+              title={security ? 'Revert to original values' : 'Clear all fields'}
             >
-              {isLookingUp ? 'Looking up...' : 'Lookup'}
+              {security ? 'Revert' : 'Clear'}
             </Button>
-            {hasLookupResult && (
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={handleClear}
-                className="mb-[1px] text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-                title="Clear all fields"
-              >
-                Clear
-              </Button>
-            )}
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       <Input
@@ -243,7 +325,37 @@ export function SecurityForm({ security, onSubmit, onCancel, onDirtyChange, subm
         error={errors.currencyCode?.message}
       />
 
+      <div>
+        <Select
+          label="Quote Provider Override"
+          options={[
+            { value: '', label: `Use default (${userDefaultProvider === 'msn' ? 'MSN Money' : 'Yahoo Finance'})` },
+            ...quoteProviderOverrideOptions.slice(1),
+          ]}
+          value={watch('quoteProvider') || ''}
+          onChange={(e) =>
+            setValue('quoteProvider', (e.target.value as 'yahoo' | 'msn' | ''), {
+              shouldDirty: true,
+            })
+          }
+          error={errors.quoteProvider?.message}
+        />
+        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+          Override the provider for this security. Leave on default to use your preferences.
+        </p>
+      </div>
+
+      {watch('quoteProvider') === 'msn' && (
+        <Input
+          label="MSN Instrument ID (advanced)"
+          {...register('msnInstrumentId')}
+          error={errors.msnInstrumentId?.message}
+          placeholder="Auto-resolved from ticker; override only if wrong"
+        />
+      )}
+
       <FormActions onCancel={onCancel} submitLabel={security ? 'Update Security' : 'Create Security'} isSubmitting={isSubmitting} />
     </form>
+    </>
   );
 }

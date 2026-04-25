@@ -1209,17 +1209,25 @@ export class InvestmentTransactionsService {
         true,
       );
 
-      // Scope validation to the accounts this edit could have affected
-      // (old account + new account if it changed). Validating every
-      // account would falsely blame this edit for pre-existing oversold
-      // states elsewhere in the user's data.
+      // Scope validation to the accounts AND securities this edit could
+      // have affected (old + new if either changed). Validating every
+      // (account, security) pair would falsely blame this edit for
+      // pre-existing oversold states in unrelated securities elsewhere
+      // in the user's data — e.g. editing a 2026 trade in security A
+      // surfacing a 2009 oversell of security B.
       const affectedAccountIds = Array.from(
         new Set([accountId, saved.accountId].filter(Boolean) as string[]),
+      );
+      const affectedSecurityIds = Array.from(
+        new Set(
+          [oldSecurityId, saved.securityId].filter(Boolean) as string[],
+        ),
       );
       await this.holdingsService.validateNoNegativeHoldingsHistory(
         userId,
         queryRunner,
         affectedAccountIds,
+        affectedSecurityIds.length > 0 ? affectedSecurityIds : undefined,
       );
 
       await queryRunner.commitTransaction();
@@ -1472,6 +1480,7 @@ export class InvestmentTransactionsService {
         userId,
         queryRunner,
         [accountId],
+        transaction.securityId ? [transaction.securityId] : undefined,
       );
 
       await queryRunner.commitTransaction();

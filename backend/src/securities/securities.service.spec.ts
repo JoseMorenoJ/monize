@@ -14,7 +14,7 @@ import { ActionHistoryService } from "../action-history/action-history.service";
 
 describe("SecuritiesService", () => {
   let service: SecuritiesService;
-  let securitiesRepository: Record<string, jest.Mock>;
+  let securitiesRepository: Record<string, any>;
   let holdingsRepository: Record<string, jest.Mock>;
   let investmentTransactionsRepository: Record<string, jest.Mock>;
   let mockSecurityPriceService: Record<string, jest.Mock>;
@@ -41,6 +41,8 @@ describe("SecuritiesService", () => {
         .fn()
         .mockImplementation((data) => ({ ...data, id: "new-sec" })),
       save: jest.fn().mockImplementation((data) => data),
+      // `findAll` decorates results with lastPriceSource via manager.query.
+      manager: { query: jest.fn().mockResolvedValue([]) },
       createQueryBuilder: jest.fn(() => ({
         where: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
@@ -271,6 +273,19 @@ describe("SecuritiesService", () => {
       expect(savedSecurity.exchange).toBe("NYSE");
       expect(savedSecurity.currencyCode).toBe("CAD");
       expect(savedSecurity.isActive).toBe(false);
+    });
+
+    it("persists quoteProvider and msnInstrumentId updates", async () => {
+      securitiesRepository.findOne.mockResolvedValue({ ...mockSecurity });
+
+      await service.update("user-1", "sec-1", {
+        quoteProvider: "msn",
+        msnInstrumentId: "a1u3p2",
+      });
+
+      const saved = securitiesRepository.save.mock.calls[0][0];
+      expect(saved.quoteProvider).toBe("msn");
+      expect(saved.msnInstrumentId).toBe("a1u3p2");
     });
 
     it("records action history on update", async () => {

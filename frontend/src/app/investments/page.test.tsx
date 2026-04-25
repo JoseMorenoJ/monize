@@ -677,8 +677,8 @@ describe('InvestmentsPage', () => {
       });
     });
 
-    it('shows alert when delete fails', async () => {
-      vi.spyOn(window, 'alert').mockImplementation(() => {});
+    it('shows toast error when delete fails', async () => {
+      const toast = (await import('react-hot-toast')).default;
       mockDeleteTransaction.mockRejectedValue(new Error('Delete failed'));
 
       await renderPage();
@@ -689,7 +689,7 @@ describe('InvestmentsPage', () => {
       fireEvent.click(screen.getByTestId('delete-itx-1'));
 
       await waitFor(() => {
-        expect(window.alert).toHaveBeenCalledWith('Failed to delete transaction');
+        expect(toast.error).toHaveBeenCalled();
       });
 
       vi.restoreAllMocks();

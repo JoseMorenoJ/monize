@@ -31,6 +31,7 @@ vi.mock('@hookform/resolvers/zod', () => ({
 vi.mock('@/lib/investments', () => ({
   investmentsApi: {
     lookupSecurity: vi.fn().mockResolvedValue(null),
+    lookupSecurityCandidates: vi.fn().mockResolvedValue([]),
   },
 }));
 
@@ -60,6 +61,8 @@ function createSecurity(overrides: Partial<Security> = {}): Security {
     sector: null,
     industry: null,
     sectorWeightings: null,
+    quoteProvider: null,
+    msnInstrumentId: null,
     createdAt: '2025-01-01T00:00:00Z',
     updatedAt: '2025-01-01T00:00:00Z',
     ...overrides,
@@ -134,12 +137,85 @@ describe('SecurityForm', () => {
     });
   });
 
-  it('does not show Lookup button when editing existing security', async () => {
+  it('shows Lookup button when editing existing security', async () => {
     const security = createSecurity();
     render(<SecurityForm security={security} onSubmit={onSubmit} onCancel={onCancel} />);
     await waitFor(() => {
-      expect(screen.queryByText('Lookup')).not.toBeInTheDocument();
+      expect(screen.getByText('Lookup')).toBeInTheDocument();
     });
+  });
+
+  it('auto-sets the Quote Provider override when the lookup resolves via a non-default provider', async () => {
+    // User default is "yahoo" (from the preferences store mock).
+    (investmentsApi.lookupSecurityCandidates as ReturnType<typeof vi.fn>).mockResolvedValueOnce([{
+      symbol: 'RBF556',
+      name: 'RBC Canadian Equity Fund',
+      exchange: 'TSX',
+      securityType: 'MUTUAL_FUND',
+      currencyCode: 'CAD',
+      provider: 'msn',
+      msnInstrumentId: 'msn-rbf556',
+    }]);
+
+    render(<SecurityForm onSubmit={onSubmit} onCancel={onCancel} />);
+    const symbolInput = screen.getByLabelText('Symbol');
+    fireEvent.change(symbolInput, { target: { value: 'RBF556' } });
+    fireEvent.click(screen.getByText('Lookup'));
+
+    await waitFor(() => {
+      // Quote Provider Override select should have been updated to MSN Money.
+      const providerSelect = screen.getByLabelText('Quote Provider Override') as HTMLSelectElement;
+      expect(providerSelect.value).toBe('msn');
+    });
+
+    // MSN Instrument ID field is rendered when provider is MSN and should
+    // be pre-populated from the lookup.
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('msn-rbf556')).toBeInTheDocument();
+    });
+  });
+
+  it('does NOT set the override when the lookup resolves via the default provider', async () => {
+    // User default is "yahoo"; the lookup also came from Yahoo.
+    (investmentsApi.lookupSecurityCandidates as ReturnType<typeof vi.fn>).mockResolvedValueOnce([{
+      symbol: 'AAPL',
+      name: 'Apple Inc.',
+      exchange: 'NASDAQ',
+      securityType: 'STOCK',
+      currencyCode: 'USD',
+      provider: 'yahoo',
+    }]);
+
+    render(<SecurityForm onSubmit={onSubmit} onCancel={onCancel} />);
+    const symbolInput = screen.getByLabelText('Symbol');
+    fireEvent.change(symbolInput, { target: { value: 'AAPL' } });
+    fireEvent.click(screen.getByText('Lookup'));
+
+    await waitFor(() => {
+      expect(investmentsApi.lookupSecurityCandidates).toHaveBeenCalled();
+    });
+
+    const providerSelect = screen.getByLabelText('Quote Provider Override') as HTMLSelectElement;
+    expect(providerSelect.value).toBe('');
+  });
+
+  it('uses "Revert" label (not "Clear") when editing after a successful lookup', async () => {
+    const security = createSecurity({ symbol: 'AAPL' });
+    (investmentsApi.lookupSecurityCandidates as ReturnType<typeof vi.fn>).mockResolvedValueOnce([{
+      symbol: 'AAPL',
+      name: 'Apple Inc.',
+      exchange: 'NASDAQ',
+      securityType: 'STOCK',
+      currencyCode: 'USD',
+    }]);
+
+    render(<SecurityForm security={security} onSubmit={onSubmit} onCancel={onCancel} />);
+    fireEvent.click(screen.getByText('Lookup'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Revert')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('Clear')).not.toBeInTheDocument();
   });
 
   it('renders security type options', async () => {
@@ -257,13 +333,13 @@ describe('SecurityForm', () => {
   });
 
   it('performs security lookup when Lookup button is clicked', async () => {
-    (investmentsApi.lookupSecurity as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+    (investmentsApi.lookupSecurityCandidates as ReturnType<typeof vi.fn>).mockResolvedValueOnce([{
       symbol: 'AAPL',
       name: 'Apple Inc.',
       exchange: 'NASDAQ',
       securityType: 'STOCK',
       currencyCode: 'USD',
-    });
+    }]);
 
     render(<SecurityForm onSubmit={onSubmit} onCancel={onCancel} />);
 
@@ -273,7 +349,7 @@ describe('SecurityForm', () => {
     fireEvent.click(screen.getByText('Lookup'));
 
     await waitFor(() => {
-      expect(investmentsApi.lookupSecurity).toHaveBeenCalledWith('AAPL', undefined);
+      expect(investmentsApi.lookupSecurityCandidates).toHaveBeenCalledWith('AAPL', undefined, 'auto');
     });
 
     // After successful lookup, Clear button should appear
@@ -283,13 +359,13 @@ describe('SecurityForm', () => {
   });
 
   it('shows Clear button after successful lookup and clears on click', async () => {
-    (investmentsApi.lookupSecurity as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+    (investmentsApi.lookupSecurityCandidates as ReturnType<typeof vi.fn>).mockResolvedValueOnce([{
       symbol: 'AAPL',
       name: 'Apple Inc.',
       exchange: 'NASDAQ',
       securityType: 'STOCK',
       currencyCode: 'USD',
-    });
+    }]);
 
     render(<SecurityForm onSubmit={onSubmit} onCancel={onCancel} />);
 
@@ -311,29 +387,34 @@ describe('SecurityForm', () => {
     });
   });
 
-  it('shows "Looking up..." text during lookup', async () => {
+  it('shows a spinner (button stays same size) during lookup', async () => {
     let resolvePromise: (value: any) => void;
     const lookupPromise = new Promise((resolve) => {
       resolvePromise = resolve;
     });
-    (investmentsApi.lookupSecurity as ReturnType<typeof vi.fn>).mockReturnValueOnce(lookupPromise);
+    (investmentsApi.lookupSecurityCandidates as ReturnType<typeof vi.fn>).mockReturnValueOnce(lookupPromise);
 
-    render(<SecurityForm onSubmit={onSubmit} onCancel={onCancel} />);
+    const { container } = render(<SecurityForm onSubmit={onSubmit} onCancel={onCancel} />);
 
     const symbolInput = screen.getByLabelText('Symbol');
     fireEvent.change(symbolInput, { target: { value: 'AAPL' } });
 
     fireEvent.click(screen.getByText('Lookup'));
 
+    // The "Lookup" label is still rendered (as an invisible span that
+    // preserves the button's width) and the spinning circle overlays it.
     await waitFor(() => {
-      expect(screen.getByText('Looking up...')).toBeInTheDocument();
+      expect(container.querySelector('.animate-spin')).toBeInTheDocument();
     });
+    // Button should also not be showing the old "Looking up..." text.
+    expect(screen.queryByText('Looking up...')).not.toBeInTheDocument();
 
-    // Resolve the promise
+    // Resolve the promise — spinner should disappear.
     resolvePromise!(null);
     await waitFor(() => {
-      expect(screen.getByText('Lookup')).toBeInTheDocument();
+      expect(container.querySelector('.animate-spin')).not.toBeInTheDocument();
     });
+    expect(screen.getByText('Lookup')).toBeInTheDocument();
   });
 
   it('calls onDirtyChange when form becomes dirty', async () => {
@@ -382,13 +463,13 @@ describe('SecurityForm', () => {
   });
 
   it('populates security type from lookup result', async () => {
-    (investmentsApi.lookupSecurity as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+    (investmentsApi.lookupSecurityCandidates as ReturnType<typeof vi.fn>).mockResolvedValueOnce([{
       symbol: 'XEQT',
       name: 'iShares Core Equity ETF',
       exchange: 'TSX',
       securityType: 'ETF',
       currencyCode: 'CAD',
-    });
+    }]);
 
     render(<SecurityForm onSubmit={onSubmit} onCancel={onCancel} />);
 
@@ -404,13 +485,13 @@ describe('SecurityForm', () => {
   });
 
   it('populates security type as STOCK from lookup for equities', async () => {
-    (investmentsApi.lookupSecurity as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+    (investmentsApi.lookupSecurityCandidates as ReturnType<typeof vi.fn>).mockResolvedValueOnce([{
       symbol: 'AAPL',
       name: 'Apple Inc.',
       exchange: 'NASDAQ',
       securityType: 'STOCK',
       currencyCode: 'USD',
-    });
+    }]);
 
     render(<SecurityForm onSubmit={onSubmit} onCancel={onCancel} />);
 
@@ -426,13 +507,13 @@ describe('SecurityForm', () => {
   });
 
   it('defaults type to empty when lookup returns null securityType', async () => {
-    (investmentsApi.lookupSecurity as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+    (investmentsApi.lookupSecurityCandidates as ReturnType<typeof vi.fn>).mockResolvedValueOnce([{
       symbol: 'XYZ',
       name: 'Some Security',
       exchange: null,
       securityType: null,
       currencyCode: null,
-    });
+    }]);
 
     render(<SecurityForm onSubmit={onSubmit} onCancel={onCancel} />);
 
@@ -450,13 +531,13 @@ describe('SecurityForm', () => {
   });
 
   it('lookup falls back to name field when symbol is empty', async () => {
-    (investmentsApi.lookupSecurity as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+    (investmentsApi.lookupSecurityCandidates as ReturnType<typeof vi.fn>).mockResolvedValueOnce([{
       symbol: 'AAPL',
       name: 'Apple Inc.',
       exchange: 'NASDAQ',
       securityType: 'STOCK',
       currencyCode: 'USD',
-    });
+    }]);
 
     render(<SecurityForm onSubmit={onSubmit} onCancel={onCancel} />);
 
@@ -466,7 +547,7 @@ describe('SecurityForm', () => {
     fireEvent.click(screen.getByText('Lookup'));
 
     await waitFor(() => {
-      expect(investmentsApi.lookupSecurity).toHaveBeenCalledWith('Apple Inc', undefined);
+      expect(investmentsApi.lookupSecurityCandidates).toHaveBeenCalledWith('Apple Inc', undefined, 'auto');
     });
   });
 });

@@ -9,10 +9,29 @@ import {
 
 vi.mock('@/lib/investments', () => ({
   investmentsApi: {
-    getPortfolioSummary: vi.fn(),
+    getSecurities: vi.fn(),
     refreshSelectedPrices: vi.fn(),
   },
 }));
+
+const sec = (id: string, overrides: Record<string, unknown> = {}) => ({
+  id,
+  symbol: id.toUpperCase(),
+  name: id,
+  securityType: 'STOCK',
+  exchange: 'NASDAQ',
+  currencyCode: 'USD',
+  isActive: true,
+  skipPriceUpdates: false,
+  sector: null,
+  industry: null,
+  sectorWeightings: null,
+  quoteProvider: null,
+  msnInstrumentId: null,
+  createdAt: '',
+  updatedAt: '',
+  ...overrides,
+});
 
 vi.mock('react-hot-toast', () => ({
   default: { success: vi.fn(), error: vi.fn() },
@@ -63,10 +82,8 @@ describe('usePriceRefresh', () => {
     expect(typeof result.current.triggerAutoRefresh).toBe('function');
   });
 
-  it('triggerManualRefresh refreshes prices', async () => {
-    vi.mocked(investmentsApi.getPortfolioSummary).mockResolvedValue({
-      holdings: [{ securityId: 's-1', quantity: 10 }],
-    } as any);
+  it('triggerManualRefresh refreshes prices for every active security', async () => {
+    vi.mocked(investmentsApi.getSecurities).mockResolvedValue([sec('s-1')] as any);
     vi.mocked(investmentsApi.refreshSelectedPrices).mockResolvedValue({
       updated: 1, failed: 0, totalSecurities: 1, skipped: 0, results: [], lastUpdated: '',
     });
@@ -75,13 +92,76 @@ describe('usePriceRefresh', () => {
     await act(async () => {
       await result.current.triggerManualRefresh();
     });
-    expect(investmentsApi.getPortfolioSummary).toHaveBeenCalled();
+    expect(investmentsApi.getSecurities).toHaveBeenCalled();
     expect(investmentsApi.refreshSelectedPrices).toHaveBeenCalledWith(['s-1']);
     expect(toast.success).toHaveBeenCalled();
   });
 
+  it('includes securities even when no holdings exist (newly-added securities)', async () => {
+    // Regression: ATL8021 was being excluded because it wasn't in the
+    // portfolio summary's holdings list. Now we send every active security.
+    vi.mocked(investmentsApi.getSecurities).mockResolvedValue([
+      sec('s-msn', { quoteProvider: 'msn', msnInstrumentId: 'F1' }),
+    ] as any);
+    vi.mocked(investmentsApi.refreshSelectedPrices).mockResolvedValue({
+      updated: 1, failed: 0, totalSecurities: 1, skipped: 0, results: [], lastUpdated: '',
+    });
+
+    const { result } = renderHook(() => usePriceRefresh());
+    await act(async () => {
+      await result.current.triggerManualRefresh();
+    });
+    expect(investmentsApi.refreshSelectedPrices).toHaveBeenCalledWith(['s-msn']);
+  });
+
+  it('skips securities flagged with skipPriceUpdates or marked inactive', async () => {
+    vi.mocked(investmentsApi.getSecurities).mockResolvedValue([
+      sec('s-1'),
+      sec('s-2', { skipPriceUpdates: true }),
+      sec('s-3', { isActive: false }),
+    ] as any);
+    vi.mocked(investmentsApi.refreshSelectedPrices).mockResolvedValue({
+      updated: 1, failed: 0, totalSecurities: 1, skipped: 0, results: [], lastUpdated: '',
+    });
+
+    const { result } = renderHook(() => usePriceRefresh());
+    await act(async () => {
+      await result.current.triggerManualRefresh();
+    });
+    expect(investmentsApi.refreshSelectedPrices).toHaveBeenCalledWith(['s-1']);
+  });
+
+  it('includes QIF-imported securities once the user assigns a provider override', async () => {
+    // QIF/OFX import flags new securities with skipPriceUpdates=true. After
+    // the user picks an MSN provider override or supplies an Instrument ID,
+    // refresh must include them despite the flag.
+    vi.mocked(investmentsApi.getSecurities).mockResolvedValue([
+      sec('s-msn-override', {
+        skipPriceUpdates: true,
+        quoteProvider: 'msn',
+      }),
+      sec('s-msn-id', {
+        skipPriceUpdates: true,
+        msnInstrumentId: 'F18068004373',
+      }),
+      sec('s-skip-no-provider', { skipPriceUpdates: true }),
+    ] as any);
+    vi.mocked(investmentsApi.refreshSelectedPrices).mockResolvedValue({
+      updated: 2, failed: 0, totalSecurities: 2, skipped: 0, results: [], lastUpdated: '',
+    });
+
+    const { result } = renderHook(() => usePriceRefresh());
+    await act(async () => {
+      await result.current.triggerManualRefresh();
+    });
+    expect(investmentsApi.refreshSelectedPrices).toHaveBeenCalledWith([
+      's-msn-override',
+      's-msn-id',
+    ]);
+  });
+
   it('shows error toast on failure', async () => {
-    vi.mocked(investmentsApi.getPortfolioSummary).mockRejectedValue(new Error('fail'));
+    vi.mocked(investmentsApi.getSecurities).mockRejectedValue(new Error('fail'));
 
     const { result } = renderHook(() => usePriceRefresh());
     await act(async () => {
@@ -91,9 +171,7 @@ describe('usePriceRefresh', () => {
   });
 
   it('shows toast when no securities', async () => {
-    vi.mocked(investmentsApi.getPortfolioSummary).mockResolvedValue({
-      holdings: [],
-    } as any);
+    vi.mocked(investmentsApi.getSecurities).mockResolvedValue([] as any);
 
     const { result } = renderHook(() => usePriceRefresh());
     await act(async () => {
@@ -103,9 +181,7 @@ describe('usePriceRefresh', () => {
   });
 
   it('shows error toast when some prices fail', async () => {
-    vi.mocked(investmentsApi.getPortfolioSummary).mockResolvedValue({
-      holdings: [{ securityId: 's-1', quantity: 10 }],
-    } as any);
+    vi.mocked(investmentsApi.getSecurities).mockResolvedValue([sec('s-1')] as any);
     vi.mocked(investmentsApi.refreshSelectedPrices).mockResolvedValue({
       updated: 1, failed: 1, totalSecurities: 2, skipped: 0, results: [], lastUpdated: '',
     });
@@ -117,29 +193,9 @@ describe('usePriceRefresh', () => {
     expect(toast.error).toHaveBeenCalled();
   });
 
-  it('deduplicates security IDs', async () => {
-    vi.mocked(investmentsApi.getPortfolioSummary).mockResolvedValue({
-      holdings: [
-        { securityId: 's-1', quantity: 10 },
-        { securityId: 's-1', quantity: 5 },
-      ],
-    } as any);
-    vi.mocked(investmentsApi.refreshSelectedPrices).mockResolvedValue({
-      updated: 1, failed: 0, totalSecurities: 1, skipped: 0, results: [], lastUpdated: '',
-    });
-
-    const { result } = renderHook(() => usePriceRefresh());
-    await act(async () => {
-      await result.current.triggerManualRefresh();
-    });
-    expect(investmentsApi.refreshSelectedPrices).toHaveBeenCalledWith(['s-1']);
-  });
-
   it('calls onRefreshComplete callback with lastUpdated from the refresh result', async () => {
     const onRefreshComplete = vi.fn();
-    vi.mocked(investmentsApi.getPortfolioSummary).mockResolvedValue({
-      holdings: [{ securityId: 's-1', quantity: 10 }],
-    } as any);
+    vi.mocked(investmentsApi.getSecurities).mockResolvedValue([sec('s-1')] as any);
     vi.mocked(investmentsApi.refreshSelectedPrices).mockResolvedValue({
       updated: 1,
       failed: 0,

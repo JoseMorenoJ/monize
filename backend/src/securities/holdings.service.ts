@@ -417,11 +417,17 @@ export class HoldingsService {
    * caller should pass the accounts touched by the edit so pre-existing
    * inconsistencies in unrelated accounts (for example, from historical
    * imports) don't get blamed on this change.
+   *
+   * When `securityIds` is provided, only those securities are validated
+   * within the in-scope accounts. Same rationale: editing a 2026 trade in
+   * security A should never surface a 2009 oversell of security B that
+   * existed before this edit.
    */
   async validateNoNegativeHoldingsHistory(
     userId: string,
     queryRunner?: QueryRunner,
     accountIds?: string[],
+    securityIds?: string[],
   ): Promise<void> {
     const accountsRepo = queryRunner
       ? queryRunner.manager.getRepository(Account)
@@ -454,11 +460,15 @@ export class HoldingsService {
       return;
     }
 
+    const where: Record<string, unknown> = {
+      userId,
+      accountId: In(eligibleAccountIds),
+    };
+    if (securityIds && securityIds.length > 0) {
+      where.securityId = In(securityIds);
+    }
     const transactions = await txRepo.find({
-      where: {
-        userId,
-        accountId: In(eligibleAccountIds),
-      },
+      where,
       relations: ["security"],
       order: {
         transactionDate: "ASC",
@@ -467,9 +477,13 @@ export class HoldingsService {
     });
 
     const balances = new Map<string, number>();
+    const securityFilter = securityIds && securityIds.length > 0
+      ? new Set(securityIds)
+      : null;
 
     for (const tx of transactions) {
       if (!tx.securityId) continue;
+      if (securityFilter && !securityFilter.has(tx.securityId)) continue;
 
       const key = `${tx.accountId}:${tx.securityId}`;
       const current = balances.get(key) || 0;

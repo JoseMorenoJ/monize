@@ -11,6 +11,8 @@ export type InvestmentAction =
   | 'ADD_SHARES'
   | 'REMOVE_SHARES';
 
+export type QuoteProviderName = 'yahoo' | 'msn';
+
 export interface Security {
   id: string;
   symbol: string;
@@ -23,6 +25,10 @@ export interface Security {
   sector: string | null;
   industry: string | null;
   sectorWeightings: { sector: string; weight: number }[] | null;
+  quoteProvider: QuoteProviderName | null;
+  msnInstrumentId: string | null;
+  /** Source of the most recent price row for this security (e.g. "yahoo_finance", "msn_finance", "manual"), or null if no prices exist. */
+  lastPriceSource?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -196,6 +202,8 @@ export interface CreateSecurityData {
   securityType?: string;
   exchange?: string;
   currencyCode: string;
+  quoteProvider?: QuoteProviderName;
+  msnInstrumentId?: string;
 }
 
 export interface InvestmentTransactionPaginationInfo {

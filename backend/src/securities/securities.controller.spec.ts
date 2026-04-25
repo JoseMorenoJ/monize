@@ -2,6 +2,7 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { SecuritiesController } from "./securities.controller";
 import { SecuritiesService } from "./securities.service";
 import { SecurityPriceService } from "./security-price.service";
+import { MsnFinanceService } from "./msn-finance.service";
 import { NetWorthService } from "../net-worth/net-worth.service";
 import { SectorWeightingService } from "./sector-weighting.service";
 
@@ -9,6 +10,7 @@ describe("SecuritiesController", () => {
   let controller: SecuritiesController;
   let securitiesService: Record<string, jest.Mock>;
   let securityPriceService: Record<string, jest.Mock>;
+  let msnFinanceService: Record<string, jest.Mock>;
   let netWorthService: Record<string, jest.Mock>;
   let sectorWeightingService: Record<string, jest.Mock>;
 
@@ -63,6 +65,10 @@ describe("SecuritiesController", () => {
       ensureSectorDataByIds: jest.fn().mockResolvedValue(undefined),
     };
 
+    msnFinanceService = {
+      isApiKeyConfigured: jest.fn().mockReturnValue(true),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       controllers: [SecuritiesController],
       providers: [
@@ -70,6 +76,7 @@ describe("SecuritiesController", () => {
         { provide: SecurityPriceService, useValue: securityPriceService },
         { provide: NetWorthService, useValue: netWorthService },
         { provide: SectorWeightingService, useValue: sectorWeightingService },
+        { provide: MsnFinanceService, useValue: msnFinanceService },
       ],
     }).compile();
 
@@ -78,6 +85,24 @@ describe("SecuritiesController", () => {
 
   it("should be defined", () => {
     expect(controller).toBeDefined();
+  });
+
+  describe("providerStatus", () => {
+    it("reports msn ready when MSN api key is configured", () => {
+      msnFinanceService.isApiKeyConfigured.mockReturnValue(true);
+      expect(controller.providerStatus()).toEqual({
+        yahoo: { ready: true },
+        msn: { ready: true },
+      });
+    });
+
+    it("reports msn not ready when MSN api key is missing", () => {
+      msnFinanceService.isApiKeyConfigured.mockReturnValue(false);
+      expect(controller.providerStatus()).toEqual({
+        yahoo: { ready: true },
+        msn: { ready: false },
+      });
+    });
   });
 
   describe("create", () => {
@@ -132,6 +157,8 @@ describe("SecuritiesController", () => {
   });
 
   describe("lookup", () => {
+    const mockReq = { user: { id: "user-1" } };
+
     it("delegates to securityPriceService.lookupSecurity", async () => {
       const lookupResult = {
         symbol: "AAPL",
@@ -142,10 +169,12 @@ describe("SecuritiesController", () => {
       };
       securityPriceService.lookupSecurity.mockResolvedValue(lookupResult);
 
-      const result = await controller.lookup("AAPL");
+      const result = await controller.lookup(mockReq, "AAPL");
 
       expect(securityPriceService.lookupSecurity).toHaveBeenCalledWith(
+        "user-1",
         "AAPL",
+        undefined,
         undefined,
       );
       expect(result).toEqual(lookupResult);
@@ -154,7 +183,7 @@ describe("SecuritiesController", () => {
     it("returns null when lookup finds nothing", async () => {
       securityPriceService.lookupSecurity.mockResolvedValue(null);
 
-      const result = await controller.lookup("INVALID");
+      const result = await controller.lookup(mockReq, "INVALID");
 
       expect(result).toBeNull();
     });
@@ -162,43 +191,77 @@ describe("SecuritiesController", () => {
     it("passes preferred exchanges from comma-separated query param", async () => {
       securityPriceService.lookupSecurity.mockResolvedValue(null);
 
-      await controller.lookup("VOD", "LSE,ASX");
+      await controller.lookup(mockReq, "VOD", "LSE,ASX");
 
-      expect(securityPriceService.lookupSecurity).toHaveBeenCalledWith("VOD", [
-        "LSE",
-        "ASX",
-      ]);
+      expect(securityPriceService.lookupSecurity).toHaveBeenCalledWith(
+        "user-1",
+        "VOD",
+        ["LSE", "ASX"],
+        undefined,
+      );
     });
 
     it("limits preferred exchanges to 3", async () => {
       securityPriceService.lookupSecurity.mockResolvedValue(null);
 
-      await controller.lookup("VOD", "LSE,ASX,TSX,NYSE");
+      await controller.lookup(mockReq, "VOD", "LSE,ASX,TSX,NYSE");
 
-      expect(securityPriceService.lookupSecurity).toHaveBeenCalledWith("VOD", [
-        "LSE",
-        "ASX",
-        "TSX",
-      ]);
+      expect(securityPriceService.lookupSecurity).toHaveBeenCalledWith(
+        "user-1",
+        "VOD",
+        ["LSE", "ASX", "TSX"],
+        undefined,
+      );
     });
 
     it("handles single exchange in query param", async () => {
       securityPriceService.lookupSecurity.mockResolvedValue(null);
 
-      await controller.lookup("VOD", "LSE");
+      await controller.lookup(mockReq, "VOD", "LSE");
 
-      expect(securityPriceService.lookupSecurity).toHaveBeenCalledWith("VOD", [
-        "LSE",
-      ]);
+      expect(securityPriceService.lookupSecurity).toHaveBeenCalledWith(
+        "user-1",
+        "VOD",
+        ["LSE"],
+        undefined,
+      );
     });
 
     it("handles empty exchanges param", async () => {
       securityPriceService.lookupSecurity.mockResolvedValue(null);
 
-      await controller.lookup("AAPL", "");
+      await controller.lookup(mockReq, "AAPL", "");
 
       expect(securityPriceService.lookupSecurity).toHaveBeenCalledWith(
+        "user-1",
         "AAPL",
+        undefined,
+        undefined,
+      );
+    });
+
+    it("forwards explicit provider choice", async () => {
+      securityPriceService.lookupSecurity.mockResolvedValue(null);
+
+      await controller.lookup(mockReq, "VOD", "LSE", "msn");
+
+      expect(securityPriceService.lookupSecurity).toHaveBeenCalledWith(
+        "user-1",
+        "VOD",
+        ["LSE"],
+        "msn",
+      );
+    });
+
+    it("ignores invalid provider choice", async () => {
+      securityPriceService.lookupSecurity.mockResolvedValue(null);
+
+      await controller.lookup(mockReq, "VOD", undefined, "bogus");
+
+      expect(securityPriceService.lookupSecurity).toHaveBeenCalledWith(
+        "user-1",
+        "VOD",
+        undefined,
         undefined,
       );
     });

@@ -1749,7 +1749,14 @@ describe("InvestmentTransactionsService", () => {
 
       expect(
         holdingsService.validateNoNegativeHoldingsHistory,
-      ).toHaveBeenCalledWith(userId, expect.anything(), [accountId]);
+      ).toHaveBeenCalledWith(
+        userId,
+        expect.anything(),
+        [accountId],
+        // Validation is now also scoped to the deleted transaction's
+        // security so unrelated pre-existing oversells don't get blamed.
+        expect.arrayContaining([expect.any(String)]),
+      );
       expect(mockQueryRunner.commitTransaction).toHaveBeenCalled();
       expect(mockQueryRunner.rollbackTransaction).not.toHaveBeenCalled();
     });

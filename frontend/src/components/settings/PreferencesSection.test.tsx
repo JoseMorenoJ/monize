@@ -26,11 +26,21 @@ vi.mock('@/lib/exchange-rates', () => ({
   CurrencyInfo: {},
 }));
 
+vi.mock('@/lib/investments', () => ({
+  investmentsApi: {
+    getProviderStatus: vi.fn().mockResolvedValue({
+      yahoo: { ready: true },
+      msn: { ready: true },
+    }),
+  },
+}));
+
 vi.mock('@/lib/errors', () => ({
   getErrorMessage: vi.fn((_error: unknown, fallback: string) => fallback),
 }));
 
 import { userSettingsApi } from '@/lib/user-settings';
+import { investmentsApi } from '@/lib/investments';
 import toast from 'react-hot-toast';
 
 const mockPreferences: UserPreferences = {
@@ -51,6 +61,7 @@ const mockPreferences: UserPreferences = {
   timeFormat: '24h',
   favouriteReportIds: [],
   preferredExchanges: [],
+    defaultQuoteProvider: 'yahoo' as const,
   createdAt: '2024-01-01T00:00:00Z',
   updatedAt: '2024-01-01T00:00:00Z',
 };
@@ -321,6 +332,117 @@ describe('PreferencesSection', () => {
       expect(userSettingsApi.updatePreferences).toHaveBeenCalledWith(
         expect.objectContaining({ preferredExchanges: [] })
       );
+    });
+  });
+
+  describe('MSN provider configuration warning', () => {
+    it('does not show the warning when default provider is yahoo, even if MSN is unconfigured', async () => {
+      (investmentsApi.getProviderStatus as ReturnType<typeof vi.fn>).mockResolvedValue({
+        yahoo: { ready: true },
+        msn: { ready: false },
+      });
+
+      render(
+        <PreferencesSection
+          preferences={mockPreferences}
+          onPreferencesUpdated={mockOnPreferencesUpdated}
+        />,
+      );
+
+      // Wait for the status fetch to settle
+      await waitFor(() => {
+        expect(investmentsApi.getProviderStatus).toHaveBeenCalled();
+      });
+
+      expect(screen.queryByTestId('msn-not-configured-error')).not.toBeInTheDocument();
+    });
+
+    it('does not show the warning when default provider is MSN and the key is configured', async () => {
+      (investmentsApi.getProviderStatus as ReturnType<typeof vi.fn>).mockResolvedValue({
+        yahoo: { ready: true },
+        msn: { ready: true },
+      });
+      const msnPrefs = { ...mockPreferences, defaultQuoteProvider: 'msn' as const };
+
+      render(
+        <PreferencesSection
+          preferences={msnPrefs}
+          onPreferencesUpdated={mockOnPreferencesUpdated}
+        />,
+      );
+
+      await waitFor(() => {
+        expect(investmentsApi.getProviderStatus).toHaveBeenCalled();
+      });
+
+      expect(screen.queryByTestId('msn-not-configured-error')).not.toBeInTheDocument();
+    });
+
+    it('shows the warning when default provider is MSN and the key is missing', async () => {
+      (investmentsApi.getProviderStatus as ReturnType<typeof vi.fn>).mockResolvedValue({
+        yahoo: { ready: true },
+        msn: { ready: false },
+      });
+      const msnPrefs = { ...mockPreferences, defaultQuoteProvider: 'msn' as const };
+
+      render(
+        <PreferencesSection
+          preferences={msnPrefs}
+          onPreferencesUpdated={mockOnPreferencesUpdated}
+        />,
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('msn-not-configured-error')).toBeInTheDocument();
+      });
+      expect(screen.getByRole('alert')).toHaveTextContent(/MSN_API_KEY/);
+    });
+
+    it('shows the warning after the user switches the default provider to MSN', async () => {
+      (investmentsApi.getProviderStatus as ReturnType<typeof vi.fn>).mockResolvedValue({
+        yahoo: { ready: true },
+        msn: { ready: false },
+      });
+
+      render(
+        <PreferencesSection
+          preferences={mockPreferences}
+          onPreferencesUpdated={mockOnPreferencesUpdated}
+        />,
+      );
+
+      await waitFor(() => {
+        expect(investmentsApi.getProviderStatus).toHaveBeenCalled();
+      });
+      expect(screen.queryByTestId('msn-not-configured-error')).not.toBeInTheDocument();
+
+      fireEvent.change(screen.getByLabelText('Default Stock Quote Provider'), {
+        target: { value: 'msn' },
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('msn-not-configured-error')).toBeInTheDocument();
+      });
+    });
+
+    it('does not show the warning when the status fetch fails', async () => {
+      (investmentsApi.getProviderStatus as ReturnType<typeof vi.fn>).mockRejectedValue(
+        new Error('network'),
+      );
+      const msnPrefs = { ...mockPreferences, defaultQuoteProvider: 'msn' as const };
+
+      render(
+        <PreferencesSection
+          preferences={msnPrefs}
+          onPreferencesUpdated={mockOnPreferencesUpdated}
+        />,
+      );
+
+      await waitFor(() => {
+        expect(investmentsApi.getProviderStatus).toHaveBeenCalled();
+      });
+
+      expect(screen.queryByTestId('msn-not-configured-error')).not.toBeInTheDocument();
     });
   });
 });

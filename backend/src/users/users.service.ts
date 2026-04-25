@@ -191,6 +191,9 @@ export class UsersService {
     if (dto.preferredExchanges !== undefined) {
       preferences.preferredExchanges = dto.preferredExchanges;
     }
+    if (dto.defaultQuoteProvider !== undefined) {
+      preferences.defaultQuoteProvider = dto.defaultQuoteProvider;
+    }
 
     return this.preferencesRepository.save(preferences);
   }

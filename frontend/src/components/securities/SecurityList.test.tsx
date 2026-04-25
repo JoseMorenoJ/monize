@@ -294,15 +294,17 @@ describe('SecurityList', () => {
     const securities = [makeSecurity({ securityType: null })];
 
     render(<SecurityList securities={securities} onEdit={onEdit} onToggleActive={onToggleActive} />);
-    expect(screen.getByText('-')).toBeInTheDocument();
+    // Type column shows "-" when null; the Provider column also renders "-",
+    // so multiple dashes may be present.
+    expect(screen.getAllByText('-').length).toBeGreaterThanOrEqual(1);
   });
 
   it('shows dash for security without exchange', () => {
     const securities = [makeSecurity({ exchange: null })];
 
     render(<SecurityList securities={securities} onEdit={onEdit} onToggleActive={onToggleActive} density="normal" />);
-    // Exchange column shows "-" when null
-    expect(screen.getByText('-')).toBeInTheDocument();
+    // Exchange column shows "-" when null (provider column may also be "-").
+    expect(screen.getAllByText('-').length).toBeGreaterThanOrEqual(1);
   });
 
   it('renders all table headers in normal density', () => {
@@ -314,8 +316,32 @@ describe('SecurityList', () => {
     expect(screen.getByText('Type')).toBeInTheDocument();
     expect(screen.getByText('Exchange')).toBeInTheDocument();
     expect(screen.getByText('Currency')).toBeInTheDocument();
+    expect(screen.getByText('Provider')).toBeInTheDocument();
     expect(screen.getByText('Status')).toBeInTheDocument();
     expect(screen.getByText('Actions')).toBeInTheDocument();
+  });
+
+  it('renders MSN badge in the Provider column when security has an MSN override', () => {
+    const securities = [makeSecurity({ quoteProvider: 'msn' })];
+    render(<SecurityList securities={securities} onEdit={onEdit} onToggleActive={onToggleActive} density="normal" />);
+    expect(screen.getByText('MSN')).toBeInTheDocument();
+  });
+
+  it('renders Yahoo badge in the Provider column when security has a Yahoo override', () => {
+    const securities = [makeSecurity({ quoteProvider: 'yahoo' })];
+    render(<SecurityList securities={securities} onEdit={onEdit} onToggleActive={onToggleActive} density="normal" />);
+    expect(screen.getByText('Yahoo')).toBeInTheDocument();
+  });
+
+  it('shows the default provider (inherited) when security has no override', () => {
+    const securities = [makeSecurity({ quoteProvider: null })];
+    render(<SecurityList securities={securities} onEdit={onEdit} onToggleActive={onToggleActive} density="normal" />);
+    // Default in tests is "yahoo" (preferences store mock returns undefined → '?? yahoo').
+    const yahooBadge = screen.getByText('Yahoo');
+    expect(yahooBadge).toBeInTheDocument();
+    // Italic class indicates the value is inherited from the default rather than an override.
+    expect(yahooBadge.className).toContain('italic');
+    expect(yahooBadge.title).toMatch(/default/i);
   });
 
   it('hides exchange and currency headers in compact density', () => {

@@ -1,16 +1,26 @@
 import { Injectable, Logger } from "@nestjs/common";
 import * as https from "https";
 import { isGbxCurrency, convertGbxToGbp } from "../common/gbx-currency.util";
+import {
+  QuoteProvider,
+  QuoteProviderName,
+  QuoteProviderOptions,
+  QuoteResult,
+  SecurityLookupResult,
+  HistoricalPrice,
+  StockSectorInfo,
+  EtfSectorWeighting,
+} from "./providers/quote-provider.interface";
+import { getTradingDateFromQuote } from "./providers/trading-date.util";
 
-export interface YahooQuoteResult {
-  symbol: string;
-  regularMarketPrice?: number;
-  regularMarketOpen?: number;
-  regularMarketDayHigh?: number;
-  regularMarketDayLow?: number;
-  regularMarketVolume?: number;
-  regularMarketTime?: number;
-}
+// Back-compat re-exports so existing imports keep compiling during the migration.
+export type YahooQuoteResult = QuoteResult;
+export type {
+  SecurityLookupResult,
+  HistoricalPrice,
+  StockSectorInfo,
+  EtfSectorWeighting,
+} from "./providers/quote-provider.interface";
 
 interface YahooSearchResult {
   symbol: string;
@@ -20,34 +30,6 @@ interface YahooSearchResult {
   typeDisp?: string;
 }
 
-export interface SecurityLookupResult {
-  symbol: string;
-  name: string;
-  exchange: string | null;
-  securityType: string | null;
-  currencyCode: string | null;
-}
-
-export interface HistoricalPrice {
-  date: Date;
-  open: number | null;
-  high: number | null;
-  low: number | null;
-  close: number;
-  volume: number | null;
-}
-
-export interface StockSectorInfo {
-  sector: string | null;
-  industry: string | null;
-}
-
-export interface EtfSectorWeighting {
-  sector: string;
-  weight: number;
-}
-
-/** Normalize Yahoo's ETF sector keys to display names */
 const YAHOO_SECTOR_NAMES: Record<string, string> = {
   realestate: "Real Estate",
   consumer_cyclical: "Consumer Cyclical",
@@ -63,7 +45,9 @@ const YAHOO_SECTOR_NAMES: Record<string, string> = {
 };
 
 @Injectable()
-export class YahooFinanceService {
+export class YahooFinanceService implements QuoteProvider {
+  readonly name: QuoteProviderName = "yahoo";
+
   private readonly logger = new Logger(YahooFinanceService.name);
 
   private static readonly FETCH_TIMEOUT_MS = 10000;
@@ -76,11 +60,6 @@ export class YahooFinanceService {
   private crumbExpiresAt = 0;
   private crumbPromise: Promise<boolean> | null = null;
 
-  /**
-   * Obtain a fresh Yahoo Finance crumb+cookie pair.
-   * Visits finance.yahoo.com for cookies, then fetches the crumb endpoint.
-   * Caches for 1 hour; concurrent calls share one in-flight request.
-   */
   private async ensureCrumb(forceRefresh = false): Promise<boolean> {
     if (
       !forceRefresh &&
@@ -91,7 +70,6 @@ export class YahooFinanceService {
       return true;
     }
 
-    // Deduplicate concurrent calls
     if (this.crumbPromise) return this.crumbPromise;
 
     this.crumbPromise = this.fetchCrumb();
@@ -104,9 +82,6 @@ export class YahooFinanceService {
 
   private async fetchCrumb(): Promise<boolean> {
     try {
-      // Step 1: Visit finance.yahoo.com to get cookies
-      // Use https module instead of fetch because Yahoo's response headers
-      // exceed Node.js undici's default maxHeaderSize (16KB)
       const cookieStr = await new Promise<string>((resolve, reject) => {
         const timer = setTimeout(
           () => reject(new Error("Cookie request timeout")),
@@ -124,7 +99,7 @@ export class YahooFinanceService {
             },
             (res) => {
               clearTimeout(timer);
-              res.resume(); // drain the response body
+              res.resume();
               const setCookies = res.headers["set-cookie"] ?? [];
               resolve(
                 setCookies
@@ -145,7 +120,6 @@ export class YahooFinanceService {
         return false;
       }
 
-      // Step 2: Fetch crumb using cookies
       const crumbResp = await fetch(
         "https://query2.finance.yahoo.com/v1/test/getcrumb",
         {
@@ -172,7 +146,7 @@ export class YahooFinanceService {
 
       this.crumb = crumbText;
       this.cookie = cookieStr;
-      this.crumbExpiresAt = Date.now() + 60 * 60 * 1000; // 1 hour
+      this.crumbExpiresAt = Date.now() + 60 * 60 * 1000;
       return true;
     } catch (error) {
       this.logger.error(
@@ -183,10 +157,6 @@ export class YahooFinanceService {
     }
   }
 
-  /**
-   * Make an authenticated v10 API request with crumb+cookie.
-   * Retries once with a fresh crumb on 401.
-   */
   private async fetchV10(url: string): Promise<Response | null> {
     for (let attempt = 0; attempt < 2; attempt++) {
       const ok = await this.ensureCrumb(attempt > 0);
@@ -211,7 +181,7 @@ export class YahooFinanceService {
 
       if (response.status === 401 && attempt === 0) {
         this.logger.warn("Yahoo Finance v10: got 401, refreshing crumb");
-        await response.text().catch(() => {}); // drain body before retry
+        await response.text().catch(() => {});
         continue;
       }
 
@@ -220,9 +190,29 @@ export class YahooFinanceService {
     return null;
   }
 
-  async fetchQuote(symbol: string): Promise<YahooQuoteResult | null> {
+  async fetchQuote(
+    symbol: string,
+    exchange: string | null = null,
+    _opts?: QuoteProviderOptions,
+  ): Promise<QuoteResult | null> {
+    const primary = this.getYahooSymbol(symbol, exchange);
+    const quote = await this.fetchQuoteRaw(primary);
+    if (quote) return quote;
+
+    if (primary === symbol) {
+      for (const altSymbol of this.getAlternateSymbols(symbol)) {
+        const alt = await this.fetchQuoteRaw(altSymbol);
+        if (alt) return alt;
+      }
+    }
+    return null;
+  }
+
+  private async fetchQuoteRaw(
+    yahooSymbol: string,
+  ): Promise<QuoteResult | null> {
     try {
-      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=1d`;
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?interval=1d&range=1d`;
 
       const response = await fetch(url, {
         headers: {
@@ -234,7 +224,7 @@ export class YahooFinanceService {
 
       if (!response.ok) {
         this.logger.warn(
-          `Yahoo Finance API returned ${response.status} for ${symbol}`,
+          `Yahoo Finance API returned ${response.status} for ${yahooSymbol}`,
         );
         return null;
       }
@@ -255,51 +245,58 @@ export class YahooFinanceService {
           regularMarketDayLow: convert(meta.regularMarketDayLow),
           regularMarketVolume: meta.regularMarketVolume,
           regularMarketTime: meta.regularMarketTime,
+          provider: "yahoo",
         };
       }
 
       return null;
     } catch (error) {
       this.logger.error(
-        `Failed to fetch Yahoo Finance quote for ${symbol}`,
+        `Failed to fetch Yahoo Finance quote for ${yahooSymbol}`,
         error instanceof Error ? error.stack : undefined,
       );
       return null;
     }
   }
 
-  /**
-   * Fetch quote data from Yahoo Finance for multiple symbols
-   */
-  async fetchQuotes(symbols: string[]): Promise<Map<string, YahooQuoteResult>> {
-    const results = new Map<string, YahooQuoteResult>();
-
-    if (symbols.length === 0) {
-      return results;
-    }
-
+  /** Convenience batch method. Fetches each symbol in parallel (exchange assumed already baked into symbol). */
+  async fetchQuotes(symbols: string[]): Promise<Map<string, QuoteResult>> {
+    const results = new Map<string, QuoteResult>();
+    if (symbols.length === 0) return results;
     await Promise.all(
       symbols.map(async (symbol) => {
-        const quote = await this.fetchQuote(symbol);
-        if (quote) {
-          results.set(symbol, quote);
-        }
+        const quote = await this.fetchQuoteRaw(symbol);
+        if (quote) results.set(symbol, quote);
       }),
     );
-
     return results;
   }
 
-  /**
-   * Fetch historical daily prices from Yahoo Finance for a single symbol.
-   * @param range - Yahoo Finance range string (e.g. "1y", "5y", "max"). Defaults to "max".
-   */
   async fetchHistorical(
     symbol: string,
+    exchange: string | null = null,
     range: string = "max",
+    _opts?: QuoteProviderOptions,
+  ): Promise<HistoricalPrice[] | null> {
+    const primary = this.getYahooSymbol(symbol, exchange);
+    const prices = await this.fetchHistoricalRaw(primary, range);
+    if (prices) return prices;
+
+    if (primary === symbol) {
+      for (const altSymbol of this.getAlternateSymbols(symbol)) {
+        const alt = await this.fetchHistoricalRaw(altSymbol, range);
+        if (alt) return alt;
+      }
+    }
+    return null;
+  }
+
+  private async fetchHistoricalRaw(
+    yahooSymbol: string,
+    range: string,
   ): Promise<HistoricalPrice[] | null> {
     try {
-      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=${encodeURIComponent(range)}`;
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?interval=1d&range=${encodeURIComponent(range)}`;
 
       const response = await fetch(url, {
         headers: {
@@ -311,7 +308,7 @@ export class YahooFinanceService {
 
       if (!response.ok) {
         this.logger.warn(
-          `Yahoo Finance API returned ${response.status} for historical ${symbol}`,
+          `Yahoo Finance API returned ${response.status} for historical ${yahooSymbol}`,
         );
         return null;
       }
@@ -352,24 +349,27 @@ export class YahooFinanceService {
       return prices;
     } catch (error) {
       this.logger.error(
-        `Failed to fetch historical prices for ${symbol}`,
+        `Failed to fetch historical prices for ${yahooSymbol}`,
         error instanceof Error ? error.stack : undefined,
       );
       return null;
     }
   }
 
-  /**
-   * Lookup security information from Yahoo Finance
-   * @param query Symbol or name to search for
-   * @param preferredExchanges Exchanges to prioritize, in order (e.g., ["LSE", "TSX"])
-   */
   async lookupSecurity(
     query: string,
     preferredExchanges?: string[],
   ): Promise<SecurityLookupResult | null> {
+    const all = await this.lookupSecurityMany(query, preferredExchanges);
+    return all[0] || null;
+  }
+
+  async lookupSecurityMany(
+    query: string,
+    preferredExchanges?: string[],
+  ): Promise<SecurityLookupResult[]> {
     try {
-      const url = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=10&newsCount=0`;
+      const url = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=50&newsCount=0`;
 
       const response = await fetch(url, {
         headers: {
@@ -383,17 +383,16 @@ export class YahooFinanceService {
         this.logger.warn(
           `Yahoo Finance search API returned ${response.status} for query: ${query}`,
         );
-        return null;
+        return [];
       }
 
       const data = await response.json();
       const quotes: YahooSearchResult[] = data.quotes || [];
 
       if (quotes.length === 0) {
-        return null;
+        return [];
       }
 
-      // Sort by exchange priority, boosting preferred exchanges if specified
       const sortedQuotes = [...quotes].sort((a, b) => {
         const priorityA = this.getExchangePriority(
           a.symbol,
@@ -408,46 +407,41 @@ export class YahooFinanceService {
         return priorityA - priorityB;
       });
 
-      // Find the best match - prefer exact symbol match within prioritized results
+      // Float the exact-ticker match (if any) to the front, keep the rest in
+      // preferred-exchange order.
       const upperQuery = query.toUpperCase().trim();
-      let bestMatch = sortedQuotes.find(
+      const exactIdx = sortedQuotes.findIndex(
         (q) => this.extractBaseSymbol(q.symbol).toUpperCase() === upperQuery,
       );
-
-      if (!bestMatch) {
-        bestMatch = sortedQuotes[0];
+      if (exactIdx > 0) {
+        const [exact] = sortedQuotes.splice(exactIdx, 1);
+        sortedQuotes.unshift(exact);
       }
 
-      const baseSymbol = this.extractBaseSymbol(bestMatch.symbol);
-      const exchange =
-        this.extractExchangeFromSymbol(bestMatch.symbol) ||
-        bestMatch.exchDisp ||
-        null;
-      const securityType = this.mapYahooTypeToSecurityType(bestMatch.typeDisp);
-      const currencyCode = this.getCurrencyFromExchange(
-        exchange,
-        bestMatch.symbol,
-      );
-
-      return {
-        symbol: baseSymbol,
-        name: bestMatch.longname || bestMatch.shortname || baseSymbol,
-        exchange,
-        securityType,
-        currencyCode,
-      };
+      return sortedQuotes.map((q) => {
+        const baseSymbol = this.extractBaseSymbol(q.symbol);
+        const exchange =
+          this.extractExchangeFromSymbol(q.symbol) || q.exchDisp || null;
+        const securityType = this.mapYahooTypeToSecurityType(q.typeDisp);
+        const currencyCode = this.getCurrencyFromExchange(exchange, q.symbol);
+        return {
+          symbol: baseSymbol,
+          name: q.longname || q.shortname || baseSymbol,
+          exchange,
+          securityType,
+          currencyCode,
+          provider: "yahoo" as const,
+        };
+      });
     } catch (error) {
       this.logger.error(
         "Failed to lookup security",
         error instanceof Error ? error.stack : undefined,
       );
-      return null;
+      return [];
     }
   }
 
-  /**
-   * Get the Yahoo Finance symbol based on exchange
-   */
   getYahooSymbol(symbol: string, exchange: string | null): string {
     if (symbol.includes(".")) {
       return symbol;
@@ -490,9 +484,6 @@ export class YahooFinanceService {
     return symbol;
   }
 
-  /**
-   * Get alternate Yahoo Finance symbols for Canadian/international markets (fallback)
-   */
   getAlternateSymbols(symbol: string): string[] {
     const alternates: string[] = [];
 
@@ -505,28 +496,14 @@ export class YahooFinanceService {
     return alternates;
   }
 
-  /**
-   * Get the trading date for a Yahoo quote.
-   */
-  getTradingDate(quote: YahooQuoteResult): Date {
-    if (quote.regularMarketTime) {
-      const marketDate = new Date(quote.regularMarketTime * 1000);
-      // M17: Use UTC consistently to avoid timezone-dependent date drift
-      marketDate.setUTCHours(0, 0, 0, 0);
-      return marketDate;
-    }
-
-    const date = new Date();
-    date.setUTCHours(0, 0, 0, 0);
-    const day = date.getUTCDay();
-    if (day === 0) date.setUTCDate(date.getUTCDate() - 2);
-    else if (day === 6) date.setUTCDate(date.getUTCDate() - 1);
-    return date;
+  getTradingDate(quote: QuoteResult): Date {
+    return getTradingDateFromQuote(quote);
   }
 
-  /**
-   * Extract base symbol without exchange suffix
-   */
+  async resolveInstrumentId(): Promise<string | null> {
+    return null;
+  }
+
   extractBaseSymbol(symbol: string): string {
     const dotIndex = symbol.lastIndexOf(".");
     if (dotIndex > 0) {
@@ -535,9 +512,6 @@ export class YahooFinanceService {
     return symbol;
   }
 
-  /**
-   * Extract exchange from Yahoo symbol suffix
-   */
   extractExchangeFromSymbol(symbol: string): string | null {
     const dotIndex = symbol.lastIndexOf(".");
     if (dotIndex <= 0) {
@@ -562,12 +536,6 @@ export class YahooFinanceService {
     return suffixToExchange[suffix] || null;
   }
 
-  /**
-   * Get exchange priority for sorting (lower = higher priority).
-   * When preferredExchanges are provided, matching results get priority -3, -2, -1
-   * (first preferred = -3, second = -2, third = -1) so they sort before the
-   * default CA(1)/US(2)/other(3) tiers.
-   */
   getExchangePriority(
     symbol: string,
     exchDisp?: string,
@@ -578,7 +546,6 @@ export class YahooFinanceService {
       : "";
     const exchange = (exchDisp || "").toUpperCase();
 
-    // Check preferred exchanges in order (first = highest priority)
     if (preferredExchanges && preferredExchanges.length > 0) {
       for (let i = 0; i < preferredExchanges.length; i++) {
         if (this.matchesExchange(suffix, exchange, preferredExchanges[i])) {
@@ -616,10 +583,6 @@ export class YahooFinanceService {
     return 3;
   }
 
-  /**
-   * Check if a Yahoo Finance result matches the user's preferred exchange.
-   * Maps exchange names to Yahoo symbol suffixes and exchDisp values.
-   */
   private matchesExchange(
     suffix: string,
     exchDisp: string,
@@ -627,102 +590,40 @@ export class YahooFinanceService {
   ): boolean {
     const pref = preferredExchange.toUpperCase().trim();
 
-    // Map preferred exchange names to matching criteria
     const exchangeMatchers: Record<
       string,
       { suffixes: string[]; displays: string[] }
     > = {
-      TSX: {
-        suffixes: [".TO"],
-        displays: ["TORONTO", "TSX"],
-      },
-      TSE: {
-        suffixes: [".TO"],
-        displays: ["TORONTO", "TSX"],
-      },
-      TORONTO: {
-        suffixes: [".TO"],
-        displays: ["TORONTO", "TSX"],
-      },
-      "TSX-V": {
-        suffixes: [".V"],
-        displays: ["TSX VENTURE", "TSXV"],
-      },
-      TSXV: {
-        suffixes: [".V"],
-        displays: ["TSX VENTURE", "TSXV"],
-      },
-      CSE: {
-        suffixes: [".CN"],
-        displays: ["CSE", "CANADIAN"],
-      },
-      NEO: {
-        suffixes: [".NE"],
-        displays: ["NEO"],
-      },
-      NYSE: {
-        suffixes: [""],
-        displays: ["NYSE", "NYQ"],
-      },
-      NASDAQ: {
-        suffixes: [""],
-        displays: ["NASDAQ", "NMS", "NGM"],
-      },
-      AMEX: {
-        suffixes: [""],
-        displays: ["AMEX"],
-      },
-      ARCA: {
-        suffixes: [""],
-        displays: ["ARCA", "PCX"],
-      },
-      LSE: {
-        suffixes: [".L"],
-        displays: ["LSE", "LONDON"],
-      },
-      LONDON: {
-        suffixes: [".L"],
-        displays: ["LSE", "LONDON"],
-      },
+      TSX: { suffixes: [".TO"], displays: ["TORONTO", "TSX"] },
+      TSE: { suffixes: [".TO"], displays: ["TORONTO", "TSX"] },
+      TORONTO: { suffixes: [".TO"], displays: ["TORONTO", "TSX"] },
+      "TSX-V": { suffixes: [".V"], displays: ["TSX VENTURE", "TSXV"] },
+      TSXV: { suffixes: [".V"], displays: ["TSX VENTURE", "TSXV"] },
+      CSE: { suffixes: [".CN"], displays: ["CSE", "CANADIAN"] },
+      NEO: { suffixes: [".NE"], displays: ["NEO"] },
+      NYSE: { suffixes: [""], displays: ["NYSE", "NYQ"] },
+      NASDAQ: { suffixes: [""], displays: ["NASDAQ", "NMS", "NGM"] },
+      AMEX: { suffixes: [""], displays: ["AMEX"] },
+      ARCA: { suffixes: [""], displays: ["ARCA", "PCX"] },
+      LSE: { suffixes: [".L"], displays: ["LSE", "LONDON"] },
+      LONDON: { suffixes: [".L"], displays: ["LSE", "LONDON"] },
       ASX: {
         suffixes: [".AX"],
         displays: ["ASX", "SYDNEY", "AUSTRALIAN"],
       },
-      FRANKFURT: {
-        suffixes: [".F"],
-        displays: ["FRANKFURT", "FRA"],
-      },
-      XETRA: {
-        suffixes: [".DE"],
-        displays: ["XETRA", "GER"],
-      },
-      PARIS: {
-        suffixes: [".PA"],
-        displays: ["PARIS", "PAR", "EURONEXT"],
-      },
-      TOKYO: {
-        suffixes: [".T"],
-        displays: ["TOKYO", "JPX", "TSE"],
-      },
-      HKEX: {
-        suffixes: [".HK"],
-        displays: ["HKEX", "HONG KONG"],
-      },
-      "HONG KONG": {
-        suffixes: [".HK"],
-        displays: ["HKEX", "HONG KONG"],
-      },
+      FRANKFURT: { suffixes: [".F"], displays: ["FRANKFURT", "FRA"] },
+      XETRA: { suffixes: [".DE"], displays: ["XETRA", "GER"] },
+      PARIS: { suffixes: [".PA"], displays: ["PARIS", "PAR", "EURONEXT"] },
+      TOKYO: { suffixes: [".T"], displays: ["TOKYO", "JPX", "TSE"] },
+      HKEX: { suffixes: [".HK"], displays: ["HKEX", "HONG KONG"] },
+      "HONG KONG": { suffixes: [".HK"], displays: ["HKEX", "HONG KONG"] },
     };
 
     const matcher = exchangeMatchers[pref];
     if (!matcher) {
-      // Fallback: try matching the exchange display name directly
       return exchDisp.includes(pref);
     }
 
-    // For non-empty suffixes, a suffix match is definitive (e.g., .L = LSE)
-    // For empty suffixes (US exchanges), require exchDisp match too since many
-    // symbols lack suffixes regardless of exchange
     if (matcher.suffixes.some((s) => s !== "" && s === suffix)) {
       return true;
     }
@@ -730,9 +631,6 @@ export class YahooFinanceService {
     return matcher.displays.some((d) => exchDisp.includes(d));
   }
 
-  /**
-   * Map Yahoo type display to our security type
-   */
   private mapYahooTypeToSecurityType(
     typeDisp: string | undefined,
   ): string | null {
@@ -750,9 +648,6 @@ export class YahooFinanceService {
     return typeMap[typeDisp] || null;
   }
 
-  /**
-   * Get currency code from exchange name
-   */
   private getCurrencyFromExchange(
     exchange: string | null,
     symbol: string,
@@ -778,13 +673,14 @@ export class YahooFinanceService {
     return exchangeToCurrency[exchange] || null;
   }
 
-  /**
-   * Fetch stock sector/industry info via Yahoo Finance v10 quoteSummary API
-   */
-  async fetchStockSectorInfo(symbol: string): Promise<StockSectorInfo | null> {
+  async fetchStockSectorInfo(
+    symbol: string,
+    exchange: string | null = null,
+    _opts?: QuoteProviderOptions,
+  ): Promise<StockSectorInfo | null> {
+    const yahooSymbol = this.getYahooSymbol(symbol, exchange);
     try {
-      // Use v1/search API which returns sector/industry without auth
-      const url = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(symbol)}&quotesCount=5&newsCount=0`;
+      const url = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(yahooSymbol)}&quotesCount=5&newsCount=0`;
 
       const response = await fetch(url, {
         headers: {
@@ -795,7 +691,7 @@ export class YahooFinanceService {
 
       if (!response.ok) {
         this.logger.warn(
-          `Yahoo Finance search returned ${response.status} for ${symbol}`,
+          `Yahoo Finance search returned ${response.status} for ${yahooSymbol}`,
         );
         return null;
       }
@@ -803,10 +699,9 @@ export class YahooFinanceService {
       const data = await response.json();
       const quotes = data.quotes || [];
 
-      // Find exact symbol match
       const match = quotes.find(
         (q: Record<string, string>) =>
-          q.symbol?.toUpperCase() === symbol.toUpperCase(),
+          q.symbol?.toUpperCase() === yahooSymbol.toUpperCase(),
       );
 
       if (!match) {
@@ -819,27 +714,27 @@ export class YahooFinanceService {
       };
     } catch (error) {
       this.logger.error(
-        `Failed to fetch sector info for ${symbol}`,
+        `Failed to fetch sector info for ${yahooSymbol}`,
         error instanceof Error ? error.stack : undefined,
       );
       return null;
     }
   }
 
-  /**
-   * Fetch ETF sector weightings via Yahoo Finance v10 quoteSummary API
-   */
   async fetchEtfSectorWeightings(
     symbol: string,
+    exchange: string | null = null,
+    _opts?: QuoteProviderOptions,
   ): Promise<EtfSectorWeighting[] | null> {
+    const yahooSymbol = this.getYahooSymbol(symbol, exchange);
     try {
-      const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=topHoldings`;
+      const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(yahooSymbol)}?modules=topHoldings`;
 
       const response = await this.fetchV10(url);
 
       if (!response || !response.ok) {
         this.logger.warn(
-          `Yahoo Finance topHoldings returned ${response?.status ?? "no response"} for ${symbol}`,
+          `Yahoo Finance topHoldings returned ${response?.status ?? "no response"} for ${yahooSymbol}`,
         );
         return null;
       }
@@ -853,7 +748,6 @@ export class YahooFinanceService {
 
       const weightings: EtfSectorWeighting[] = [];
       for (const entry of topHoldings.sectorWeightings) {
-        // Each entry is like { "realestate": { "raw": 0.0234 } }
         const key = Object.keys(entry)[0];
         if (!key) continue;
         const rawValue = entry[key]?.raw ?? 0;
@@ -867,7 +761,7 @@ export class YahooFinanceService {
       return weightings;
     } catch (error) {
       this.logger.error(
-        `Failed to fetch ETF sector weightings for ${symbol}`,
+        `Failed to fetch ETF sector weightings for ${yahooSymbol}`,
         error instanceof Error ? error.stack : undefined,
       );
       return null;

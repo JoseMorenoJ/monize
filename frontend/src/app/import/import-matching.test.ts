@@ -15,6 +15,8 @@ function makeSecurity(overrides: Partial<Security> = {}): Security {
     sector: null,
     industry: null,
     sectorWeightings: null,
+    quoteProvider: null,
+    msnInstrumentId: null,
     createdAt: '2024-01-01',
     updatedAt: '2024-01-01',
     ...overrides,

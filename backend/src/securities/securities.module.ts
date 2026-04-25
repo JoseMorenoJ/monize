@@ -10,6 +10,8 @@ import { UserPreference } from "../users/entities/user-preference.entity";
 import { SecuritiesService } from "./securities.service";
 import { SecurityPriceService } from "./security-price.service";
 import { YahooFinanceService } from "./yahoo-finance.service";
+import { MsnFinanceService } from "./msn-finance.service";
+import { QuoteProviderRegistry } from "./providers/quote-provider.registry";
 import { HoldingsService } from "./holdings.service";
 import { InvestmentTransactionsService } from "./investment-transactions.service";
 import { PortfolioService } from "./portfolio.service";
@@ -46,6 +48,8 @@ import { ActionHistoryModule } from "../action-history/action-history.module";
     SecuritiesService,
     SecurityPriceService,
     YahooFinanceService,
+    MsnFinanceService,
+    QuoteProviderRegistry,
     HoldingsService,
     InvestmentTransactionsService,
     PortfolioCalculationService,
@@ -62,6 +66,8 @@ import { ActionHistoryModule } from "../action-history/action-history.module";
     SecuritiesService,
     SecurityPriceService,
     YahooFinanceService,
+    MsnFinanceService,
+    QuoteProviderRegistry,
     HoldingsService,
     InvestmentTransactionsService,
     PortfolioService,

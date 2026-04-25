@@ -188,6 +188,10 @@ function SecuritiesContent() {
         comparison = (a.exchange || '').localeCompare(b.exchange || '', undefined, { sensitivity: 'base' });
       } else if (sortField === 'currency') {
         comparison = a.currencyCode.localeCompare(b.currencyCode, undefined, { sensitivity: 'base' });
+      } else if (sortField === 'provider') {
+        comparison = (a.quoteProvider || '').localeCompare(b.quoteProvider || '', undefined, { sensitivity: 'base' });
+      } else if (sortField === 'source') {
+        comparison = (a.lastPriceSource || '').localeCompare(b.lastPriceSource || '', undefined, { sensitivity: 'base' });
       }
       return sortDirection === 'asc' ? comparison : -comparison;
     });

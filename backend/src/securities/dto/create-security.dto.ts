@@ -1,5 +1,11 @@
 import { ApiProperty } from "@nestjs/swagger";
-import { IsString, IsOptional, MaxLength, IsBoolean } from "class-validator";
+import {
+  IsString,
+  IsOptional,
+  MaxLength,
+  IsBoolean,
+  IsIn,
+} from "class-validator";
 import { SanitizeHtml } from "../../common/decorators/sanitize-html.decorator";
 
 export class CreateSecurityDto {
@@ -49,4 +55,26 @@ export class CreateSecurityDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @ApiProperty({
+    example: "msn",
+    description:
+      "Per-security provider override; omit or null to use the user default",
+    required: false,
+    enum: ["yahoo", "msn"],
+  })
+  @IsOptional()
+  @IsIn(["yahoo", "msn"])
+  quoteProvider?: "yahoo" | "msn";
+
+  @ApiProperty({
+    example: "a1u3p2",
+    description: "MSN Financial Instrument ID (advanced override)",
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  @SanitizeHtml()
+  msnInstrumentId?: string;
 }
