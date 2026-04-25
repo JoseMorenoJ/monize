@@ -819,6 +819,9 @@ export class MsnFinanceService implements QuoteProvider {
     exchange: string | null,
     opts?: QuoteProviderOptions,
   ): Promise<QuoteResult | null> {
+    this.logger.log(
+      `MSN fetchQuote entered for ${symbol}/${exchange ?? "(none)"} (suppliedId=${opts?.instrumentId ?? "(none)"})`,
+    );
     const instrumentId =
       opts?.instrumentId ||
       (await this.resolveInstrumentId(
@@ -832,6 +835,9 @@ export class MsnFinanceService implements QuoteProvider {
       );
       return null;
     }
+    this.logger.log(
+      `MSN fetchQuote: using instrumentId=${instrumentId} for ${symbol}`,
+    );
 
     // Strategy 1 — direct quote endpoint. May or may not work depending on
     // MSN's surface; if it does, prefer it because it carries open/high/low.

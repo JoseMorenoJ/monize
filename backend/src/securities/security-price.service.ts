@@ -147,6 +147,10 @@ export class SecurityPriceService {
       ctx.defaultQuoteProvider,
     );
 
+    this.logger.log(
+      `Refresh ${security.symbol}: override=${security.quoteProvider ?? "(none)"} default=${ctx.defaultQuoteProvider} → trying [${ordered.map((p) => p.name).join(", ")}]`,
+    );
+
     for (const provider of ordered) {
       try {
         const quote = await provider.fetchQuote(
@@ -155,14 +159,23 @@ export class SecurityPriceService {
           this.optsFor(provider, security, ctx),
         );
         if (quote && quote.regularMarketPrice !== undefined) {
+          this.logger.log(
+            `Refresh ${security.symbol}: ${provider.name} returned price=${quote.regularMarketPrice}`,
+          );
           return { ...quote, provider: provider.name };
         }
+        this.logger.log(
+          `Refresh ${security.symbol}: ${provider.name} returned no usable price`,
+        );
       } catch (err) {
         this.logger.warn(
           `${provider.name} fetchQuote failed for ${security.symbol}: ${err instanceof Error ? err.message : String(err)}`,
         );
       }
     }
+    this.logger.warn(
+      `Refresh ${security.symbol}: no provider returned a price`,
+    );
     return null;
   }
 
