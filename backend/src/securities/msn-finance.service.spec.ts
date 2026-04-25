@@ -171,22 +171,22 @@ describe("MsnFinanceService", () => {
   // ─── fetchQuote ────────────────────────────────────────────────────────
 
   describe("fetchQuote", () => {
-    it("uses the pre-supplied instrumentId and maps fields to QuoteResult", async () => {
+    it("uses the pre-supplied instrumentId and maps Market/Get fields to QuoteResult", async () => {
+      // Market/Get response: bare-array shape with the documented field names.
       global.fetch = jest.fn().mockReturnValueOnce(
-        createResponse({
-          value: [
-            {
-              Symbol: "AAPL",
-              LastPrice: 180.5,
-              Open: 179,
-              DayHigh: 181,
-              DayLow: 178.5,
-              Volume: 55000000,
-              Currency: "USD",
-              LastTradeTime: "2024-06-15T20:00:00Z",
-            },
-          ],
-        }),
+        createResponse([
+          {
+            SecId: "a1u3p2",
+            FriendlyName: "Apple Inc",
+            price: 180.5,
+            priceDayOpen: 179,
+            priceDayHigh: 181,
+            priceDayLow: 178.5,
+            accumulatedVolume: 55000000,
+            currency: "USD",
+            timeLastTraded: "2024-06-15T20:00:00Z",
+          },
+        ]),
       );
 
       const quote = await service.fetchQuote("AAPL", "NASDAQ", {
@@ -197,23 +197,40 @@ describe("MsnFinanceService", () => {
       expect(quote!.regularMarketPrice).toBe(180.5);
       expect(quote!.regularMarketOpen).toBe(179);
       expect(quote!.regularMarketDayHigh).toBe(181);
+      expect(quote!.regularMarketDayLow).toBe(178.5);
       expect(quote!.provider).toBe("msn");
       // Should NOT have called autosuggest since instrumentId was provided.
       expect((global.fetch as jest.Mock).mock.calls.length).toBe(1);
     });
 
-    it("converts GBX pence to GBP when MSN reports pence", async () => {
+    it("accepts the { stocks: [...] } response envelope", async () => {
       global.fetch = jest.fn().mockReturnValueOnce(
         createResponse({
-          value: [
+          stocks: [
             {
-              Symbol: "VOD.L",
-              LastPrice: 12050, // pence
-              Open: 12000,
-              Currency: "GBX",
+              SecId: "a1u3p2",
+              price: 175.25,
+              currency: "USD",
             },
           ],
         }),
+      );
+      const quote = await service.fetchQuote("AAPL", "NASDAQ", {
+        instrumentId: "a1u3p2",
+      });
+      expect(quote!.regularMarketPrice).toBe(175.25);
+    });
+
+    it("converts GBX pence to GBP when MSN reports pence", async () => {
+      global.fetch = jest.fn().mockReturnValueOnce(
+        createResponse([
+          {
+            SecId: "vod-lse",
+            price: 12050, // pence
+            priceDayOpen: 12000,
+            currency: "GBX",
+          },
+        ]),
       );
 
       const quote = await service.fetchQuote("VOD", "LSE", {
@@ -288,11 +305,11 @@ describe("MsnFinanceService", () => {
             },
           }),
         )
-        // quote
+        // Market/Get quote
         .mockReturnValueOnce(
-          createResponse({
-            value: [{ Symbol: "AAPL", LastPrice: 180, Currency: "USD" }],
-          }),
+          createResponse([
+            { SecId: "a1u3p2", price: 180, currency: "USD" },
+          ]),
         );
 
       const quote = await service.fetchQuote("AAPL", "NASDAQ");

@@ -12,12 +12,32 @@ import {
 } from "./providers/quote-provider.interface";
 import { getTradingDateFromQuote } from "./providers/trading-date.util";
 
-// MSN API endpoints. These are reverse-engineered from msn.com/money pages and
-// services.bingapis.com; treat as best-effort and expect to update these
-// constants if MSN changes their surface.
+// MSN / Bing Finance API endpoints. The autosuggest and Market/Get endpoints
+// are confirmed working; the chart-timeseries and stockdetails-page URLs are
+// retained as best-effort fallbacks.
 const AUTOSUGGEST_URL =
   "https://services.bingapis.com/contentservices-finance.csautosuggest/api/v1/Query";
-const QUOTE_URL = "https://assets.msn.com/service/news/feed/pages/finance";
+/** Live quote endpoint (returns OHLC + last price for one or more SecIds). */
+const MARKET_GET_URL = "https://finance.services.appex.bing.com/Market/Get";
+/** Comma-separated field list for MARKET_GET_URL. */
+const MARKET_GET_FIELDS = [
+  "price",
+  "priceChange",
+  "priceChangePct",
+  "priceDayOpen",
+  "priceDayHigh",
+  "priceDayLow",
+  "price52wHigh",
+  "price52wLow",
+  "marketCap",
+  "accumulatedVolume",
+  "peRatio",
+  "currency",
+  "timeLastTraded",
+  "timeLastUpdated",
+  "FriendlyName",
+  "FullInstrument",
+].join(",");
 const CHART_URL = "https://assets.msn.com/service/Finance/Charts/timeseries";
 const STOCK_DETAILS_PAGE = "https://www.msn.com/en-us/money/stockdetails";
 
@@ -836,33 +856,75 @@ export class MsnFinanceService implements QuoteProvider {
     symbol: string,
     opts: QuoteProviderOptions | undefined,
   ): Promise<QuoteResult | null> {
-    const url = `${QUOTE_URL}?ids=${encodeURIComponent(instrumentId)}&type=All&apikey=&ocid=finance-peregrine`;
-    const data = await this.httpGetJson<{ value?: MsnQuoteItem[] }>(url);
-    const item = data?.value?.[0];
-    if (!item) return null;
+    const url = `${MARKET_GET_URL}?ids=${encodeURIComponent(instrumentId)}&Fields=${encodeURIComponent(MARKET_GET_FIELDS)}`;
+    const data = await this.httpGetJson<unknown>(url);
 
-    const raw = extractQuoteFields(item);
-    if (raw.price == null) {
+    // The response structure can be:
+    //   [ { ...instrument fields... }, ... ]
+    //   { stocks: [ ... ] }
+    //   { data: [ { stocks: [ ... ] } ] }
+    const instruments = extractMarketInstruments(data, instrumentId);
+    if (!instruments.length) {
       this.logger.debug(
-        `MSN direct quote for ${symbol} returned an item with no price; falling back to chart.`,
+        `MSN Market/Get for ${symbol} (id=${instrumentId}) returned no instruments`,
+      );
+      return null;
+    }
+    const item = instruments[0];
+
+    const price = parseNumberMaybe(item.price ?? item.Price ?? item.lastPrice);
+    if (price == null || Number.isNaN(price)) {
+      this.logger.debug(
+        `MSN Market/Get for ${symbol} (id=${instrumentId}) had no usable price; falling back to chart.`,
       );
       return null;
     }
 
+    const open = parseNumberMaybe(
+      item.priceDayOpen ?? item.PriceDayOpen ?? item.Open ?? item.open,
+    );
+    const high = parseNumberMaybe(
+      item.priceDayHigh ?? item.PriceDayHigh ?? item.High ?? item.high,
+    );
+    const low = parseNumberMaybe(
+      item.priceDayLow ?? item.PriceDayLow ?? item.Low ?? item.low,
+    );
+    const volume = parseNumberMaybe(
+      item.accumulatedVolume ??
+        item.AccumulatedVolume ??
+        item.Volume ??
+        item.volume,
+    );
+    const currency = (
+      item.currency ??
+      item.Currency ??
+      undefined
+    ) as string | undefined;
+    const time =
+      typeof item.timeLastTraded === "string"
+        ? Math.floor(Date.parse(item.timeLastTraded) / 1000)
+        : typeof item.timeLastUpdated === "string"
+          ? Math.floor(Date.parse(item.timeLastUpdated) / 1000)
+          : undefined;
+
     const shouldConvertGbx =
-      isGbxCurrency(raw.currency) ||
-      (raw.currency == null && isGbxCurrency(opts?.currencyCode ?? undefined));
+      isGbxCurrency(currency) ||
+      (currency == null && isGbxCurrency(opts?.currencyCode ?? undefined));
     const convert = (v: number | undefined): number | undefined =>
       v !== undefined && shouldConvertGbx ? convertGbxToGbp(v) : v;
 
+    this.logger.log(
+      `MSN Market/Get ${symbol} (id=${instrumentId}): price=${price} currency=${currency ?? "(none)"}`,
+    );
+
     return {
-      symbol: (raw.symbol || symbol).toUpperCase(),
-      regularMarketPrice: convert(raw.price),
-      regularMarketOpen: convert(raw.open),
-      regularMarketDayHigh: convert(raw.high),
-      regularMarketDayLow: convert(raw.low),
-      regularMarketVolume: raw.volume,
-      regularMarketTime: raw.time,
+      symbol: symbol.toUpperCase(),
+      regularMarketPrice: convert(price),
+      regularMarketOpen: convert(open),
+      regularMarketDayHigh: convert(high),
+      regularMarketDayLow: convert(low),
+      regularMarketVolume: volume,
+      regularMarketTime: time,
       provider: "msn",
     };
   }
@@ -1155,6 +1217,62 @@ function normalizeTimestamp(raw: unknown): number | undefined {
     const ms = Date.parse(raw);
     if (Number.isNaN(ms)) return undefined;
     return Math.floor(ms / 1000);
+  }
+  return undefined;
+}
+
+/**
+ * Pull instrument records out of a Market/Get response. Tolerates the three
+ * shapes Bing's endpoint has used: a bare array, `{ stocks: [...] }`, or
+ * `{ data: [ { stocks: [...] } ] }`. Filters by SecId when one's known so we
+ * don't pick up an unrelated row.
+ */
+function extractMarketInstruments(
+  payload: unknown,
+  preferSecId: string | null,
+): Record<string, unknown>[] {
+  const out: Record<string, unknown>[] = [];
+  const push = (raw: unknown) => {
+    if (raw && typeof raw === "object") {
+      out.push(raw as Record<string, unknown>);
+    }
+  };
+  if (Array.isArray(payload)) {
+    payload.forEach(push);
+  } else if (payload && typeof payload === "object") {
+    const p = payload as Record<string, unknown>;
+    if (Array.isArray(p.stocks)) p.stocks.forEach(push);
+    else if (Array.isArray(p.Stocks)) p.Stocks.forEach(push);
+    else if (Array.isArray(p.value)) p.value.forEach(push);
+    else if (Array.isArray(p.data)) {
+      for (const d of p.data) {
+        if (d && typeof d === "object") {
+          const inner = (d as Record<string, unknown>).stocks;
+          if (Array.isArray(inner)) inner.forEach(push);
+          else push(d);
+        }
+      }
+    }
+  }
+
+  if (preferSecId && out.length > 1) {
+    const exact = out.find((r) => {
+      const id = (r.SecId ?? r.secId ?? r.id) as string | undefined;
+      return id === preferSecId;
+    });
+    if (exact) return [exact, ...out.filter((r) => r !== exact)];
+  }
+  return out;
+}
+
+function parseNumberMaybe(v: unknown): number | undefined {
+  if (v == null) return undefined;
+  if (typeof v === "number") return Number.isFinite(v) ? v : undefined;
+  if (typeof v === "string") {
+    const trimmed = v.trim();
+    if (!trimmed) return undefined;
+    const n = Number(trimmed);
+    return Number.isFinite(n) ? n : undefined;
   }
   return undefined;
 }
