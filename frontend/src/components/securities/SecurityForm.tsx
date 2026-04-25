@@ -335,7 +335,7 @@ export function SecurityForm({ security, onSubmit, onCancel, onDirtyChange, subm
 
       <div>
         <Select
-          label="Quote Provider Override"
+          label="Quote Provider"
           options={[
             { value: '', label: `Use default (${userDefaultProvider === 'msn' ? 'MSN Money' : 'Yahoo Finance'})` },
             ...quoteProviderOverrideOptions.slice(1),
@@ -348,9 +348,6 @@ export function SecurityForm({ security, onSubmit, onCancel, onDirtyChange, subm
           }
           error={errors.quoteProvider?.message}
         />
-        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-          Override the provider for this security. Leave on default to use your preferences.
-        </p>
         {watch('quoteProvider') === 'msn' && msnReady === false && (
           <p
             role="alert"

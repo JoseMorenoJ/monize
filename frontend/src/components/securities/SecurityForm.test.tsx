@@ -167,8 +167,8 @@ describe('SecurityForm', () => {
     fireEvent.click(screen.getByText('Lookup'));
 
     await waitFor(() => {
-      // Quote Provider Override select should have been updated to MSN Money.
-      const providerSelect = screen.getByLabelText('Quote Provider Override') as HTMLSelectElement;
+      // Quote Provider select should have been updated to MSN Money.
+      const providerSelect = screen.getByLabelText('Quote Provider') as HTMLSelectElement;
       expect(providerSelect.value).toBe('msn');
     });
 
@@ -199,7 +199,7 @@ describe('SecurityForm', () => {
       expect(investmentsApi.lookupSecurityCandidates).toHaveBeenCalled();
     });
 
-    const providerSelect = screen.getByLabelText('Quote Provider Override') as HTMLSelectElement;
+    const providerSelect = screen.getByLabelText('Quote Provider') as HTMLSelectElement;
     expect(providerSelect.value).toBe('');
   });
 
