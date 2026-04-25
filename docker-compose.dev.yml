@@ -45,6 +45,7 @@ services:
       JWT_EXPIRATION: ${JWT_EXPIRATION:-15m}
       PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:3001}
       CORS_ORIGIN: ${CORS_ORIGIN:-${PUBLIC_APP_URL:-http://localhost:3001}}
+      MSN_API_KEY: ${MSN_API_KEY}
       # Authentication
       LOCAL_AUTH_ENABLED: ${LOCAL_AUTH_ENABLED:-true}
       REGISTRATION_ENABLED: ${REGISTRATION_ENABLED:-true}
