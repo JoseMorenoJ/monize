@@ -351,6 +351,19 @@ export function useInvestmentData() {
 
   const handleDeleteTransaction = async (id: string) => {
     setTransactions(prev => prev.filter(tx => tx.id !== id));
+    // Keep the pagination summary in sync immediately so the bottom counter
+    // updates without waiting for the next full reload.
+    setPagination(prev => {
+      if (!prev) return prev;
+      const total = Math.max(0, prev.total - 1);
+      const totalPages = Math.max(1, Math.ceil(total / prev.limit));
+      return {
+        ...prev,
+        total,
+        totalPages,
+        hasMore: prev.page < totalPages,
+      };
+    });
     try {
       await investmentsApi.deleteTransaction(id);
       const ids = selectedAccountIds.length > 0 ? selectedAccountIds : undefined;
