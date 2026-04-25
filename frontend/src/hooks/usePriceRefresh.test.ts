@@ -193,6 +193,35 @@ describe('usePriceRefresh', () => {
     expect(toast.error).toHaveBeenCalled();
   });
 
+  it('lists failed symbols in the error toast', async () => {
+    vi.mocked(investmentsApi.getSecurities).mockResolvedValue([
+      sec('s-ok'),
+      sec('s-bad-1'),
+      sec('s-bad-2'),
+    ] as any);
+    vi.mocked(investmentsApi.refreshSelectedPrices).mockResolvedValue({
+      updated: 1,
+      failed: 2,
+      totalSecurities: 3,
+      skipped: 0,
+      results: [
+        { symbol: 'GOOD', success: true, price: 100 },
+        { symbol: 'BAD1', success: false, error: 'Not found' },
+        { symbol: 'BAD2', success: false, error: 'Rate limited' },
+      ],
+      lastUpdated: '',
+    });
+
+    const { result } = renderHook(() => usePriceRefresh());
+    await act(async () => {
+      await result.current.triggerManualRefresh();
+    });
+    expect(toast.error).toHaveBeenCalledWith(
+      expect.stringContaining('BAD1, BAD2'),
+      expect.objectContaining({ duration: expect.any(Number) }),
+    );
+  });
+
   it('calls onRefreshComplete callback with lastUpdated from the refresh result', async () => {
     const onRefreshComplete = vi.fn();
     vi.mocked(investmentsApi.getSecurities).mockResolvedValue([sec('s-1')] as any);
