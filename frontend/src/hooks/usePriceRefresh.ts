@@ -89,7 +89,14 @@ export function usePriceRefresh({ onRefreshComplete }: UsePriceRefreshOptions = 
       lastRefreshTimestamp = Date.now();
       if (!silent) {
         if (result.failed > 0) {
-          toast.error(`Prices updated: ${result.updated} succeeded, ${result.failed} failed`);
+          const failedSymbols = result.results
+            .filter((r) => !r.success)
+            .map((r) => r.symbol);
+          const symbolList = failedSymbols.join(', ');
+          toast.error(
+            `Prices updated: ${result.updated} succeeded, ${result.failed} failed${symbolList ? ` (${symbolList})` : ''}`,
+            { duration: 8000 },
+          );
         } else {
           toast.success(`${result.updated} security price${result.updated !== 1 ? 's' : ''} updated`);
         }
