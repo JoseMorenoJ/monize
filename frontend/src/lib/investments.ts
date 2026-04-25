@@ -342,6 +342,18 @@ export const investmentsApi = {
     return response.data;
   },
 
+  // Quote provider configuration status (e.g. whether MSN_API_KEY is set)
+  getProviderStatus: async (): Promise<{
+    yahoo: { ready: boolean };
+    msn: { ready: boolean };
+  }> => {
+    const response = await apiClient.get<{
+      yahoo: { ready: boolean };
+      msn: { ready: boolean };
+    }>('/securities/providers/status');
+    return response.data;
+  },
+
   // Get price history for a security
   getSecurityPrices: async (securityId: string, limit = 365): Promise<SecurityPrice[]> => {
     const cacheKey = `investments:prices:${securityId}:${limit}`;

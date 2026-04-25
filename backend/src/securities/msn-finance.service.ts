@@ -22,12 +22,6 @@ const AUTOSUGGEST_URL =
   "https://services.bingapis.com/contentservices-finance.csautosuggest/api/v1/Query";
 /** Live quote endpoint (returns OHLC + last price for one or more SecIds). */
 const QUOTES_URL = "https://assets.msn.com/service/Finance/Quotes";
-/**
- * Public MSN/Peregrine finance API key, baked into MSMoneyQuotes.exe and
- * shared by MSN Money web widgets. Configurable via the MSN_API_KEY env var
- * so operators can rotate or override it without a redeploy.
- */
-const DEFAULT_MSN_API_KEY = "REDACTED-MSN-API-KEY";
 const CHART_URL = "https://assets.msn.com/service/Finance/Charts/timeseries";
 const STOCK_DETAILS_PAGE = "https://www.msn.com/en-us/money/stockdetails";
 
@@ -249,15 +243,30 @@ export class MsnFinanceService implements QuoteProvider {
 
   private readonly instrumentIdCache = new Map<string, CacheEntry>();
 
-  /** API key for the Quotes endpoint. Override via MSN_API_KEY env var. */
-  private readonly apiKey: string;
+  /**
+   * API key for the Quotes endpoint. Required: set via the MSN_API_KEY env
+   * var. When unset, fetchQuote skips the Quotes endpoint and falls through
+   * to the chart-timeseries fallback.
+   */
+  private readonly apiKey: string | null;
 
   constructor(@Optional() configService?: ConfigService) {
     const fromEnv = configService?.get<string>("MSN_API_KEY")?.trim();
-    this.apiKey = fromEnv || DEFAULT_MSN_API_KEY;
-    if (fromEnv) {
-      this.logger.log("Using MSN_API_KEY from environment.");
+    this.apiKey = fromEnv && fromEnv.length > 0 ? fromEnv : null;
+    if (!this.apiKey) {
+      this.logger.error(
+        "MSN_API_KEY env var is not set. The MSN Quotes endpoint requires " +
+          "this key — live MSN quotes will fail until it is configured. " +
+          "Set MSN_API_KEY in your environment to enable.",
+      );
+    } else {
+      this.logger.log("MSN_API_KEY loaded from environment.");
     }
+  }
+
+  /** Whether MSN_API_KEY is configured. Used by the UI to surface a hint. */
+  isApiKeyConfigured(): boolean {
+    return !!this.apiKey;
   }
 
   // ─── Cache helpers ────────────────────────────────────────────────────────
@@ -420,8 +429,17 @@ export class MsnFinanceService implements QuoteProvider {
         ) || ""
       ).toUpperCase();
     const exchangeOf = (s: AutosuggestItem) =>
-      (getField(s, "Exchange", "exchange", "Mic", "mic", "ExchangeId", "exchangeId") || "")
-        .toUpperCase();
+      (
+        getField(
+          s,
+          "Exchange",
+          "exchange",
+          "Mic",
+          "mic",
+          "ExchangeId",
+          "exchangeId",
+        ) || ""
+      ).toUpperCase();
 
     const exactSymbol = stocks.filter((s) => symbolOf(s) === upperQuery);
     const pool = exactSymbol.length > 0 ? exactSymbol : stocks;
@@ -534,7 +552,10 @@ export class MsnFinanceService implements QuoteProvider {
 
     const symbol = extractedSymbol || "";
     if (extractedSecId && symbol) {
-      this.setCached(this.cacheKey(symbol, null, preferredExchanges), extractedSecId);
+      this.setCached(
+        this.cacheKey(symbol, null, preferredExchanges),
+        extractedSecId,
+      );
     }
 
     const rawExchange = getField(
@@ -568,8 +589,8 @@ export class MsnFinanceService implements QuoteProvider {
       "PrimaryExchange",
       "primaryExchange",
     );
-    const exchange = this.mapMsnExchangeToMonize(rawExchange) ||
-      this.scanExchangeCode(item);
+    const exchange =
+      this.mapMsnExchangeToMonize(rawExchange) || this.scanExchangeCode(item);
 
     // Name candidates. Ordering matters: MSN's `DisplayName` is unreliable
     // for mutual funds (it's often the *ticker* like "TDB164", not the
@@ -707,7 +728,8 @@ export class MsnFinanceService implements QuoteProvider {
    * would obviously hold a ticker, SecId, name, or currency.
    */
   private scanExchangeCode(item: AutosuggestItem): string | null {
-    const skip = /symbol|ticker|name|display|title|description|currency|type|kind|class|asset|short|long|id|sec/i;
+    const skip =
+      /symbol|ticker|name|display|title|description|currency|type|kind|class|asset|short|long|id|sec/i;
     for (const [key, val] of Object.entries(item)) {
       if (skip.test(key)) continue;
       if (typeof val !== "string") continue;
@@ -725,8 +747,14 @@ export class MsnFinanceService implements QuoteProvider {
    */
   private currencyFromCountryCode(item: AutosuggestItem): string | null {
     const code = (
-      getField(item, "RT0EC", "LS01Z", "ExMicCode", "CountryCode", "countryCode") ||
-      ""
+      getField(
+        item,
+        "RT0EC",
+        "LS01Z",
+        "ExMicCode",
+        "CountryCode",
+        "countryCode",
+      ) || ""
     ).toUpperCase();
     if (!code) {
       // `locale: "en-ca"` / "en-us" is a last resort.
@@ -873,7 +901,7 @@ export class MsnFinanceService implements QuoteProvider {
 
     // Strategy 1 — direct quote endpoint. May or may not work depending on
     // MSN's surface; if it does, prefer it because it carries open/high/low.
-    let direct = await this.tryDirectQuote(instrumentId, symbol, opts);
+    const direct = await this.tryDirectQuote(instrumentId, symbol, opts);
     if (direct) {
       // Stamp the resolved id on the result so the caller can persist any
       // upgrade (FullInstrument → SecId) back to the Security row.
@@ -899,9 +927,15 @@ export class MsnFinanceService implements QuoteProvider {
     symbol: string,
     opts: QuoteProviderOptions | undefined,
   ): Promise<QuoteResult | null> {
-    // Endpoint reverse-engineered from MSMoneyQuotes.exe v3.0. The apikey is
-    // a public Microsoft key shared across MSN Money web widgets; activityId
-    // is a fresh GUID per request.
+    if (!this.apiKey) {
+      this.logger.error(
+        `MSN Quotes skipped for ${symbol} (id=${instrumentId}): MSN_API_KEY env var is not set.`,
+      );
+      return null;
+    }
+
+    // Endpoint reverse-engineered from MSMoneyQuotes.exe v3.0. activityId is
+    // a fresh GUID per request.
     const params = new URLSearchParams({
       apikey: this.apiKey,
       activityId: randomUUID(),
@@ -953,11 +987,9 @@ export class MsnFinanceService implements QuoteProvider {
         item.Volume ??
         item.volume,
     );
-    const currency = (
-      item.currency ??
-      item.Currency ??
-      undefined
-    ) as string | undefined;
+    const currency = (item.currency ?? item.Currency ?? undefined) as
+      | string
+      | undefined;
     const time =
       typeof item.timeLastTraded === "string"
         ? Math.floor(Date.parse(item.timeLastTraded) / 1000)

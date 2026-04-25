@@ -35,6 +35,7 @@ import {
   HistoricalBackfillSummary,
   SecurityLookupResult,
 } from "./security-price.service";
+import { MsnFinanceService } from "./msn-finance.service";
 import { NetWorthService } from "../net-worth/net-worth.service";
 import { SectorWeightingService } from "./sector-weighting.service";
 import { CreateSecurityDto } from "./dto/create-security.dto";
@@ -56,7 +57,20 @@ export class SecuritiesController {
     private readonly securityPriceService: SecurityPriceService,
     private readonly netWorthService: NetWorthService,
     private readonly sectorWeightingService: SectorWeightingService,
+    private readonly msnFinanceService: MsnFinanceService,
   ) {}
+
+  @Get("providers/status")
+  @ApiOperation({
+    summary: "Quote provider configuration status",
+    description: "Reports whether each provider is fully configured.",
+  })
+  providerStatus(): { yahoo: { ready: boolean }; msn: { ready: boolean } } {
+    return {
+      yahoo: { ready: true },
+      msn: { ready: this.msnFinanceService.isApiKeyConfigured() },
+    };
+  }
 
   @Post()
   @ApiOperation({ summary: "Create a new security" })

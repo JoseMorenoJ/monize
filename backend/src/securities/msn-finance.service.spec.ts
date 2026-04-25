@@ -1,4 +1,5 @@
 import { Test, TestingModule } from "@nestjs/testing";
+import { ConfigService } from "@nestjs/config";
 import { MsnFinanceService, msnInternals } from "./msn-finance.service";
 
 describe("MsnFinanceService", () => {
@@ -16,7 +17,16 @@ describe("MsnFinanceService", () => {
   beforeEach(async () => {
     originalFetch = global.fetch;
     const module: TestingModule = await Test.createTestingModule({
-      providers: [MsnFinanceService],
+      providers: [
+        MsnFinanceService,
+        {
+          provide: ConfigService,
+          useValue: {
+            get: (key: string) =>
+              key === "MSN_API_KEY" ? "test-msn-api-key" : undefined,
+          },
+        },
+      ],
     }).compile();
     service = module.get(MsnFinanceService);
   });

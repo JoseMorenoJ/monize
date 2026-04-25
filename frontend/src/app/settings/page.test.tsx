@@ -134,6 +134,16 @@ vi.mock('@/lib/exchange-rates', () => ({
   },
 }));
 
+// Mock investments API (PreferencesSection fetches quote-provider status)
+vi.mock('@/lib/investments', () => ({
+  investmentsApi: {
+    getProviderStatus: vi.fn().mockResolvedValue({
+      yahoo: { ready: true },
+      msn: { ready: true },
+    }),
+  },
+}));
+
 // Mock AppHeader
 vi.mock('@/components/layout/AppHeader', () => ({
   AppHeader: () => <div data-testid="app-header">AppHeader</div>,
