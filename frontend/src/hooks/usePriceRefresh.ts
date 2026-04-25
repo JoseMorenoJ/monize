@@ -66,9 +66,20 @@ export function usePriceRefresh({ onRefreshComplete }: UsePriceRefreshOptions = 
       // just the ones they currently hold. Newly-added or temporarily-zero
       // positions (e.g. fully-sold mutual funds) still need their price
       // history kept current.
+      //
+      // Eligibility rule mirrors the backend's isRefreshEligible(): a
+      // security is eligible when skipPriceUpdates is false OR the user has
+      // explicitly opted in by setting a quoteProvider override or an MSN
+      // Instrument ID. The latter rescues QIF-imported securities (which are
+      // flagged skipPriceUpdates=true by default) once the user has pointed
+      // them at a provider.
       const securities = await investmentsApi.getSecurities(false);
       const securityIds = securities
-        .filter((s) => s.isActive && !s.skipPriceUpdates)
+        .filter(
+          (s) =>
+            s.isActive &&
+            (!s.skipPriceUpdates || !!s.quoteProvider || !!s.msnInstrumentId),
+        )
         .map((s) => s.id);
       if (securityIds.length === 0) {
         if (!silent) toast.success('No securities to update');

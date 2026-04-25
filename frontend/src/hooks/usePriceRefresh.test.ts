@@ -131,6 +131,35 @@ describe('usePriceRefresh', () => {
     expect(investmentsApi.refreshSelectedPrices).toHaveBeenCalledWith(['s-1']);
   });
 
+  it('includes QIF-imported securities once the user assigns a provider override', async () => {
+    // QIF/OFX import flags new securities with skipPriceUpdates=true. After
+    // the user picks an MSN provider override or supplies an Instrument ID,
+    // refresh must include them despite the flag.
+    vi.mocked(investmentsApi.getSecurities).mockResolvedValue([
+      sec('s-msn-override', {
+        skipPriceUpdates: true,
+        quoteProvider: 'msn',
+      }),
+      sec('s-msn-id', {
+        skipPriceUpdates: true,
+        msnInstrumentId: 'F18068004373',
+      }),
+      sec('s-skip-no-provider', { skipPriceUpdates: true }),
+    ] as any);
+    vi.mocked(investmentsApi.refreshSelectedPrices).mockResolvedValue({
+      updated: 2, failed: 0, totalSecurities: 2, skipped: 0, results: [], lastUpdated: '',
+    });
+
+    const { result } = renderHook(() => usePriceRefresh());
+    await act(async () => {
+      await result.current.triggerManualRefresh();
+    });
+    expect(investmentsApi.refreshSelectedPrices).toHaveBeenCalledWith([
+      's-msn-override',
+      's-msn-id',
+    ]);
+  });
+
   it('shows error toast on failure', async () => {
     vi.mocked(investmentsApi.getSecurities).mockRejectedValue(new Error('fail'));
 
