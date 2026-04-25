@@ -62,12 +62,14 @@ export function usePriceRefresh({ onRefreshComplete }: UsePriceRefreshOptions = 
     refreshInProgress = true;
     setIsRefreshing(true);
     try {
-      const summary = await investmentsApi.getPortfolioSummary();
-      const securityIds = [
-        ...new Set(
-          summary.holdings.filter((h) => h.quantity !== 0).map((h) => h.securityId),
-        ),
-      ];
+      // Refresh prices for every active security in the user's catalog, not
+      // just the ones they currently hold. Newly-added or temporarily-zero
+      // positions (e.g. fully-sold mutual funds) still need their price
+      // history kept current.
+      const securities = await investmentsApi.getSecurities(false);
+      const securityIds = securities
+        .filter((s) => s.isActive && !s.skipPriceUpdates)
+        .map((s) => s.id);
       if (securityIds.length === 0) {
         if (!silent) toast.success('No securities to update');
         return;
