@@ -1,4 +1,5 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, Optional } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { randomUUID } from "node:crypto";
 import { isGbxCurrency, convertGbxToGbp } from "../common/gbx-currency.util";
 import {
@@ -22,10 +23,11 @@ const AUTOSUGGEST_URL =
 /** Live quote endpoint (returns OHLC + last price for one or more SecIds). */
 const QUOTES_URL = "https://assets.msn.com/service/Finance/Quotes";
 /**
- * Public MSN/Peregrine finance API key extracted from MSMoneyQuotes.exe and
- * also used by MSN Money web widgets. Microsoft can rotate it at any time.
+ * Public MSN/Peregrine finance API key, baked into MSMoneyQuotes.exe and
+ * shared by MSN Money web widgets. Configurable via the MSN_API_KEY env var
+ * so operators can rotate or override it without a redeploy.
  */
-const MSN_API_KEY = "REDACTED-MSN-API-KEY";
+const DEFAULT_MSN_API_KEY = "REDACTED-MSN-API-KEY";
 const CHART_URL = "https://assets.msn.com/service/Finance/Charts/timeseries";
 const STOCK_DETAILS_PAGE = "https://www.msn.com/en-us/money/stockdetails";
 
@@ -246,6 +248,17 @@ export class MsnFinanceService implements QuoteProvider {
   private readonly logger = new Logger(MsnFinanceService.name);
 
   private readonly instrumentIdCache = new Map<string, CacheEntry>();
+
+  /** API key for the Quotes endpoint. Override via MSN_API_KEY env var. */
+  private readonly apiKey: string;
+
+  constructor(@Optional() configService?: ConfigService) {
+    const fromEnv = configService?.get<string>("MSN_API_KEY")?.trim();
+    this.apiKey = fromEnv || DEFAULT_MSN_API_KEY;
+    if (fromEnv) {
+      this.logger.log("Using MSN_API_KEY from environment.");
+    }
+  }
 
   // ─── Cache helpers ────────────────────────────────────────────────────────
 
@@ -890,7 +903,7 @@ export class MsnFinanceService implements QuoteProvider {
     // a public Microsoft key shared across MSN Money web widgets; activityId
     // is a fresh GUID per request.
     const params = new URLSearchParams({
-      apikey: MSN_API_KEY,
+      apikey: this.apiKey,
       activityId: randomUUID(),
       ocid: "finance-utils-peregrine",
       cm: "en-us",
