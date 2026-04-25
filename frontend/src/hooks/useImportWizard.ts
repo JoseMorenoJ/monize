@@ -25,6 +25,7 @@ import { getErrorMessage } from '@/lib/errors';
 import { Account, AccountType } from '@/types/account';
 import { Category } from '@/types/category';
 import { Security } from '@/types/investment';
+import { LookupCandidate } from '@/components/securities/SecurityLookupPicker';
 import { usePreferencesStore } from '@/store/preferencesStore';
 import { createLogger } from '@/lib/logger';
 import {
@@ -98,6 +99,9 @@ export function useImportWizard() {
   const [lookupLoadingIndex, setLookupLoadingIndex] = useState<number | null>(null);
   const [initialLookupDone, setInitialLookupDone] = useState(false);
   const [bulkLookupInProgress, setBulkLookupInProgress] = useState(false);
+  const [lookupPickerRowIndex, setLookupPickerRowIndex] = useState<number | null>(null);
+  const [lookupPickerQuery, setLookupPickerQuery] = useState<string>('');
+  const [lookupPickerCandidates, setLookupPickerCandidates] = useState<LookupCandidate[]>([]);
   const [showCreateAccount, setShowCreateAccount] = useState(false);
   const [newAccountName, setNewAccountName] = useState('');
   const [newAccountType, setNewAccountType] = useState<string>('CHEQUING');
@@ -680,6 +684,39 @@ export function useImportWizard() {
     });
   };
 
+  const applyLookupResultToMapping = useCallback(
+    (index: number, result: LookupCandidate) => {
+      const existingSecurity = findMatchingSecurityBySymbol(result.symbol, securities);
+      const resolvedCurrency =
+        result.currencyCode ||
+        getCurrencyFromExchange(result.exchange) ||
+        defaultCurrency;
+      setSecurityMappings((prev) => {
+        const updated = [...prev];
+        updated[index] = {
+          ...updated[index],
+          securityId: undefined,
+          createNew: result.symbol,
+          securityName: result.name,
+          securityType: result.securityType || 'STOCK',
+          exchange: result.exchange || undefined,
+          currencyCode: resolvedCurrency,
+        };
+        return updated;
+      });
+
+      const details = [`Symbol: ${result.symbol}`, `Name: ${result.name}`];
+      if (result.exchange) details.push(`Exchange: ${result.exchange}`);
+      details.push(`Currency: ${resolvedCurrency}`);
+      if (existingSecurity) {
+        toast.success(`Found (exists in database): ${details.join(', ')}`);
+      } else {
+        toast.success(`Found: ${details.join(', ')}`);
+      }
+    },
+    [securities, defaultCurrency],
+  );
+
   const handleSecurityLookup = async (index: number, query: string, exchange?: string) => {
     if (!query || query.length < 2) {
       toast.error('Enter at least 2 characters to lookup');
@@ -695,37 +732,15 @@ export function useImportWizard() {
 
     setLookupLoadingIndex(index);
     try {
-      const result = await investmentsApi.lookupSecurity(query, exchanges);
-      if (result) {
-        const existingSecurity = findMatchingSecurityBySymbol(result.symbol, securities);
-        const resolvedCurrency =
-          result.currencyCode ||
-          getCurrencyFromExchange(result.exchange) ||
-          defaultCurrency;
-        setSecurityMappings((prev) => {
-          const updated = [...prev];
-          updated[index] = {
-            ...updated[index],
-            securityId: undefined,
-            createNew: result.symbol,
-            securityName: result.name,
-            securityType: result.securityType || 'STOCK',
-            exchange: result.exchange || undefined,
-            currencyCode: resolvedCurrency,
-          };
-          return updated;
-        });
-
-        const details = [`Symbol: ${result.symbol}`, `Name: ${result.name}`];
-        if (result.exchange) details.push(`Exchange: ${result.exchange}`);
-        details.push(`Currency: ${resolvedCurrency}`);
-        if (existingSecurity) {
-          toast.success(`Found (exists in database): ${details.join(', ')}`);
-        } else {
-          toast.success(`Found: ${details.join(', ')}`);
-        }
-      } else {
+      const candidates = await investmentsApi.lookupSecurityCandidates(query, exchanges);
+      if (candidates.length === 0) {
         toast.error(`No security found for "${query}"`);
+      } else if (candidates.length === 1) {
+        applyLookupResultToMapping(index, candidates[0]);
+      } else {
+        setLookupPickerRowIndex(index);
+        setLookupPickerQuery(query);
+        setLookupPickerCandidates(candidates);
       }
     } catch (error) {
       logger.error('Security lookup failed:', error);
@@ -734,6 +749,24 @@ export function useImportWizard() {
       setLookupLoadingIndex(null);
     }
   };
+
+  const handleLookupPickerPick = useCallback(
+    (candidate: LookupCandidate) => {
+      if (lookupPickerRowIndex !== null) {
+        applyLookupResultToMapping(lookupPickerRowIndex, candidate);
+      }
+      setLookupPickerRowIndex(null);
+      setLookupPickerQuery('');
+      setLookupPickerCandidates([]);
+    },
+    [lookupPickerRowIndex, applyLookupResultToMapping],
+  );
+
+  const handleLookupPickerCancel = useCallback(() => {
+    setLookupPickerRowIndex(null);
+    setLookupPickerQuery('');
+    setLookupPickerCandidates([]);
+  }, []);
 
   const handleMultiAccountImport = async () => {
     if (!multiAccountContent || !multiAccountData) return;
@@ -995,6 +1028,9 @@ export function useImportWizard() {
     setAccountMappings([]);
     setSecurityMappings([]);
     setInitialLookupDone(false);
+    setLookupPickerRowIndex(null);
+    setLookupPickerQuery('');
+    setLookupPickerCandidates([]);
     setFileType('qif');
     setMultiAccountData(null);
     setMultiAccountContent('');
@@ -1013,6 +1049,7 @@ export function useImportWizard() {
     handleAccountMappingChange, handleSecurityMappingChange, handleSecurityLookup,
     isLoading, importResult, bulkImportResult, handleImport, handleFileSelect, handleImportMore,
     lookupLoadingIndex, bulkLookupInProgress,
+    lookupPickerQuery, lookupPickerCandidates, handleLookupPickerPick, handleLookupPickerCancel,
     showCreateAccount, setShowCreateAccount, creatingForFileIndex, setCreatingForFileIndex,
     newAccountName, setNewAccountName, newAccountType, setNewAccountType, newAccountCurrency, setNewAccountCurrency,
     isCreatingAccount, handleCreateAccount,

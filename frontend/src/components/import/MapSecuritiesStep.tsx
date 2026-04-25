@@ -7,6 +7,7 @@ import { Combobox } from '@/components/ui/Combobox';
 import { SecurityMapping } from '@/lib/import';
 import { EXCHANGE_OPTIONS } from '@/lib/constants';
 import { usePreferencesStore } from '@/store/preferencesStore';
+import { SecurityLookupPicker, LookupCandidate } from '@/components/securities/SecurityLookupPicker';
 
 type ImportStep = 'upload' | 'selectAccount' | 'mapCategories' | 'mapSecurities' | 'mapAccounts' | 'review' | 'multiAccountReview' | 'complete';
 
@@ -25,6 +26,10 @@ interface MapSecuritiesStepProps {
   isMultiAccountImport?: boolean;
   isLoading?: boolean;
   onMultiAccountImport?: () => void;
+  lookupPickerQuery?: string;
+  lookupPickerCandidates?: LookupCandidate[];
+  handleLookupPickerPick?: (candidate: LookupCandidate) => void;
+  handleLookupPickerCancel?: () => void;
 }
 
 export function MapSecuritiesStep({
@@ -42,12 +47,24 @@ export function MapSecuritiesStep({
   isMultiAccountImport = false,
   isLoading = false,
   onMultiAccountImport,
+  lookupPickerQuery = '',
+  lookupPickerCandidates = [],
+  handleLookupPickerPick,
+  handleLookupPickerCancel,
 }: MapSecuritiesStepProps) {
   const preferredExchanges = usePreferencesStore((s) => s.preferences?.preferredExchanges) || [];
   const readyCount = securityMappings.filter((m) => m.securityId || (m.createNew && m.securityName)).length;
   const needsAttentionCount = securityMappings.length - readyCount;
 
   return (
+    <>
+    <SecurityLookupPicker
+      isOpen={lookupPickerCandidates.length > 0}
+      query={lookupPickerQuery}
+      candidates={lookupPickerCandidates}
+      onPick={(c) => handleLookupPickerPick?.(c)}
+      onCancel={() => handleLookupPickerCancel?.()}
+    />
     <div className="max-w-4xl mx-auto">
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
         <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">
@@ -201,5 +218,6 @@ export function MapSecuritiesStep({
         </div>
       </div>
     </div>
+    </>
   );
 }
