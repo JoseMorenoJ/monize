@@ -60,8 +60,8 @@ export class ScheduledTransactionsService {
     try {
       const today = todayYMD();
 
-      // Find transactions due by their base nextDueDate
-      const dueByDate = await this.scheduledTransactionsRepository.find({
+      // Find candidates whose base nextDueDate is on/before today.
+      const candidates = await this.scheduledTransactionsRepository.find({
         where: {
           isActive: true,
           autoPost: true,
@@ -79,6 +79,14 @@ export class ScheduledTransactionsService {
         ],
         order: { nextDueDate: "ASC" },
       });
+
+      // Defer candidates whose next occurrence has an override pushing the
+      // effective date past today (e.g. user moved the 26th to the 27th).
+      const postponedIds = await this.findPostponedIds(
+        candidates.map((t) => t.id),
+        today,
+      );
+      const dueByDate = candidates.filter((t) => !postponedIds.has(t.id));
 
       // Find transactions with overrides that moved the date earlier
       const overrideDueIds = await this.overridesRepository
@@ -151,6 +159,27 @@ export class ScheduledTransactionsService {
     } catch (error) {
       this.logger.error("Auto-post processing failed", error.stack);
     }
+  }
+
+  private async findPostponedIds(
+    candidateIds: string[],
+    today: string,
+  ): Promise<Set<string>> {
+    if (candidateIds.length === 0) {
+      return new Set();
+    }
+
+    const rows = await this.overridesRepository
+      .createQueryBuilder("o")
+      .innerJoin("o.scheduledTransaction", "st")
+      .where("o.scheduledTransactionId IN (:...ids)", { ids: candidateIds })
+      .andWhere("o.originalDate = st.nextDueDate")
+      .andWhere("o.overrideDate > :today", { today })
+      .select("o.scheduledTransactionId", "id")
+      .distinct(true)
+      .getRawMany();
+
+    return new Set(rows.map((r) => r.id as string));
   }
 
   async create(
@@ -384,7 +413,7 @@ export class ScheduledTransactionsService {
   async findDue(userId: string): Promise<ScheduledTransaction[]> {
     const today = todayYMD();
 
-    const dueByDate = await this.scheduledTransactionsRepository.find({
+    const candidates = await this.scheduledTransactionsRepository.find({
       where: {
         userId,
         isActive: true,
@@ -401,6 +430,14 @@ export class ScheduledTransactionsService {
       ],
       order: { nextDueDate: "ASC" },
     });
+
+    // Defer candidates whose next occurrence has an override pushing the
+    // effective date past today.
+    const postponedIds = await this.findPostponedIds(
+      candidates.map((t) => t.id),
+      today,
+    );
+    const dueByDate = candidates.filter((t) => !postponedIds.has(t.id));
 
     // Also find transactions with overrides that moved the date earlier
     const overrideDueIds = await this.overridesRepository

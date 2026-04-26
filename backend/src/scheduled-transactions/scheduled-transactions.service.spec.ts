@@ -504,6 +504,25 @@ describe("ScheduledTransactionsService", () => {
       expect(callArgs.where.isActive).toBe(true);
       expect(result).toEqual(due);
     });
+
+    it("should defer transactions whose override moved the next occurrence forward", async () => {
+      const candidate = makeScheduled({ id: "st-postponed" });
+      scheduledRepo.find.mockResolvedValue([candidate]);
+
+      // First createQueryBuilder call: postponed-id lookup -> returns this id
+      // Second: moved-earlier lookup -> returns []
+      const postponedQb = mockQueryBuilder(null);
+      postponedQb.getRawMany.mockResolvedValue([{ id: "st-postponed" }]);
+      const earlierQb = mockQueryBuilder(null);
+      earlierQb.getRawMany.mockResolvedValue([]);
+      overridesRepo.createQueryBuilder
+        .mockReturnValueOnce(postponedQb)
+        .mockReturnValueOnce(earlierQb);
+
+      const result = await service.findDue(userId);
+
+      expect(result).toEqual([]);
+    });
   });
 
   // ==================== findUpcoming ====================
@@ -1922,6 +1941,30 @@ describe("ScheduledTransactionsService", () => {
           transactionDate: "2025-03-12",
         }),
       );
+    });
+
+    it("should NOT auto-post when an override moves the next occurrence forward", async () => {
+      const scheduled = makeScheduled({
+        id: "st-postponed",
+        autoPost: true,
+        nextDueDate: new Date("2026-04-26"),
+      });
+      scheduledRepo.find.mockResolvedValue([scheduled]);
+
+      // Postponed-id lookup returns this transaction; the moved-earlier
+      // lookup returns nothing.
+      const postponedQb = mockQueryBuilder(null);
+      postponedQb.getRawMany.mockResolvedValue([{ id: "st-postponed" }]);
+      const earlierQb = mockQueryBuilder(null);
+      earlierQb.getRawMany.mockResolvedValue([]);
+      overridesRepo.createQueryBuilder
+        .mockReturnValueOnce(postponedQb)
+        .mockReturnValueOnce(earlierQb);
+
+      await service.processAutoPostTransactions();
+
+      expect(transactionsService.create).not.toHaveBeenCalled();
+      expect(transactionsService.createTransfer).not.toHaveBeenCalled();
     });
 
     it("should use override date as transaction date in post()", async () => {
