@@ -7,7 +7,7 @@ import { useExchangeRates } from '@/hooks/useExchangeRates';
 
 function InfoTooltip({ text }: { text: string }) {
   return (
-    <span className="relative inline-flex items-center ml-1 group">
+    <span className="relative hidden sm:inline-flex items-center ml-1 group">
       <svg
         className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500 cursor-help"
         fill="none"
