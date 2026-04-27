@@ -52,7 +52,7 @@ backend:
     readOnlyRootFilesystem: true
     runAsNonRoot: true
     runAsUser: 1001
-    runAsGroup: 0
+    runAsGroup: 100
     seccompProfile:
       type: RuntimeDefault
     capabilities:
@@ -166,7 +166,7 @@ frontend:
     readOnlyRootFilesystem: true
     runAsNonRoot: true
     runAsUser: 1001
-    runAsGroup: 0
+    runAsGroup: 100
     seccompProfile:
       type: RuntimeDefault
     capabilities:
