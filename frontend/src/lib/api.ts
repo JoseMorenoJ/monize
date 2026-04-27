@@ -199,7 +199,12 @@ apiClient.interceptors.response.use(
       }
 
       if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
-        window.location.href = '/login';
+        // Use replace() rather than assigning href so the post-401 page does
+        // not stay in history. On PWAs (especially iOS standalone), an
+        // assigned href can be deferred during BFCache restore and leave the
+        // app stuck on the splash screen until force-quit; replace() is
+        // synchronous and doesn't accumulate a back-button trap.
+        window.location.replace('/login');
       }
       isLoggingOut = false;
     }

@@ -5,6 +5,7 @@ import { Toaster } from 'react-hot-toast';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import { PreferencesLoader } from '@/components/providers/PreferencesLoader';
 import { ServiceWorkerRegistrar } from '@/components/providers/ServiceWorkerRegistrar';
+import { PwaLifecycleHandler } from '@/components/providers/PwaLifecycleHandler';
 import { SwipeShell } from '@/components/layout/SwipeShell';
 import './globals.css';
 
@@ -54,6 +55,7 @@ export default async function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body className={inter.className}>
         <ServiceWorkerRegistrar />
+        <PwaLifecycleHandler />
         <ThemeProvider>
           <PreferencesLoader>
             <SwipeShell httpsHeadersActive={httpsHeadersActive}>
