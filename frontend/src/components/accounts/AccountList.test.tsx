@@ -101,7 +101,7 @@ describe('AccountList', () => {
       <AccountList
         accounts={[]}
         onEdit={mockOnEdit}
-        onRefresh={mockOnRefresh}
+        defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh}
       />
     );
 
@@ -122,7 +122,7 @@ describe('AccountList', () => {
       <AccountList
         accounts={accounts}
         onEdit={mockOnEdit}
-        onRefresh={mockOnRefresh}
+        defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh}
       />
     );
 
@@ -139,7 +139,7 @@ describe('AccountList', () => {
       <AccountList
         accounts={accounts}
         onEdit={mockOnEdit}
-        onRefresh={mockOnRefresh}
+        defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh}
       />
     );
 
@@ -160,7 +160,7 @@ describe('AccountList', () => {
       <AccountList
         accounts={[closedAccount]}
         onEdit={mockOnEdit}
-        onRefresh={mockOnRefresh}
+        defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh}
       />
     );
 
@@ -188,7 +188,7 @@ describe('AccountList', () => {
       <AccountList
         accounts={accounts}
         onEdit={mockOnEdit}
-        onRefresh={mockOnRefresh}
+        defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh}
       />
     );
 
@@ -218,7 +218,7 @@ describe('AccountList', () => {
       <AccountList
         accounts={accounts}
         onEdit={mockOnEdit}
-        onRefresh={mockOnRefresh}
+        defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh}
       />
     );
 
@@ -237,7 +237,7 @@ describe('AccountList', () => {
       <AccountList
         accounts={accounts}
         onEdit={mockOnEdit}
-        onRefresh={mockOnRefresh}
+        defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh}
       />
     );
 
@@ -274,7 +274,7 @@ describe('AccountList', () => {
       <AccountList
         accounts={accounts}
         onEdit={mockOnEdit}
-        onRefresh={mockOnRefresh}
+        defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh}
       />
     );
 
@@ -291,7 +291,7 @@ describe('AccountList', () => {
       <AccountList
         accounts={[deletableAccount]}
         onEdit={mockOnEdit}
-        onRefresh={mockOnRefresh}
+        defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh}
       />
     );
 
@@ -310,7 +310,7 @@ describe('AccountList', () => {
       <AccountList
         accounts={[account]}
         onEdit={mockOnEdit}
-        onRefresh={mockOnRefresh}
+        defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh}
       />
     );
 
@@ -331,7 +331,7 @@ describe('AccountList', () => {
     ];
 
     render(
-      <AccountList accounts={accounts} onEdit={mockOnEdit} onRefresh={mockOnRefresh} />
+      <AccountList accounts={accounts} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
     );
 
     expect(screen.getByText('Chequing Acct')).toBeInTheDocument();
@@ -357,7 +357,7 @@ describe('AccountList', () => {
     ];
 
     render(
-      <AccountList accounts={accounts} onEdit={mockOnEdit} onRefresh={mockOnRefresh} />
+      <AccountList accounts={accounts} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
     );
 
     expect(screen.getByText('$2500.50')).toBeInTheDocument();
@@ -370,7 +370,7 @@ describe('AccountList', () => {
     ];
 
     render(
-      <AccountList accounts={accounts} onEdit={mockOnEdit} onRefresh={mockOnRefresh} />
+      <AccountList accounts={accounts} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
     );
 
     // Non-default currency appends currency code
@@ -381,7 +381,7 @@ describe('AccountList', () => {
     const account = createAccount({ canDelete: false });
 
     render(
-      <AccountList accounts={[account]} onEdit={mockOnEdit} onRefresh={mockOnRefresh} />
+      <AccountList accounts={[account]} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
     );
 
     expect(screen.queryByText('Delete')).not.toBeInTheDocument();
@@ -394,7 +394,7 @@ describe('AccountList', () => {
     ];
 
     render(
-      <AccountList accounts={accounts} onEdit={mockOnEdit} onRefresh={mockOnRefresh} />
+      <AccountList accounts={accounts} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
     );
 
     expect(screen.getByText('2 of 2 accounts')).toBeInTheDocument();
@@ -419,7 +419,7 @@ describe('AccountList', () => {
     ];
 
     render(
-      <AccountList accounts={accounts} onEdit={mockOnEdit} onRefresh={mockOnRefresh} />
+      <AccountList accounts={accounts} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
     );
 
     // Click the "Closed" status filter button in the segmented control
@@ -441,7 +441,7 @@ describe('AccountList', () => {
     ];
 
     render(
-      <AccountList accounts={accounts} onEdit={mockOnEdit} onRefresh={mockOnRefresh} />
+      <AccountList accounts={accounts} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
     );
 
     expect(screen.getByText('2 of 2 accounts')).toBeInTheDocument();
@@ -461,7 +461,7 @@ describe('AccountList', () => {
     ];
 
     render(
-      <AccountList accounts={accounts} onEdit={mockOnEdit} onRefresh={mockOnRefresh} />
+      <AccountList accounts={accounts} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
     );
 
     const netWorthFilter = screen.getByDisplayValue('Net Worth: All');
@@ -479,7 +479,7 @@ describe('AccountList', () => {
     ];
 
     render(
-      <AccountList accounts={accounts} onEdit={mockOnEdit} onRefresh={mockOnRefresh} />
+      <AccountList accounts={accounts} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
     );
 
     expect(screen.queryByDisplayValue('Net Worth: All')).not.toBeInTheDocument();
@@ -491,7 +491,7 @@ describe('AccountList', () => {
     ];
 
     render(
-      <AccountList accounts={accounts} onEdit={mockOnEdit} onRefresh={mockOnRefresh} />
+      <AccountList accounts={accounts} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
     );
 
     // Filter by closed status when all accounts are active
@@ -512,7 +512,7 @@ describe('AccountList', () => {
     ];
 
     render(
-      <AccountList accounts={accounts} onEdit={mockOnEdit} onRefresh={mockOnRefresh} />
+      <AccountList accounts={accounts} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
     );
 
     // Filter by CHEQUING
@@ -534,7 +534,7 @@ describe('AccountList', () => {
     ];
 
     render(
-      <AccountList accounts={accounts} onEdit={mockOnEdit} onRefresh={mockOnRefresh} />
+      <AccountList accounts={accounts} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
     );
 
     // Click on Balance header to sort
@@ -561,7 +561,7 @@ describe('AccountList', () => {
     ];
 
     render(
-      <AccountList accounts={accounts} onEdit={mockOnEdit} onRefresh={mockOnRefresh} />
+      <AccountList accounts={accounts} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
     );
 
     // Groups are rendered Chequing → Savings regardless of input order.
@@ -581,7 +581,7 @@ describe('AccountList', () => {
     ];
 
     render(
-      <AccountList accounts={accounts} onEdit={mockOnEdit} onRefresh={mockOnRefresh} />
+      <AccountList accounts={accounts} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
     );
 
     // Click on Status header to sort by status
@@ -599,7 +599,7 @@ describe('AccountList', () => {
     const account = createAccount({ currentBalance: 0 });
 
     render(
-      <AccountList accounts={[account]} onEdit={mockOnEdit} onRefresh={mockOnRefresh} />
+      <AccountList accounts={[account]} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
     );
 
     const closeButton = screen.getByRole('button', { name: 'Close' });
@@ -610,7 +610,7 @@ describe('AccountList', () => {
     const account = createAccount({ currentBalance: 0 });
 
     render(
-      <AccountList accounts={[account]} onEdit={mockOnEdit} onRefresh={mockOnRefresh} />
+      <AccountList accounts={[account]} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
     );
 
     // Click Close to open dialog
@@ -636,7 +636,7 @@ describe('AccountList', () => {
     const account = createAccount({ currentBalance: 0 });
 
     render(
-      <AccountList accounts={[account]} onEdit={mockOnEdit} onRefresh={mockOnRefresh} />
+      <AccountList accounts={[account]} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
     );
 
     // Click Close to open dialog
@@ -655,7 +655,7 @@ describe('AccountList', () => {
     const account = createAccount({ canDelete: true });
 
     render(
-      <AccountList accounts={[account]} onEdit={mockOnEdit} onRefresh={mockOnRefresh} />
+      <AccountList accounts={[account]} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
     );
 
     // Click Delete to open dialog
@@ -678,7 +678,7 @@ describe('AccountList', () => {
     const account = createAccount({ canDelete: true });
 
     render(
-      <AccountList accounts={[account]} onEdit={mockOnEdit} onRefresh={mockOnRefresh} />
+      <AccountList accounts={[account]} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
     );
 
     fireEvent.click(screen.getByText('Delete'));
@@ -697,7 +697,7 @@ describe('AccountList', () => {
     });
 
     render(
-      <AccountList accounts={[closedAccount]} onEdit={mockOnEdit} onRefresh={mockOnRefresh} />
+      <AccountList accounts={[closedAccount]} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
     );
 
     fireEvent.click(screen.getByText('Reopen'));
@@ -715,7 +715,7 @@ describe('AccountList', () => {
     const account = createAccount({ accountSubType: null });
 
     render(
-      <AccountList accounts={[account]} onEdit={mockOnEdit} onRefresh={mockOnRefresh} />
+      <AccountList accounts={[account]} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
     );
 
     expect(screen.getByText('Reconcile')).toBeInTheDocument();
@@ -728,7 +728,7 @@ describe('AccountList', () => {
     });
 
     render(
-      <AccountList accounts={[account]} onEdit={mockOnEdit} onRefresh={mockOnRefresh} />
+      <AccountList accounts={[account]} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
     );
 
     expect(screen.queryByText('Reconcile')).not.toBeInTheDocument();
@@ -750,7 +750,7 @@ describe('AccountList', () => {
         accounts={[account]}
         brokerageMarketValues={brokerageMarketValues}
         onEdit={mockOnEdit}
-        onRefresh={mockOnRefresh}
+        defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh}
       />
     );
 
@@ -768,7 +768,7 @@ describe('AccountList', () => {
     });
 
     render(
-      <AccountList accounts={[account]} onEdit={mockOnEdit} onRefresh={mockOnRefresh} />
+      <AccountList accounts={[account]} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
     );
 
     expect(screen.getByText(/Limit:/)).toBeInTheDocument();
@@ -785,7 +785,7 @@ describe('AccountList', () => {
     ];
 
     render(
-      <AccountList accounts={accounts} onEdit={mockOnEdit} onRefresh={mockOnRefresh} />
+      <AccountList accounts={accounts} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
     );
 
     // "Closed" appears both in the status column badge and in the filter bar button
@@ -801,7 +801,7 @@ describe('AccountList', () => {
     });
 
     render(
-      <AccountList accounts={[account]} onEdit={mockOnEdit} onRefresh={mockOnRefresh} />
+      <AccountList accounts={[account]} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
     );
 
     expect(screen.getByText('Reopen')).toBeInTheDocument();
@@ -813,7 +813,7 @@ describe('AccountList', () => {
     const account = createAccount({ currentBalance: 0 });
 
     render(
-      <AccountList accounts={[account]} onEdit={mockOnEdit} onRefresh={mockOnRefresh} />
+      <AccountList accounts={[account]} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
@@ -832,7 +832,7 @@ describe('AccountList', () => {
     const account = createAccount({ canDelete: true });
 
     render(
-      <AccountList accounts={[account]} onEdit={mockOnEdit} onRefresh={mockOnRefresh} />
+      <AccountList accounts={[account]} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
     );
 
     fireEvent.click(screen.getByText('Delete'));
@@ -853,7 +853,7 @@ describe('AccountList', () => {
     });
 
     render(
-      <AccountList accounts={[account]} onEdit={mockOnEdit} onRefresh={mockOnRefresh} />
+      <AccountList accounts={[account]} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
     );
 
     fireEvent.click(screen.getByText('Reopen'));
@@ -869,7 +869,7 @@ describe('AccountList', () => {
     const accounts = [createAccount()];
 
     render(
-      <AccountList accounts={accounts} onEdit={mockOnEdit} onRefresh={mockOnRefresh} />
+      <AccountList accounts={accounts} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
     );
 
     // The "All" button in the segmented control should have active styling
@@ -884,7 +884,7 @@ describe('AccountList', () => {
     const account = createAccount({ isFavourite: true });
 
     render(
-      <AccountList accounts={[account]} onEdit={mockOnEdit} onRefresh={mockOnRefresh} />
+      <AccountList accounts={[account]} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
     );
 
     // The favourite star icon has aria-label "Favourite"
@@ -911,7 +911,7 @@ describe('AccountList', () => {
       <AccountList
         accounts={[cashAccount, brokerageAccount]}
         onEdit={mockOnEdit}
-        onRefresh={mockOnRefresh}
+        defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh}
       />
     );
 
@@ -939,7 +939,7 @@ describe('AccountList', () => {
     ];
 
     render(
-      <AccountList accounts={accounts} onEdit={mockOnEdit} onRefresh={mockOnRefresh} />
+      <AccountList accounts={accounts} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
     );
 
     expect(screen.getByText('Inv. Cash')).toBeInTheDocument();
@@ -952,7 +952,7 @@ describe('AccountList', () => {
     });
 
     render(
-      <AccountList accounts={[account]} onEdit={mockOnEdit} onRefresh={mockOnRefresh} />
+      <AccountList accounts={[account]} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
     );
 
     expect(screen.getByText('My primary chequing')).toBeInTheDocument();
@@ -964,7 +964,7 @@ describe('AccountList', () => {
     ];
 
     render(
-      <AccountList accounts={accounts} onEdit={mockOnEdit} onRefresh={mockOnRefresh} />
+      <AccountList accounts={accounts} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
     );
 
     // Filter by closed status when all accounts are active to produce empty results
@@ -991,7 +991,7 @@ describe('AccountList', () => {
     ];
 
     render(
-      <AccountList accounts={accounts} onEdit={mockOnEdit} onRefresh={mockOnRefresh} />
+      <AccountList accounts={accounts} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
     );
 
     const typeSelect = screen.getByDisplayValue('All Types') as HTMLSelectElement;
@@ -1012,7 +1012,7 @@ describe('AccountList', () => {
     });
 
     render(
-      <AccountList accounts={[account]} onEdit={mockOnEdit} onRefresh={mockOnRefresh} />
+      <AccountList accounts={[account]} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
     );
 
     // The approximate conversion indicator
@@ -1044,7 +1044,7 @@ describe('AccountList', () => {
       });
 
       render(
-        <AccountList accounts={[account]} onEdit={mockOnEdit} onRefresh={mockOnRefresh} />
+        <AccountList accounts={[account]} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
       );
 
       fireEvent.click(screen.getByText('My Brokerage'));
@@ -1060,7 +1060,7 @@ describe('AccountList', () => {
       });
 
       render(
-        <AccountList accounts={[account]} onEdit={mockOnEdit} onRefresh={mockOnRefresh} />
+        <AccountList accounts={[account]} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
       );
 
       fireEvent.click(screen.getByText('Main Chequing'));
@@ -1078,7 +1078,7 @@ describe('AccountList', () => {
       ];
 
       render(
-        <AccountList accounts={accounts} onEdit={mockOnEdit} onRefresh={mockOnRefresh} />
+        <AccountList accounts={accounts} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
       );
 
       // Group headers display the account count alongside the type label.
@@ -1110,7 +1110,7 @@ describe('AccountList', () => {
       ];
 
       render(
-        <AccountList accounts={accounts} onEdit={mockOnEdit} onRefresh={mockOnRefresh} />
+        <AccountList accounts={accounts} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
       );
 
       // Group total: 1000 CAD + (500 USD * 1.4) = 1700 CAD
@@ -1155,7 +1155,7 @@ describe('AccountList', () => {
           accounts={accounts}
           brokerageMarketValues={brokerageMarketValues}
           onEdit={mockOnEdit}
-          onRefresh={mockOnRefresh}
+          defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh}
         />
       );
 
@@ -1194,7 +1194,7 @@ describe('AccountList', () => {
       ];
 
       render(
-        <AccountList accounts={accounts} onEdit={mockOnEdit} onRefresh={mockOnRefresh} />
+        <AccountList accounts={accounts} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
       );
 
       // CHEQUING group total: 1000 + 500 (future) + 250 = 1750
@@ -1219,7 +1219,7 @@ describe('AccountList', () => {
       ];
 
       render(
-        <AccountList accounts={accounts} onEdit={mockOnEdit} onRefresh={mockOnRefresh} />
+        <AccountList accounts={accounts} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
       );
 
       expect(screen.getByText('Cheq A')).toBeInTheDocument();
@@ -1244,7 +1244,7 @@ describe('AccountList', () => {
       ];
 
       const { unmount } = render(
-        <AccountList accounts={accounts} onEdit={mockOnEdit} onRefresh={mockOnRefresh} />
+        <AccountList accounts={accounts} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
       );
 
       const groupRow = document.querySelector<HTMLTableRowElement>(
@@ -1262,7 +1262,7 @@ describe('AccountList', () => {
 
       // Re-render: persisted state means CHEQUING starts collapsed.
       render(
-        <AccountList accounts={accounts} onEdit={mockOnEdit} onRefresh={mockOnRefresh} />
+        <AccountList accounts={accounts} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
       );
       expect(screen.queryByText('Cheq A')).not.toBeInTheDocument();
     });
@@ -1292,7 +1292,7 @@ describe('AccountList', () => {
       ];
 
       render(
-        <AccountList accounts={accounts} onEdit={mockOnEdit} onRefresh={mockOnRefresh} />
+        <AccountList accounts={accounts} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
       );
 
       // Within the INVESTMENT group, the brokerage account is rendered

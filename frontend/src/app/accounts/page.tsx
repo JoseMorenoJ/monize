@@ -209,7 +209,7 @@ function AccountsContent() {
           {isLoading ? (
             <LoadingSpinner text="Loading accounts..." />
           ) : (
-            <AccountList accounts={accounts} brokerageMarketValues={brokerageMarketValues} onEdit={openEdit} onRefresh={loadAccounts} />
+            <AccountList accounts={accounts} brokerageMarketValues={brokerageMarketValues} defaultCurrency={defaultCurrency} convertToDefault={convertToDefault} onEdit={openEdit} onRefresh={loadAccounts} />
           )}
         </div>
       </main>

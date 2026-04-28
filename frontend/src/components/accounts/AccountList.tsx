@@ -7,7 +7,6 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Modal } from '@/components/ui/Modal';
 import { accountsApi } from '@/lib/accounts';
 import { useNumberFormat } from '@/hooks/useNumberFormat';
-import { useExchangeRates } from '@/hooks/useExchangeRates';
 import toast from 'react-hot-toast';
 import { getErrorMessage } from '@/lib/errors';
 import { AccountRow } from './AccountRow';
@@ -84,14 +83,15 @@ const getAccountTypeColor = (type: AccountType) => {
 interface AccountListProps {
   accounts: Account[];
   brokerageMarketValues?: Map<string, number>;
+  defaultCurrency: string;
+  convertToDefault: (value: number, fromCurrency: string) => number;
   onEdit: (account: Account) => void;
   onRefresh: () => void;
 }
 
-export function AccountList({ accounts, brokerageMarketValues, onEdit, onRefresh }: AccountListProps) {
+export function AccountList({ accounts, brokerageMarketValues, defaultCurrency, convertToDefault, onEdit, onRefresh }: AccountListProps) {
   const router = useRouter();
   const { formatCurrency: formatCurrencyBase } = useNumberFormat();
-  const { convertToDefault, defaultCurrency } = useExchangeRates();
   const [closeDialogOpen, setCloseDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [accountToClose, setAccountToClose] = useState<Account | null>(null);
@@ -402,7 +402,7 @@ export function AccountList({ accounts, brokerageMarketValues, onEdit, onRefresh
       }
     }
     return items;
-  }, [groupedAccounts, collapsedGroups]);
+  }, [groupedAccounts, collapsedGroups, groupTotals]);
 
   // Only show the net worth filter when at least one account is excluded
   const hasExcludedAccounts = useMemo(
