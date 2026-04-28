@@ -19,10 +19,14 @@ vi.mock('@/hooks/useNumberFormat', () => ({
   }),
 }));
 
+const exchangeMocks = vi.hoisted(() => ({
+  convertToDefault: vi.fn((n: number, _currency?: string) => n),
+}));
+
 vi.mock('@/hooks/useExchangeRates', () => ({
   useExchangeRates: () => ({
     defaultCurrency: 'CAD',
-    convertToDefault: (n: number) => n,
+    convertToDefault: exchangeMocks.convertToDefault,
   }),
 }));
 
@@ -86,6 +90,8 @@ describe('AccountList', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // Reset the exchange-rate mock to a no-op identity for currency conversion.
+    exchangeMocks.convertToDefault.mockImplementation((n: number) => n);
     // Clear localStorage to reset persisted filter/sort/density state
     localStorage.clear();
   });
@@ -1078,6 +1084,41 @@ describe('AccountList', () => {
       // Group headers display the account count alongside the type label.
       expect(screen.getByText('2 accounts')).toBeInTheDocument();
       expect(screen.getByText('1 account')).toBeInTheDocument();
+    });
+
+    it('converts foreign-currency balances into the default currency before summing', () => {
+      // 1 USD = 1.4 CAD; CAD passes through unchanged.
+      exchangeMocks.convertToDefault.mockImplementation((n: number, currency?: string) =>
+        currency === 'USD' ? n * 1.4 : n,
+      );
+
+      const accounts = [
+        createAccount({
+          id: 'cad-1',
+          name: 'CAD Cheq',
+          accountType: 'CHEQUING',
+          currencyCode: 'CAD',
+          currentBalance: 1000,
+        }),
+        createAccount({
+          id: 'usd-1',
+          name: 'USD Cheq',
+          accountType: 'CHEQUING',
+          currencyCode: 'USD',
+          currentBalance: 500,
+        }),
+      ];
+
+      render(
+        <AccountList accounts={accounts} onEdit={mockOnEdit} onRefresh={mockOnRefresh} />
+      );
+
+      // Group total: 1000 CAD + (500 USD * 1.4) = 1700 CAD
+      const chequingHeader = document.querySelector<HTMLTableRowElement>(
+        'tr[aria-expanded]',
+      );
+      expect(chequingHeader).toBeTruthy();
+      expect(chequingHeader!.textContent).toContain('$1700.00');
     });
 
     it('shows the total balance for each group in the default currency', () => {

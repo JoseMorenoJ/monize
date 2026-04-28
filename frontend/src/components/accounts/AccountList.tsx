@@ -662,21 +662,21 @@ export function AccountList({ accounts, brokerageMarketValues, onEdit, onRefresh
                 </div>
               </th>
               <th
+                className={`${headerPadding} text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 select-none hidden md:table-cell w-1 whitespace-nowrap`}
+                onClick={() => handleSort('status')}
+              >
+                <div className="flex items-center">
+                  Status
+                  <SortIcon field="status" sortField={sortField} sortDirection={sortDirection} />
+                </div>
+              </th>
+              <th
                 className={`${headerPadding} text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 select-none`}
                 onClick={() => handleSort('balance')}
               >
                 <div className="flex items-center justify-end">
                   Balance
                   <SortIcon field="balance" sortField={sortField} sortDirection={sortDirection} />
-                </div>
-              </th>
-              <th
-                className={`${headerPadding} text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 select-none hidden md:table-cell`}
-                onClick={() => handleSort('status')}
-              >
-                <div className="flex items-center">
-                  Status
-                  <SortIcon field="status" sortField={sortField} sortDirection={sortDirection} />
                 </div>
               </th>
               <th className={`${headerPadding} text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden min-[480px]:table-cell sticky right-0 bg-gray-50 dark:bg-gray-800`}>
@@ -693,36 +693,40 @@ export function AccountList({ accounts, brokerageMarketValues, onEdit, onRefresh
                   onClick={() => toggleGroup(item.type)}
                   aria-expanded={!item.isCollapsed}
                 >
-                  <td colSpan={5} className={cellPadding}>
-                    <div className="flex items-center justify-between gap-3 text-sm">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <svg
-                          className={`w-4 h-4 text-gray-500 dark:text-gray-400 transition-transform ${item.isCollapsed ? '-rotate-90' : ''}`}
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                          aria-hidden="true"
-                        >
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                        </svg>
-                        <span className="font-semibold text-gray-700 dark:text-gray-200">
-                          {formatAccountType(item.type)}
-                        </span>
-                        <span className="text-xs text-gray-500 dark:text-gray-400">
-                          {item.count} {item.count === 1 ? 'account' : 'accounts'}
-                        </span>
-                      </div>
-                      <span
-                        className={`font-medium tabular-nums ${
-                          item.total >= 0
-                            ? 'text-gray-700 dark:text-gray-200'
-                            : 'text-red-600 dark:text-red-400'
-                        }`}
+                  <td colSpan={3} className={cellPadding}>
+                    <div className="flex items-center gap-2 min-w-0 text-sm">
+                      <svg
+                        className={`w-4 h-4 text-gray-500 dark:text-gray-400 transition-transform ${item.isCollapsed ? '-rotate-90' : ''}`}
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        aria-hidden="true"
                       >
-                        {formatCurrencyBase(item.total, defaultCurrency)}
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                      <span className="font-semibold text-gray-700 dark:text-gray-200">
+                        {formatAccountType(item.type)}
+                      </span>
+                      <span className="text-xs text-gray-500 dark:text-gray-400">
+                        {item.count} {item.count === 1 ? 'account' : 'accounts'}
                       </span>
                     </div>
                   </td>
+                  <td className={`${cellPadding} text-right whitespace-nowrap`}>
+                    <span
+                      className={`text-sm font-medium tabular-nums ${
+                        item.total >= 0
+                          ? 'text-gray-700 dark:text-gray-200'
+                          : 'text-red-600 dark:text-red-400'
+                      }`}
+                    >
+                      {formatCurrencyBase(item.total, defaultCurrency)}
+                    </span>
+                  </td>
+                  <td
+                    className={`${cellPadding} hidden min-[480px]:table-cell sticky right-0 bg-gray-100 dark:bg-gray-700/40`}
+                    aria-hidden="true"
+                  />
                 </tr>
               ) : (
                 <AccountRow
