@@ -689,7 +689,7 @@ export function AccountList({ accounts, brokerageMarketValues, onEdit, onRefresh
               item.kind === 'header' ? (
                 <tr
                   key={`group-${item.type}`}
-                  className="bg-gray-100 dark:bg-gray-700/40 hover:bg-gray-200 dark:hover:bg-gray-700 cursor-pointer select-none"
+                  className="group bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 cursor-pointer select-none"
                   onClick={() => toggleGroup(item.type)}
                   aria-expanded={!item.isCollapsed}
                 >
@@ -724,7 +724,7 @@ export function AccountList({ accounts, brokerageMarketValues, onEdit, onRefresh
                     </span>
                   </td>
                   <td
-                    className={`${cellPadding} hidden min-[480px]:table-cell sticky right-0 bg-gray-100 dark:bg-gray-700/40`}
+                    className="hidden min-[480px]:table-cell sticky right-0 bg-gray-100 dark:bg-gray-800 group-hover:bg-gray-200 dark:group-hover:bg-gray-700"
                     aria-hidden="true"
                   />
                 </tr>
