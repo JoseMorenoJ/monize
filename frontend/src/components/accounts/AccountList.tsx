@@ -354,17 +354,46 @@ export function AccountList({ accounts, brokerageMarketValues, onEdit, onRefresh
     return result;
   }, [filteredAndSortedAccounts]);
 
+  // Per-group total balance, converted into the user's default currency.
+  // Brokerage accounts use their portfolio market value (matching the page
+  // summary calculation) so net-worth math stays consistent with the cards
+  // above the list.
+  const groupTotals = useMemo(() => {
+    const totals = new Map<AccountType, number>();
+    for (const { type, accounts: groupAccounts } of groupedAccounts) {
+      let totalUnits = 0;
+      for (const account of groupAccounts) {
+        const rawBalance =
+          account.accountSubType === 'INVESTMENT_BROKERAGE'
+            ? brokerageMarketValues?.get(account.id) ?? 0
+            : (Number(account.currentBalance) || 0) +
+              (Number(account.futureTransactionsSum) || 0);
+        const converted = convertToDefault(rawBalance, account.currencyCode);
+        // Accumulate in 1/10000 units to avoid floating-point drift.
+        totalUnits += Math.round(converted * 10000);
+      }
+      totals.set(type, totalUnits / 10000);
+    }
+    return totals;
+  }, [groupedAccounts, brokerageMarketValues, convertToDefault]);
+
   // Flatten groups into a sequence of header / row entries with stable striping
   // indices so AccountRow alternation continues to look right across groups.
   const renderItems = useMemo(() => {
     type Item =
-      | { kind: 'header'; type: AccountType; count: number; isCollapsed: boolean }
+      | { kind: 'header'; type: AccountType; count: number; total: number; isCollapsed: boolean }
       | { kind: 'row'; account: Account; index: number };
     const items: Item[] = [];
     let rowIndex = 0;
     for (const { type, accounts: groupAccounts } of groupedAccounts) {
       const isCollapsed = collapsedGroups.has(type);
-      items.push({ kind: 'header', type, count: groupAccounts.length, isCollapsed });
+      items.push({
+        kind: 'header',
+        type,
+        count: groupAccounts.length,
+        total: groupTotals.get(type) ?? 0,
+        isCollapsed,
+      });
       if (!isCollapsed) {
         for (const account of groupAccounts) {
           items.push({ kind: 'row', account, index: rowIndex });
@@ -665,21 +694,32 @@ export function AccountList({ accounts, brokerageMarketValues, onEdit, onRefresh
                   aria-expanded={!item.isCollapsed}
                 >
                   <td colSpan={5} className={cellPadding}>
-                    <div className="flex items-center gap-2 text-sm">
-                      <svg
-                        className={`w-4 h-4 text-gray-500 dark:text-gray-400 transition-transform ${item.isCollapsed ? '-rotate-90' : ''}`}
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                        aria-hidden="true"
+                    <div className="flex items-center justify-between gap-3 text-sm">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <svg
+                          className={`w-4 h-4 text-gray-500 dark:text-gray-400 transition-transform ${item.isCollapsed ? '-rotate-90' : ''}`}
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          aria-hidden="true"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                        <span className="font-semibold text-gray-700 dark:text-gray-200">
+                          {formatAccountType(item.type)}
+                        </span>
+                        <span className="text-xs text-gray-500 dark:text-gray-400">
+                          {item.count} {item.count === 1 ? 'account' : 'accounts'}
+                        </span>
+                      </div>
+                      <span
+                        className={`font-medium tabular-nums ${
+                          item.total >= 0
+                            ? 'text-gray-700 dark:text-gray-200'
+                            : 'text-red-600 dark:text-red-400'
+                        }`}
                       >
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
-                      <span className="font-semibold text-gray-700 dark:text-gray-200">
-                        {formatAccountType(item.type)}
-                      </span>
-                      <span className="text-xs text-gray-500 dark:text-gray-400">
-                        {item.count} {item.count === 1 ? 'account' : 'accounts'}
+                        {formatCurrencyBase(item.total, defaultCurrency)}
                       </span>
                     </div>
                   </td>

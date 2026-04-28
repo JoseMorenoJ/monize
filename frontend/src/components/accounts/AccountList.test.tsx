@@ -748,7 +748,9 @@ describe('AccountList', () => {
       />
     );
 
-    expect(screen.getByText('$12345.67')).toBeInTheDocument();
+    // The market value is shown both on the account row and in the
+    // INVESTMENT group header total, so there are two matching nodes.
+    expect(screen.getAllByText('$12345.67').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('Market value')).toBeInTheDocument();
   });
 
@@ -1076,6 +1078,51 @@ describe('AccountList', () => {
       // Group headers display the account count alongside the type label.
       expect(screen.getByText('2 accounts')).toBeInTheDocument();
       expect(screen.getByText('1 account')).toBeInTheDocument();
+    });
+
+    it('shows the total balance for each group in the default currency', () => {
+      const accounts = [
+        createAccount({
+          id: 'c1',
+          name: 'Cheq A',
+          accountType: 'CHEQUING',
+          currencyCode: 'CAD',
+          currentBalance: 1000,
+          futureTransactionsSum: 500,
+        }),
+        createAccount({
+          id: 'c2',
+          name: 'Cheq B',
+          accountType: 'CHEQUING',
+          currencyCode: 'CAD',
+          currentBalance: 250,
+        }),
+        createAccount({
+          id: 'cc1',
+          name: 'Visa',
+          accountType: 'CREDIT_CARD',
+          currencyCode: 'CAD',
+          currentBalance: -750,
+        }),
+      ];
+
+      render(
+        <AccountList accounts={accounts} onEdit={mockOnEdit} onRefresh={mockOnRefresh} />
+      );
+
+      // CHEQUING group total: 1000 + 500 (future) + 250 = 1750
+      // CREDIT_CARD group total: -750
+      const chequingHeaderRow = Array.from(
+        document.querySelectorAll<HTMLTableRowElement>('tr[aria-expanded]'),
+      ).find((tr) => tr.textContent?.includes('Chequing'));
+      const creditHeaderRow = Array.from(
+        document.querySelectorAll<HTMLTableRowElement>('tr[aria-expanded]'),
+      ).find((tr) => tr.textContent?.includes('Credit Card'));
+
+      expect(chequingHeaderRow).toBeTruthy();
+      expect(creditHeaderRow).toBeTruthy();
+      expect(chequingHeaderRow!.textContent).toContain('$1750.00');
+      expect(creditHeaderRow!.textContent).toContain('$-750.00');
     });
 
     it('collapses a group when its header is clicked and hides the rows', () => {
