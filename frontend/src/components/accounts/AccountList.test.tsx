@@ -1121,6 +1121,52 @@ describe('AccountList', () => {
       expect(chequingHeader!.textContent).toContain('$1700.00');
     });
 
+    it('converts investment brokerage market values into the default currency before summing', () => {
+      // 1 USD = 1.4 CAD; CAD passes through unchanged.
+      exchangeMocks.convertToDefault.mockImplementation((n: number, currency?: string) =>
+        currency === 'USD' ? n * 1.4 : n,
+      );
+
+      const accounts = [
+        createAccount({
+          id: 'broker-cad',
+          name: 'CAD Brokerage',
+          accountType: 'INVESTMENT',
+          accountSubType: 'INVESTMENT_BROKERAGE',
+          currencyCode: 'CAD',
+          currentBalance: 0,
+        }),
+        createAccount({
+          id: 'broker-usd',
+          name: 'USD Brokerage',
+          accountType: 'INVESTMENT',
+          accountSubType: 'INVESTMENT_BROKERAGE',
+          currencyCode: 'USD',
+          currentBalance: 0,
+        }),
+      ];
+      const brokerageMarketValues = new Map([
+        ['broker-cad', 1000],
+        ['broker-usd', 500],
+      ]);
+
+      render(
+        <AccountList
+          accounts={accounts}
+          brokerageMarketValues={brokerageMarketValues}
+          onEdit={mockOnEdit}
+          onRefresh={mockOnRefresh}
+        />
+      );
+
+      // Group total: 1000 CAD market value + (500 USD market value * 1.4) = 1700 CAD
+      const investmentHeader = document.querySelector<HTMLTableRowElement>(
+        'tr[aria-expanded]',
+      );
+      expect(investmentHeader).toBeTruthy();
+      expect(investmentHeader!.textContent).toContain('$1700.00');
+    });
+
     it('shows the total balance for each group in the default currency', () => {
       const accounts = [
         createAccount({
