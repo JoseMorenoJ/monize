@@ -7,7 +7,6 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Modal } from '@/components/ui/Modal';
 import { accountsApi } from '@/lib/accounts';
 import { useNumberFormat } from '@/hooks/useNumberFormat';
-import { useExchangeRates } from '@/hooks/useExchangeRates';
 import toast from 'react-hot-toast';
 import { getErrorMessage } from '@/lib/errors';
 import { AccountRow } from './AccountRow';
@@ -27,7 +26,22 @@ const STORAGE_KEYS = {
   sortField: 'accounts.filter.sortField',
   sortDirection: 'accounts.filter.sortDirection',
   density: 'accounts.filter.density',
+  collapsedGroups: 'accounts.filter.collapsedGroups',
 };
+
+// Display order for account-type groups: assets first, then liabilities.
+const ACCOUNT_TYPE_ORDER: AccountType[] = [
+  'CHEQUING',
+  'SAVINGS',
+  'CASH',
+  'INVESTMENT',
+  'ASSET',
+  'CREDIT_CARD',
+  'LINE_OF_CREDIT',
+  'LOAN',
+  'MORTGAGE',
+  'OTHER',
+];
 
 // Helper to get stored value
 function getStoredValue<T>(key: string, defaultValue: T): T {
@@ -69,14 +83,15 @@ const getAccountTypeColor = (type: AccountType) => {
 interface AccountListProps {
   accounts: Account[];
   brokerageMarketValues?: Map<string, number>;
+  defaultCurrency: string;
+  convertToDefault: (value: number, fromCurrency: string) => number;
   onEdit: (account: Account) => void;
   onRefresh: () => void;
 }
 
-export function AccountList({ accounts, brokerageMarketValues, onEdit, onRefresh }: AccountListProps) {
+export function AccountList({ accounts, brokerageMarketValues, defaultCurrency, convertToDefault, onEdit, onRefresh }: AccountListProps) {
   const router = useRouter();
   const { formatCurrency: formatCurrencyBase } = useNumberFormat();
-  const { convertToDefault, defaultCurrency } = useExchangeRates();
   const [closeDialogOpen, setCloseDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [accountToClose, setAccountToClose] = useState<Account | null>(null);
@@ -115,6 +130,24 @@ export function AccountList({ accounts, brokerageMarketValues, onEdit, onRefresh
     getStoredValue<DensityLevel>(STORAGE_KEYS.density, 'normal')
   );
 
+  // Collapsed account-type groups - initialize from localStorage
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<AccountType>>(() => {
+    const stored = getStoredValue<AccountType[]>(STORAGE_KEYS.collapsedGroups, []);
+    return new Set(stored);
+  });
+
+  const toggleGroup = useCallback((type: AccountType) => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(type)) {
+        next.delete(type);
+      } else {
+        next.add(type);
+      }
+      return next;
+    });
+  }, []);
+
   // Persist filter/sort changes to localStorage
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.showFilters, JSON.stringify(showFilters));
@@ -143,6 +176,13 @@ export function AccountList({ accounts, brokerageMarketValues, onEdit, onRefresh
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.density, JSON.stringify(density));
   }, [density]);
+
+  useEffect(() => {
+    localStorage.setItem(
+      STORAGE_KEYS.collapsedGroups,
+      JSON.stringify(Array.from(collapsedGroups)),
+    );
+  }, [collapsedGroups]);
 
   // Long-press handling for context menu on mobile
   const longPressTimer = useRef<NodeJS.Timeout | null>(null);
@@ -258,6 +298,111 @@ export function AccountList({ accounts, brokerageMarketValues, onEdit, onRefresh
     accounts.forEach((a) => map.set(a.id, a.name));
     return map;
   }, [accounts]);
+
+  // Group accounts by account type. Within the INVESTMENT group, ensure linked
+  // brokerage/cash pairs are rendered adjacently (brokerage first).
+  const groupedAccounts = useMemo(() => {
+    const groups = new Map<AccountType, Account[]>();
+    for (const account of filteredAndSortedAccounts) {
+      const existing = groups.get(account.accountType);
+      if (existing) {
+        existing.push(account);
+      } else {
+        groups.set(account.accountType, [account]);
+      }
+    }
+
+    const investments = groups.get('INVESTMENT');
+    if (investments && investments.length > 1) {
+      const byId = new Map(investments.map((a) => [a.id, a]));
+      const placed = new Set<string>();
+      const ordered: Account[] = [];
+      for (const account of investments) {
+        if (placed.has(account.id)) continue;
+        const partner = account.linkedAccountId
+          ? byId.get(account.linkedAccountId)
+          : undefined;
+        if (partner && !placed.has(partner.id)) {
+          // Brokerage first, then its paired cash account.
+          const brokerage =
+            account.accountSubType === 'INVESTMENT_BROKERAGE' ? account : partner;
+          const cash = brokerage === account ? partner : account;
+          ordered.push(brokerage);
+          ordered.push(cash);
+          placed.add(brokerage.id);
+          placed.add(cash.id);
+        } else {
+          ordered.push(account);
+          placed.add(account.id);
+        }
+      }
+      groups.set('INVESTMENT', ordered);
+    }
+
+    const result: { type: AccountType; accounts: Account[] }[] = [];
+    for (const type of ACCOUNT_TYPE_ORDER) {
+      const list = groups.get(type);
+      if (list && list.length > 0) {
+        result.push({ type, accounts: list });
+        groups.delete(type);
+      }
+    }
+    // Append any unrecognised types last (defensive against new enum values).
+    for (const [type, list] of groups) {
+      if (list.length > 0) result.push({ type, accounts: list });
+    }
+    return result;
+  }, [filteredAndSortedAccounts]);
+
+  // Per-group total balance, converted into the user's default currency.
+  // Brokerage accounts use their portfolio market value (matching the page
+  // summary calculation) so net-worth math stays consistent with the cards
+  // above the list.
+  const groupTotals = useMemo(() => {
+    const totals = new Map<AccountType, number>();
+    for (const { type, accounts: groupAccounts } of groupedAccounts) {
+      let totalUnits = 0;
+      for (const account of groupAccounts) {
+        const rawBalance =
+          account.accountSubType === 'INVESTMENT_BROKERAGE'
+            ? brokerageMarketValues?.get(account.id) ?? 0
+            : (Number(account.currentBalance) || 0) +
+              (Number(account.futureTransactionsSum) || 0);
+        const converted = convertToDefault(rawBalance, account.currencyCode);
+        // Accumulate in 1/10000 units to avoid floating-point drift.
+        totalUnits += Math.round(converted * 10000);
+      }
+      totals.set(type, totalUnits / 10000);
+    }
+    return totals;
+  }, [groupedAccounts, brokerageMarketValues, convertToDefault]);
+
+  // Flatten groups into a sequence of header / row entries with stable striping
+  // indices so AccountRow alternation continues to look right across groups.
+  const renderItems = useMemo(() => {
+    type Item =
+      | { kind: 'header'; type: AccountType; count: number; total: number; isCollapsed: boolean }
+      | { kind: 'row'; account: Account; index: number };
+    const items: Item[] = [];
+    let rowIndex = 0;
+    for (const { type, accounts: groupAccounts } of groupedAccounts) {
+      const isCollapsed = collapsedGroups.has(type);
+      items.push({
+        kind: 'header',
+        type,
+        count: groupAccounts.length,
+        total: groupTotals.get(type) ?? 0,
+        isCollapsed,
+      });
+      if (!isCollapsed) {
+        for (const account of groupAccounts) {
+          items.push({ kind: 'row', account, index: rowIndex });
+          rowIndex += 1;
+        }
+      }
+    }
+    return items;
+  }, [groupedAccounts, collapsedGroups, groupTotals]);
 
   // Only show the net worth filter when at least one account is excluded
   const hasExcludedAccounts = useMemo(
@@ -517,6 +662,15 @@ export function AccountList({ accounts, brokerageMarketValues, onEdit, onRefresh
                 </div>
               </th>
               <th
+                className={`${headerPadding} text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 select-none hidden md:table-cell w-1 whitespace-nowrap`}
+                onClick={() => handleSort('status')}
+              >
+                <div className="flex items-center">
+                  Status
+                  <SortIcon field="status" sortField={sortField} sortDirection={sortDirection} />
+                </div>
+              </th>
+              <th
                 className={`${headerPadding} text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 select-none`}
                 onClick={() => handleSort('balance')}
               >
@@ -525,49 +679,84 @@ export function AccountList({ accounts, brokerageMarketValues, onEdit, onRefresh
                   <SortIcon field="balance" sortField={sortField} sortDirection={sortDirection} />
                 </div>
               </th>
-              <th
-                className={`${headerPadding} text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 select-none hidden md:table-cell`}
-                onClick={() => handleSort('status')}
-              >
-                <div className="flex items-center">
-                  Status
-                  <SortIcon field="status" sortField={sortField} sortDirection={sortDirection} />
-                </div>
-              </th>
               <th className={`${headerPadding} text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden min-[480px]:table-cell sticky right-0 bg-gray-50 dark:bg-gray-800`}>
                 Actions
               </th>
             </tr>
           </thead>
           <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
-            {filteredAndSortedAccounts.map((account, index) => (
-              <AccountRow
-                key={account.id}
-                account={account}
-                index={index}
-                density={density}
-                cellPadding={cellPadding}
-                isDeletable={deletableAccounts.has(account.id)}
-                accountNameMap={accountNameMap}
-                brokerageMarketValue={brokerageMarketValues?.get(account.id)}
-                defaultCurrency={defaultCurrency}
-                formatCurrency={formatCurrency}
-                formatCurrencyBase={formatCurrencyBase}
-                convertToDefault={convertToDefault}
-                formatAccountType={formatAccountType}
-                getAccountTypeColor={getAccountTypeColor}
-                onRowClick={handleRowClick}
-                onEdit={onEdit}
-                onReconcile={handleReconcile}
-                onCloseClick={handleCloseClick}
-                onDeleteClick={handleDeleteClick}
-                onReopen={handleReopen}
-                onLongPressStart={handleLongPressStart}
-                onLongPressStartTouch={handleLongPressStart}
-                onLongPressEnd={handleLongPressEnd}
-                onTouchMove={handleTouchMove}
-              />
-            ))}
+            {renderItems.map((item) =>
+              item.kind === 'header' ? (
+                <tr
+                  key={`group-${item.type}`}
+                  className="group bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 cursor-pointer select-none"
+                  onClick={() => toggleGroup(item.type)}
+                  aria-expanded={!item.isCollapsed}
+                >
+                  <td colSpan={3} className={cellPadding}>
+                    <div className="flex items-center gap-2 min-w-0 text-sm">
+                      <svg
+                        className={`w-4 h-4 text-gray-500 dark:text-gray-400 transition-transform ${item.isCollapsed ? '-rotate-90' : ''}`}
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        aria-hidden="true"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                      <span className="font-semibold text-gray-700 dark:text-gray-200">
+                        {formatAccountType(item.type)}
+                      </span>
+                      <span className="text-xs text-gray-500 dark:text-gray-400">
+                        {item.count} {item.count === 1 ? 'account' : 'accounts'}
+                      </span>
+                    </div>
+                  </td>
+                  <td className={`${cellPadding} text-right whitespace-nowrap`}>
+                    <span
+                      className={`text-sm font-medium tabular-nums ${
+                        item.total >= 0
+                          ? 'text-gray-700 dark:text-gray-200'
+                          : 'text-red-600 dark:text-red-400'
+                      }`}
+                    >
+                      {formatCurrencyBase(item.total, defaultCurrency)}
+                    </span>
+                  </td>
+                  <td
+                    className="hidden min-[480px]:table-cell sticky right-0 bg-gray-100 dark:bg-gray-800 group-hover:bg-gray-200 dark:group-hover:bg-gray-700"
+                    aria-hidden="true"
+                  />
+                </tr>
+              ) : (
+                <AccountRow
+                  key={item.account.id}
+                  account={item.account}
+                  index={item.index}
+                  density={density}
+                  cellPadding={cellPadding}
+                  isDeletable={deletableAccounts.has(item.account.id)}
+                  accountNameMap={accountNameMap}
+                  brokerageMarketValue={brokerageMarketValues?.get(item.account.id)}
+                  defaultCurrency={defaultCurrency}
+                  formatCurrency={formatCurrency}
+                  formatCurrencyBase={formatCurrencyBase}
+                  convertToDefault={convertToDefault}
+                  formatAccountType={formatAccountType}
+                  getAccountTypeColor={getAccountTypeColor}
+                  onRowClick={handleRowClick}
+                  onEdit={onEdit}
+                  onReconcile={handleReconcile}
+                  onCloseClick={handleCloseClick}
+                  onDeleteClick={handleDeleteClick}
+                  onReopen={handleReopen}
+                  onLongPressStart={handleLongPressStart}
+                  onLongPressStartTouch={handleLongPressStart}
+                  onLongPressEnd={handleLongPressEnd}
+                  onTouchMove={handleTouchMove}
+                />
+              ),
+            )}
           </tbody>
         </table>
         </div>

@@ -116,6 +116,17 @@ export const AccountRow = memo(function AccountRow({
            formatAccountType(account.accountType)}
         </span>
       </td>
+      <td className={`${cellPadding} whitespace-nowrap hidden md:table-cell w-1`}>
+        <span
+          className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+            !account.isClosed
+              ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+              : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
+          }`}
+        >
+          {!account.isClosed ? 'Active' : 'Closed'}
+        </span>
+      </td>
       <td className={`${cellPadding} whitespace-nowrap text-right ${account.isClosed ? 'opacity-50' : ''}`}>
         {account.accountSubType === 'INVESTMENT_BROKERAGE' && brokerageMarketValue !== undefined ? (
           <>
@@ -161,17 +172,6 @@ export const AccountRow = memo(function AccountRow({
             )}
           </>
         )}
-      </td>
-      <td className={`${cellPadding} whitespace-nowrap hidden md:table-cell`}>
-        <span
-          className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-            !account.isClosed
-              ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-              : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
-          }`}
-        >
-          {!account.isClosed ? 'Active' : 'Closed'}
-        </span>
       </td>
       <td className={`${cellPadding} whitespace-nowrap text-right text-sm font-medium ${density === 'dense' ? 'space-x-1' : 'space-x-2'} hidden min-[480px]:table-cell sticky right-0 ${density !== 'normal' && index % 2 === 1 ? 'bg-gray-50 dark:bg-table-stripe-dark' : 'bg-white dark:bg-gray-900'} group-hover:bg-gray-100 dark:group-hover:bg-gray-800`} onClick={(e) => e.stopPropagation()}>
         {!account.isClosed ? (
