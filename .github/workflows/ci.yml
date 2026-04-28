@@ -228,6 +228,16 @@ jobs:
             GIT_SHA=${{ steps.meta.outputs.git_sha }}
             BUILD_DATE=${{ steps.meta.outputs.build_date }}
             VERSION=${{ steps.version.outputs.version }}
+          annotations: |
+            index:org.opencontainers.image.title=Monize Backend
+            index:org.opencontainers.image.description=Backend for Monize, a self-hosted personal finance app
+            index:org.opencontainers.image.source=https://github.com/kenlasko/monize
+            index:org.opencontainers.image.url=https://github.com/kenlasko/monize
+            index:org.opencontainers.image.authors=ken.lasko@gmail.com
+            index:org.opencontainers.image.vendor=Ken Lasko
+            index:org.opencontainers.image.revision=${{ steps.meta.outputs.git_sha }}
+            index:org.opencontainers.image.created=${{ steps.meta.outputs.build_date }}
+            index:org.opencontainers.image.version=${{ steps.version.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -247,6 +257,16 @@ jobs:
             GIT_SHA=${{ steps.meta.outputs.git_sha }}
             BUILD_DATE=${{ steps.meta.outputs.build_date }}
             VERSION=${{ steps.version.outputs.version }}
+          annotations: |
+            index:org.opencontainers.image.title=Monize Frontend
+            index:org.opencontainers.image.description=Frontend for Monize, a self-hosted personal finance app
+            index:org.opencontainers.image.source=https://github.com/kenlasko/monize
+            index:org.opencontainers.image.url=https://github.com/kenlasko/monize
+            index:org.opencontainers.image.authors=ken.lasko@gmail.com
+            index:org.opencontainers.image.vendor=Ken Lasko
+            index:org.opencontainers.image.revision=${{ steps.meta.outputs.git_sha }}
+            index:org.opencontainers.image.created=${{ steps.meta.outputs.build_date }}
+            index:org.opencontainers.image.version=${{ steps.version.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
