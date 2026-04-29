@@ -62,6 +62,7 @@ const mockPreferences: UserPreferences = {
   favouriteReportIds: [],
   preferredExchanges: [],
     defaultQuoteProvider: 'yahoo' as const,
+    recentTransactionsLimit: 5,
   createdAt: '2024-01-01T00:00:00Z',
   updatedAt: '2024-01-01T00:00:00Z',
 };
@@ -117,6 +118,23 @@ describe('PreferencesSection', () => {
 
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith('Failed to save preferences');
+    });
+  });
+
+  it('sends updated recent-transactions limit when changed and saved', async () => {
+    (userSettingsApi.updatePreferences as ReturnType<typeof vi.fn>).mockResolvedValue(mockPreferences);
+
+    render(<PreferencesSection preferences={mockPreferences} onPreferencesUpdated={mockOnPreferencesUpdated} />);
+
+    fireEvent.change(screen.getByLabelText('Recent transactions in quick-fill'), {
+      target: { value: '10' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Preferences' }));
+
+    await waitFor(() => {
+      expect(userSettingsApi.updatePreferences).toHaveBeenCalledWith(
+        expect.objectContaining({ recentTransactionsLimit: 10 }),
+      );
     });
   });
 

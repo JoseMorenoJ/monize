@@ -150,4 +150,17 @@ export class UpdatePreferencesDto {
   @IsOptional()
   @IsIn(["yahoo", "msn"])
   defaultQuoteProvider?: "yahoo" | "msn";
+
+  @ApiPropertyOptional({
+    description:
+      "Number of entries shown in the recent-transactions quick-fill popover (1-20).",
+    example: 5,
+    minimum: 1,
+    maximum: 20,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(20)
+  recentTransactionsLimit?: number;
 }

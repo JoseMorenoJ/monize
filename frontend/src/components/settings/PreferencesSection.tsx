@@ -67,6 +67,14 @@ const QUOTE_PROVIDER_OPTIONS = [
   { value: 'msn', label: 'MSN Money' },
 ];
 
+const RECENT_TRANSACTIONS_LIMIT_OPTIONS = [
+  { value: '3', label: '3' },
+  { value: '5', label: '5' },
+  { value: '10', label: '10' },
+  { value: '15', label: '15' },
+  { value: '20', label: '20' },
+];
+
 interface PreferencesSectionProps {
   preferences: UserPreferences;
   onPreferencesUpdated: (prefs: UserPreferences) => void;
@@ -89,6 +97,9 @@ export function PreferencesSection({ preferences, onPreferencesUpdated }: Prefer
   );
   const [defaultQuoteProvider, setDefaultQuoteProvider] = useState<'yahoo' | 'msn'>(
     preferences.defaultQuoteProvider ?? 'yahoo',
+  );
+  const [recentTransactionsLimit, setRecentTransactionsLimit] = useState(
+    preferences.recentTransactionsLimit ?? 5,
   );
   const [isUpdatingPreferences, setIsUpdatingPreferences] = useState(false);
 
@@ -127,6 +138,7 @@ export function PreferencesSection({ preferences, onPreferencesUpdated }: Prefer
         timeFormat,
         preferredExchanges: preferredExchanges.filter(Boolean),
         defaultQuoteProvider,
+        recentTransactionsLimit,
       };
 
       const updated = await userSettingsApi.updatePreferences(data);
@@ -272,6 +284,18 @@ export function PreferencesSection({ preferences, onPreferencesUpdated }: Prefer
             onChange={(e) => setTimeFormat(e.target.value as '24h' | '12h')}
           />
         )}
+
+        <div>
+          <Select
+            label="Recent transactions in quick-fill"
+            options={RECENT_TRANSACTIONS_LIMIT_OPTIONS}
+            value={String(recentTransactionsLimit)}
+            onChange={(e) => setRecentTransactionsLimit(Number(e.target.value))}
+          />
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            Number of entries shown in the history button popover next to the Payee field on transaction forms.
+          </p>
+        </div>
       </div>
 
       <div className="mt-6 flex justify-end">

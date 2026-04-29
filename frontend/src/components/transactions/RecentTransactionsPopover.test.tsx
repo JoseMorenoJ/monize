@@ -23,6 +23,12 @@ vi.mock('@/lib/logger', () => ({
   createLogger: () => ({ error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() }),
 }));
 
+const mockPreferencesState = { recentTransactionsLimit: 5 as number | undefined };
+vi.mock('@/store/preferencesStore', () => ({
+  usePreferencesStore: (selector: (s: any) => any) =>
+    selector({ preferences: { recentTransactionsLimit: mockPreferencesState.recentTransactionsLimit } }),
+}));
+
 function txn(overrides: Partial<Transaction> = {}): Transaction {
   return {
     id: 'tx-1',
@@ -68,6 +74,31 @@ function Harness(props: { payeeId?: string; payeeName?: string; onSelect: (t: Tr
 describe('RecentTransactionsPopover', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockPreferencesState.recentTransactionsLimit = 5;
+  });
+
+  it('uses the limit from preferences when fetching', async () => {
+    mockPreferencesState.recentTransactionsLimit = 12;
+    mockGetRecent.mockResolvedValue([]);
+    render(<Harness onSelect={vi.fn()} onClose={vi.fn()} />);
+    await waitFor(() => expect(mockGetRecent).toHaveBeenCalled());
+    expect(mockGetRecent).toHaveBeenCalledWith({
+      limit: 12,
+      payeeId: undefined,
+      payeeName: undefined,
+    });
+  });
+
+  it('falls back to a limit of 5 when no preference is set', async () => {
+    mockPreferencesState.recentTransactionsLimit = undefined;
+    mockGetRecent.mockResolvedValue([]);
+    render(<Harness onSelect={vi.fn()} onClose={vi.fn()} />);
+    await waitFor(() => expect(mockGetRecent).toHaveBeenCalled());
+    expect(mockGetRecent).toHaveBeenCalledWith({
+      limit: 5,
+      payeeId: undefined,
+      payeeName: undefined,
+    });
   });
 
   it('fetches global recents (no payee) when no filter is provided', async () => {

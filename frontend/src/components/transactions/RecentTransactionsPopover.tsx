@@ -6,6 +6,7 @@ import { transactionsApi } from '@/lib/transactions';
 import { Transaction } from '@/types/transaction';
 import { formatCurrency } from '@/lib/format';
 import { useDateFormat } from '@/hooks/useDateFormat';
+import { usePreferencesStore } from '@/store/preferencesStore';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('RecentTransactionsPopover');
@@ -45,6 +46,7 @@ export function RecentTransactionsPopover({
 }: RecentTransactionsPopoverProps) {
   const popoverRef = useRef<HTMLDivElement>(null);
   const { formatDate } = useDateFormat();
+  const limit = usePreferencesStore((s) => s.preferences?.recentTransactionsLimit ?? 5);
   const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
   // The popover is mounted-on-open by the parent, so the fetch always starts
   // fresh - default to loading=true and clear once the request resolves.
@@ -70,7 +72,7 @@ export function RecentTransactionsPopover({
     let cancelled = false;
     transactionsApi
       .getRecent({
-        limit: 5,
+        limit,
         payeeId: payeeId || undefined,
         payeeName: payeeId ? undefined : payeeName || undefined,
       })
@@ -88,7 +90,7 @@ export function RecentTransactionsPopover({
     return () => {
       cancelled = true;
     };
-  }, [payeeId, payeeName]);
+  }, [payeeId, payeeName, limit]);
 
   // Outside-click and escape
   useEffect(() => {

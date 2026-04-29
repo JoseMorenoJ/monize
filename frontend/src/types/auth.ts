@@ -94,6 +94,7 @@ export interface UserPreferences {
   timeFormat: '24h' | '12h';
   preferredExchanges: string[];
   defaultQuoteProvider: 'yahoo' | 'msn';
+  recentTransactionsLimit: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -151,6 +152,7 @@ export interface UpdatePreferencesData {
   timeFormat?: '24h' | '12h';
   preferredExchanges?: string[];
   defaultQuoteProvider?: 'yahoo' | 'msn';
+  recentTransactionsLimit?: number;
 }
 
 export interface ChangePasswordData {

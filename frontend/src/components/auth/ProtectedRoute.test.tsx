@@ -158,6 +158,7 @@ describe('ProtectedRoute', () => {
         favouriteReportIds: [],
         preferredExchanges: [],
     defaultQuoteProvider: 'yahoo' as const,
+    recentTransactionsLimit: 5,
         createdAt: '2026-01-01T00:00:00Z',
         updatedAt: '2026-01-01T00:00:00Z',
       },
