@@ -369,10 +369,26 @@ export function AccountList({ accounts, brokerageMarketValues, defaultCurrency, 
     let rowIndex = 0;
     for (const { type, accounts: groupAccounts } of groupedAccounts) {
       const isCollapsed = collapsedGroups.has(type);
+      // For investments, a linked brokerage/cash pair represents one logical
+      // account, so collapse pairs into a single count.
+      let count = groupAccounts.length;
+      if (type === 'INVESTMENT') {
+        const idsInGroup = new Set(groupAccounts.map((a) => a.id));
+        const counted = new Set<string>();
+        count = 0;
+        for (const account of groupAccounts) {
+          if (counted.has(account.id)) continue;
+          counted.add(account.id);
+          if (account.linkedAccountId && idsInGroup.has(account.linkedAccountId)) {
+            counted.add(account.linkedAccountId);
+          }
+          count += 1;
+        }
+      }
       items.push({
         kind: 'header',
         type,
-        count: groupAccounts.length,
+        count,
         total: groupTotals.get(type) ?? 0,
         isCollapsed,
       });

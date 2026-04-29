@@ -1229,5 +1229,55 @@ describe('AccountList', () => {
       expect(brokerageRowIdx).toBeGreaterThan(0);
       expect(cashRowIdx).toBe(brokerageRowIdx + 1);
     });
+
+    it('counts a linked brokerage/cash pair as a single investment account', () => {
+      const accounts = [
+        createAccount({
+          id: 'broker-1',
+          name: 'Pair One Brokerage',
+          accountType: 'INVESTMENT',
+          accountSubType: 'INVESTMENT_BROKERAGE',
+          linkedAccountId: 'cash-1',
+        }),
+        createAccount({
+          id: 'cash-1',
+          name: 'Pair One Cash',
+          accountType: 'INVESTMENT',
+          accountSubType: 'INVESTMENT_CASH',
+          linkedAccountId: 'broker-1',
+        }),
+        createAccount({
+          id: 'broker-2',
+          name: 'Pair Two Brokerage',
+          accountType: 'INVESTMENT',
+          accountSubType: 'INVESTMENT_BROKERAGE',
+          linkedAccountId: 'cash-2',
+        }),
+        createAccount({
+          id: 'cash-2',
+          name: 'Pair Two Cash',
+          accountType: 'INVESTMENT',
+          accountSubType: 'INVESTMENT_CASH',
+          linkedAccountId: 'broker-2',
+        }),
+        createAccount({
+          id: 'solo',
+          name: 'Solo Investment',
+          accountType: 'INVESTMENT',
+          accountSubType: null,
+        }),
+      ];
+
+      render(
+        <AccountList accounts={accounts} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
+      );
+
+      // Two linked pairs + one standalone account = 3 logical investment accounts.
+      const investmentHeader = document.querySelector<HTMLTableRowElement>(
+        'tr[aria-expanded]',
+      );
+      expect(investmentHeader).toBeTruthy();
+      expect(investmentHeader!.textContent).toContain('3 accounts');
+    });
   });
 });
