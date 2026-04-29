@@ -20,7 +20,6 @@ type SortDirection = 'asc' | 'desc';
 // LocalStorage keys for filter persistence
 const STORAGE_KEYS = {
   showFilters: 'accounts.filter.showFilters',
-  accountType: 'accounts.filter.accountType',
   status: 'accounts.filter.status',
   netWorth: 'accounts.filter.netWorth',
   sortField: 'accounts.filter.sortField',
@@ -115,9 +114,6 @@ export function AccountList({ accounts, brokerageMarketValues, defaultCurrency, 
   const [showFilters, _setShowFilters] = useState(() =>
     getStoredValue<boolean>(STORAGE_KEYS.showFilters, false)
   );
-  const [filterAccountType, setFilterAccountType] = useState<AccountType | ''>(() =>
-    getStoredValue<AccountType | ''>(STORAGE_KEYS.accountType, '')
-  );
   const [filterStatus, setFilterStatus] = useState<'active' | 'closed' | ''>(() =>
     getStoredValue<'active' | 'closed' | ''>(STORAGE_KEYS.status, '')
   );
@@ -152,10 +148,6 @@ export function AccountList({ accounts, brokerageMarketValues, defaultCurrency, 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.showFilters, JSON.stringify(showFilters));
   }, [showFilters]);
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.accountType, JSON.stringify(filterAccountType));
-  }, [filterAccountType]);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.status, JSON.stringify(filterStatus));
@@ -242,21 +234,11 @@ export function AccountList({ accounts, brokerageMarketValues, defaultCurrency, 
     setDensity(prev => nextDensity(prev));
   }, []);
 
-  // Get unique account types from the accounts
-  const availableAccountTypes = useMemo(() => {
-    const types = new Set<AccountType>();
-    accounts.forEach((a) => types.add(a.accountType));
-    return Array.from(types).sort();
-  }, [accounts]);
-
   // Filter and sort accounts
   const filteredAndSortedAccounts = useMemo(() => {
     let result = [...accounts];
 
     // Apply filters
-    if (filterAccountType) {
-      result = result.filter((a) => a.accountType === filterAccountType);
-    }
     if (filterStatus) {
       result = result.filter((a) =>
         filterStatus === 'active' ? !a.isClosed : a.isClosed
@@ -290,7 +272,7 @@ export function AccountList({ accounts, brokerageMarketValues, defaultCurrency, 
     });
 
     return result;
-  }, [accounts, filterAccountType, filterStatus, filterNetWorth, sortField, sortDirection]);
+  }, [accounts, filterStatus, filterNetWorth, sortField, sortDirection]);
 
   // Build a map of account IDs to names for showing linked account pairs
   const accountNameMap = useMemo(() => {
@@ -417,9 +399,6 @@ export function AccountList({ accounts, brokerageMarketValues, defaultCurrency, 
     }
   }, [hasExcludedAccounts, filterNetWorth]);
 
-  // Count active filters
-  const activeFilterCount = [filterAccountType, filterStatus, filterNetWorth].filter(Boolean).length;
-
   const handleSort = (field: SortField) => {
     if (sortField === field) {
       setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
@@ -430,11 +409,8 @@ export function AccountList({ accounts, brokerageMarketValues, defaultCurrency, 
   };
 
   const clearFilters = () => {
-    setFilterAccountType('');
     setFilterStatus('');
     setFilterNetWorth('');
-    // Also clear localStorage
-    localStorage.removeItem(STORAGE_KEYS.accountType);
     localStorage.removeItem(STORAGE_KEYS.status);
     localStorage.removeItem(STORAGE_KEYS.netWorth);
   };
@@ -541,19 +517,8 @@ export function AccountList({ accounts, brokerageMarketValues, defaultCurrency, 
       <div className="px-3 sm:px-6 py-3 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-4">
-            {/* Type dropdown and Status segmented control - grouped together */}
+            {/* Status segmented control and Net Worth filter */}
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3">
-              <select
-                value={filterAccountType}
-                onChange={(e) => setFilterAccountType(e.target.value as AccountType | '')}
-                className="text-sm font-sans border border-gray-300 dark:border-gray-600 rounded-md px-3 py-1.5 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
-              >
-                <option value="">All Types</option>
-                {availableAccountTypes.map((type) => (
-                  <option key={type} value={type}>{formatAccountType(type)}</option>
-                ))}
-              </select>
-
               {/* Status segmented control */}
               <div className="inline-flex rounded-md shadow-sm">
               <button
@@ -601,12 +566,6 @@ export function AccountList({ accounts, brokerageMarketValues, defaultCurrency, 
                 </select>
               )}
             </div>
-
-            {activeFilterCount > 0 && (
-              <button onClick={clearFilters} className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
-                Clear
-              </button>
-            )}
           </div>
           <span className="text-sm text-gray-500 dark:text-gray-400">
             {filteredAndSortedAccounts.length} of {accounts.length} accounts
@@ -693,7 +652,7 @@ export function AccountList({ accounts, brokerageMarketValues, defaultCurrency, 
                   onClick={() => toggleGroup(item.type)}
                   aria-expanded={!item.isCollapsed}
                 >
-                  <td colSpan={3} className={cellPadding}>
+                  <td className={cellPadding}>
                     <div className="flex items-center gap-2 min-w-0 text-sm">
                       <svg
                         className={`w-4 h-4 text-gray-500 dark:text-gray-400 transition-transform ${item.isCollapsed ? '-rotate-90' : ''}`}
@@ -712,6 +671,8 @@ export function AccountList({ accounts, brokerageMarketValues, defaultCurrency, 
                       </span>
                     </div>
                   </td>
+                  <td className="hidden sm:table-cell" aria-hidden="true" />
+                  <td className="hidden md:table-cell" aria-hidden="true" />
                   <td className={`${cellPadding} text-right whitespace-nowrap`}>
                     <span
                       className={`text-sm font-medium tabular-nums ${
