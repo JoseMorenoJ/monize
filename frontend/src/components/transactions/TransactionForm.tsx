@@ -216,6 +216,7 @@ export function TransactionForm({ transaction, duplicateFrom, defaultAccountId, 
   const watchedAccountId = watch('accountId');
   const watchedAmount = watch('amount');
   const watchedCurrencyCode = watch('currencyCode');
+  const watchedPayeeName = watch('payeeName');
 
   // Auto-set currencyCode from the selected account
   useEffect(() => {
@@ -346,6 +347,39 @@ export function TransactionForm({ transaction, duplicateFrom, defaultAccountId, 
         logger.error(error);
       });
   }, [transaction?.payeeId]);
+
+  // Quick-fill the form from a previously entered transaction (chosen from
+  // the history popover next to the Payee field). Resets date to today and
+  // status to UNRECONCILED, otherwise mirrors duplicateFrom behaviour. When
+  // the source is a split, the form switches into split mode and the splits
+  // state is restored so the user gets back the same split breakdown.
+  const handleQuickFill = (source: Transaction) => {
+    const amount = Math.round(Number(source.amount) * 100) / 100;
+    setValue('accountId', source.accountId, { shouldDirty: true, shouldValidate: true });
+    setValue('transactionDate', getLocalDateString(), { shouldDirty: true, shouldValidate: true });
+    setValue('payeeId', source.payeeId || undefined, { shouldDirty: true });
+    setValue('payeeName', source.payeeName || '', { shouldDirty: true });
+    setValue('categoryId', source.categoryId || '', { shouldDirty: true });
+    setValue('amount', amount, { shouldDirty: true, shouldValidate: true });
+    setValue('currencyCode', source.currencyCode, { shouldDirty: true });
+    setValue('description', source.description || '', { shouldDirty: true });
+    setValue('referenceNumber', '', { shouldDirty: true });
+    setValue('status', TransactionStatus.UNRECONCILED, { shouldDirty: true });
+
+    setSelectedPayeeId(source.payeeId || '');
+    setSelectedCategoryId(source.categoryId || '');
+    setSelectedTagIds(source.tags?.map((t) => t.id) || []);
+
+    if (source.isSplit && source.splits && source.splits.length > 0) {
+      setSplits(toSplitRows(source.splits));
+      setIsSplitMode(true);
+      setMode('split');
+    } else {
+      setSplits([]);
+      setIsSplitMode(false);
+      setMode('normal');
+    }
+  };
 
   // Handle payee selection
   const handlePayeeChange = (payeeId: string, payeeName: string) => {
@@ -848,6 +882,7 @@ export function TransactionForm({ transaction, duplicateFrom, defaultAccountId, 
           watchedAccountId={watchedAccountId}
           watchedAmount={watchedAmount}
           watchedCurrencyCode={watchedCurrencyCode}
+          watchedPayeeName={watchedPayeeName}
           accounts={accounts}
           selectedPayeeId={selectedPayeeId}
           selectedCategoryId={selectedCategoryId}
@@ -860,6 +895,7 @@ export function TransactionForm({ transaction, duplicateFrom, defaultAccountId, 
           handleCategoryCreate={handleCategoryCreate}
           handleAmountChange={handleAmountChange}
           handleModeChange={handleModeChange}
+          onQuickFill={!transaction && !duplicateFrom ? handleQuickFill : undefined}
           transaction={transaction}
           createdAtSlot={createdAtSlot}
         />
@@ -873,12 +909,14 @@ export function TransactionForm({ transaction, duplicateFrom, defaultAccountId, 
           watchedAccountId={watchedAccountId}
           watchedAmount={watchedAmount}
           watchedCurrencyCode={watchedCurrencyCode}
+          watchedPayeeName={watchedPayeeName}
           accounts={accounts}
           selectedPayeeId={selectedPayeeId}
           payees={payees}
           handlePayeeChange={handlePayeeChange}
           handlePayeeCreate={handlePayeeCreate}
           handleAmountChange={handleSplitTotalChange}
+          onQuickFill={!transaction && !duplicateFrom ? handleQuickFill : undefined}
           transaction={transaction}
           createdAtSlot={createdAtSlot}
         />

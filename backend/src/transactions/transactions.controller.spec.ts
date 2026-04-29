@@ -36,6 +36,7 @@ describe("TransactionsController", () => {
       updateTransfer: jest.fn(),
       getSummary: jest.fn(),
       bulkUpdate: jest.fn(),
+      getRecent: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -61,6 +62,67 @@ describe("TransactionsController", () => {
 
       expect(result).toEqual(expected);
       expect(mockService.create).toHaveBeenCalledWith("user-1", dto);
+    });
+  });
+
+  describe("getRecent()", () => {
+    it("delegates to service.getRecent with userId and default limit of 5", async () => {
+      const expected = [{ id: "tx-1" }];
+      mockService.getRecent.mockResolvedValue(expected);
+
+      const result = await controller.getRecent(mockReq, {});
+
+      expect(result).toEqual(expected);
+      expect(mockService.getRecent).toHaveBeenCalledWith("user-1", 5, {
+        payeeId: undefined,
+        payeeName: undefined,
+      });
+    });
+
+    it("forwards the requested limit when provided", async () => {
+      mockService.getRecent.mockResolvedValue([]);
+
+      await controller.getRecent(mockReq, { limit: 10 });
+
+      expect(mockService.getRecent).toHaveBeenCalledWith("user-1", 10, {
+        payeeId: undefined,
+        payeeName: undefined,
+      });
+    });
+
+    it("forwards payeeId for payee-scoped quick-fill", async () => {
+      mockService.getRecent.mockResolvedValue([]);
+
+      await controller.getRecent(mockReq, { payeeId: uuid1 });
+
+      expect(mockService.getRecent).toHaveBeenCalledWith("user-1", 5, {
+        payeeId: uuid1,
+        payeeName: undefined,
+      });
+    });
+
+    it("forwards payeeName when no payeeId is provided", async () => {
+      mockService.getRecent.mockResolvedValue([]);
+
+      await controller.getRecent(mockReq, { payeeName: "Free-text Coffee" });
+
+      expect(mockService.getRecent).toHaveBeenCalledWith("user-1", 5, {
+        payeeId: undefined,
+        payeeName: "Free-text Coffee",
+      });
+    });
+
+    it("uses authenticated userId, never trusts query params", async () => {
+      mockService.getRecent.mockResolvedValue([]);
+
+      await controller.getRecent({ user: { id: "user-1" } } as any, {
+        limit: 5,
+      });
+
+      expect(mockService.getRecent).toHaveBeenCalledWith("user-1", 5, {
+        payeeId: undefined,
+        payeeName: undefined,
+      });
     });
   });
 

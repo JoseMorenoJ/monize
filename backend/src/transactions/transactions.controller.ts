@@ -30,6 +30,7 @@ import { CreateTransactionSplitDto } from "./dto/create-transaction-split.dto";
 import { UpdateSplitsDto } from "./dto/update-splits.dto";
 import { CreateTransferDto } from "./dto/create-transfer.dto";
 import { UpdateTransferDto } from "./dto/update-transfer.dto";
+import { GetRecentTransactionsDto } from "./dto/get-recent-transactions.dto";
 import { BulkReconcileDto } from "./dto/bulk-reconcile.dto";
 import { BulkUpdateDto, BulkDeleteDto } from "./dto/bulk-update.dto";
 import { MarkClearedDto } from "./dto/mark-cleared.dto";
@@ -425,6 +426,39 @@ export class TransactionsController {
       parsedAmountTo,
       parseUuids(tagIdsParam),
     );
+  }
+
+  @Get("recent")
+  @ApiOperation({
+    summary:
+      "Get recent transactions for quick-fill. Without a payee filter, returns last-N distinct (deduped by payee+category). With payeeId or payeeName, returns the raw last-N entries for that payee.",
+  })
+  @ApiQuery({
+    name: "limit",
+    required: false,
+    description: "Number of recent transactions (1-20, default 5)",
+  })
+  @ApiQuery({
+    name: "payeeId",
+    required: false,
+    description: "Filter to transactions for this payee (UUID); disables dedup",
+  })
+  @ApiQuery({
+    name: "payeeName",
+    required: false,
+    description:
+      "Filter to transactions with this exact free-text payeeName; disables dedup",
+  })
+  @ApiResponse({
+    status: 200,
+    description: "Recent transactions retrieved successfully",
+  })
+  @ApiResponse({ status: 401, description: "Unauthorized" })
+  getRecent(@Request() req, @Query() query: GetRecentTransactionsDto) {
+    return this.transactionsService.getRecent(req.user.id, query.limit ?? 5, {
+      payeeId: query.payeeId,
+      payeeName: query.payeeName,
+    });
   }
 
   // ==================== Reconciliation Endpoints ====================

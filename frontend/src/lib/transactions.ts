@@ -103,6 +103,24 @@ export const transactionsApi = {
     return response.data;
   },
 
+  // Quick-fill recents. Without a payee filter the backend dedups by
+  // payee+category to surface variety; with payeeId or payeeName it returns
+  // the raw last-N entries for that payee.
+  getRecent: async (params?: {
+    limit?: number;
+    payeeId?: string;
+    payeeName?: string;
+  }): Promise<Transaction[]> => {
+    const response = await apiClient.get<Transaction[]>('/transactions/recent', {
+      params: {
+        limit: params?.limit ?? 5,
+        payeeId: params?.payeeId,
+        payeeName: params?.payeeName,
+      },
+    });
+    return response.data;
+  },
+
   // Get single transaction by ID
   getById: async (id: string): Promise<Transaction> => {
     const response = await apiClient.get<Transaction>(`/transactions/${id}`);

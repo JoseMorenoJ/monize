@@ -194,6 +194,9 @@ export class UsersService {
     if (dto.defaultQuoteProvider !== undefined) {
       preferences.defaultQuoteProvider = dto.defaultQuoteProvider;
     }
+    if (dto.recentTransactionsLimit !== undefined) {
+      preferences.recentTransactionsLimit = dto.recentTransactionsLimit;
+    }
 
     return this.preferencesRepository.save(preferences);
   }

@@ -93,6 +93,13 @@ export class UserPreference {
   })
   defaultQuoteProvider: "yahoo" | "msn";
 
+  @Column({
+    name: "recent_transactions_limit",
+    type: "smallint",
+    default: 5,
+  })
+  recentTransactionsLimit: number;
+
   @CreateDateColumn({ name: "created_at" })
   createdAt: Date;
 

@@ -211,6 +211,63 @@ export class TransactionsService {
     return result;
   }
 
+  async getRecent(
+    userId: string,
+    limit = 5,
+    filter?: { payeeId?: string; payeeName?: string },
+  ): Promise<Transaction[]> {
+    const safeLimit = Math.min(20, Math.max(1, Math.floor(limit)));
+    const isPayeeFiltered = !!(filter?.payeeId || filter?.payeeName);
+    // For payee-scoped requests, raw last-N is what's wanted: same payee, just
+    // different historical entries. For the unfiltered case we pull a 6x window
+    // so dedup can still yield safeLimit distinct rows.
+    const window = isPayeeFiltered ? safeLimit : safeLimit * 6;
+
+    // Excludes transfers (those are handled by their own form mode). Splits
+    // ARE included so a user can quick-fill a recurring split entry.
+    const where: Record<string, unknown> = { userId, isTransfer: false };
+    if (filter?.payeeId) {
+      where.payeeId = filter.payeeId;
+    } else if (filter?.payeeName) {
+      where.payeeName = filter.payeeName;
+    }
+
+    const rows = await this.transactionsRepository.find({
+      where,
+      order: { transactionDate: "DESC", createdAt: "DESC" },
+      take: window,
+      relations: [
+        "payee",
+        "category",
+        "account",
+        "tags",
+        "splits",
+        "splits.category",
+        "splits.transferAccount",
+        "splits.tags",
+      ],
+    });
+
+    if (isPayeeFiltered) {
+      return rows.slice(0, safeLimit);
+    }
+
+    // Split parents have categoryId=null (categories live on the splits), so
+    // the dedup key `payeeId|categoryId` collapses to one row per payee for
+    // splits, and to one row per (payee, category) pair for normals.
+    const seen = new Set<string>();
+    const result: Transaction[] = [];
+    for (const row of rows) {
+      const payeeKey = row.payeeId ?? row.payeeName ?? "";
+      const key = `${payeeKey}|${row.categoryId ?? ""}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      result.push(row);
+      if (result.length >= safeLimit) break;
+    }
+    return result;
+  }
+
   async findAll(
     userId: string,
     accountIds?: string[],

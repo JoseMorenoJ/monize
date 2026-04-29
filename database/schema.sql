@@ -497,10 +497,13 @@ CREATE TABLE user_preferences (
     preferred_exchanges TEXT[] DEFAULT '{}',
     dismissed_update_version VARCHAR(50),
     default_quote_provider VARCHAR(20) NOT NULL DEFAULT 'yahoo',
+    recent_transactions_limit SMALLINT NOT NULL DEFAULT 5,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT user_preferences_default_quote_provider_check
-      CHECK (default_quote_provider IN ('yahoo','msn'))
+      CHECK (default_quote_provider IN ('yahoo','msn')),
+    CONSTRAINT user_preferences_recent_transactions_limit_check
+      CHECK (recent_transactions_limit BETWEEN 1 AND 20)
 );
 
 -- Auto Backup Settings (per-user configuration for automatic backups to a folder)

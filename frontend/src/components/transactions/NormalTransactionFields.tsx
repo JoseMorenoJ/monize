@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode } from 'react';
+import { ReactNode, useRef, useState } from 'react';
 import { UseFormRegister, UseFormSetValue, FieldErrors } from 'react-hook-form';
 import { Input } from '@/components/ui/Input';
 import { DateInput } from '@/components/ui/DateInput';
@@ -12,6 +12,7 @@ import { Account } from '@/types/account';
 import { Payee } from '@/types/payee';
 import { getCurrencySymbol } from '@/lib/format';
 import { buildAccountDropdownOptions } from '@/lib/account-utils';
+import { RecentTransactionsPopover } from './RecentTransactionsPopover';
 
 interface NormalTransactionFieldsProps {
   register: UseFormRegister<any>;
@@ -20,6 +21,7 @@ interface NormalTransactionFieldsProps {
   watchedAccountId: string;
   watchedAmount: number;
   watchedCurrencyCode: string;
+  watchedPayeeName?: string;
   accounts: Account[];
   selectedPayeeId: string;
   selectedCategoryId: string;
@@ -32,6 +34,9 @@ interface NormalTransactionFieldsProps {
   handleCategoryCreate: (name: string) => void;
   handleAmountChange: (value: number | undefined) => void;
   handleModeChange: (mode: 'normal' | 'split' | 'transfer') => void;
+  /** Quick-fill the form from a previous transaction. When undefined, the
+   *  history button is hidden (e.g. when editing). */
+  onQuickFill?: (transaction: Transaction) => void;
   transaction?: Transaction;
   createdAtSlot?: ReactNode;
 }
@@ -43,6 +48,7 @@ export function NormalTransactionFields({
   watchedAccountId,
   watchedAmount,
   watchedCurrencyCode,
+  watchedPayeeName,
   accounts,
   selectedPayeeId,
   selectedCategoryId,
@@ -55,9 +61,13 @@ export function NormalTransactionFields({
   handleCategoryCreate,
   handleAmountChange,
   handleModeChange,
+  onQuickFill,
   transaction,
   createdAtSlot,
 }: NormalTransactionFieldsProps) {
+  const historyButtonRef = useRef<HTMLButtonElement>(null);
+  const [showRecentPopover, setShowRecentPopover] = useState(false);
+
   return (
     <div className="space-y-4">
       {/* Row 1: Account, Date, and optionally Create Date */}
@@ -88,24 +98,73 @@ export function NormalTransactionFields({
 
       {/* Row 2: Payee and Category */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Combobox
-          label="Payee"
-          placeholder="Select or type payee name..."
-          options={payees.map(payee => ({
-            value: payee.id,
-            label: payee.name,
-            subtitle: payee.defaultCategory?.name,
-            keywords: payeeAliasMap[payee.id],
-          }))}
-          value={selectedPayeeId}
-          initialDisplayValue={transaction?.payeeName || ''}
-          onChange={handlePayeeChange}
-          onCreateNew={handlePayeeCreate}
-          allowCustomValue={true}
-          error={errors.payeeName?.message as string | undefined}
-        />
+        <div className="flex items-stretch space-x-2">
+          <div className="flex-1 min-w-0">
+            <Combobox
+              label="Payee"
+              placeholder="Select or type payee name..."
+              options={payees.map(payee => ({
+                value: payee.id,
+                label: payee.name,
+                subtitle: payee.defaultCategory?.name,
+                keywords: payeeAliasMap[payee.id],
+              }))}
+              value={selectedPayeeId}
+              initialDisplayValue={transaction?.payeeName || ''}
+              onChange={handlePayeeChange}
+              onCreateNew={handlePayeeCreate}
+              allowCustomValue={true}
+              error={errors.payeeName?.message as string | undefined}
+            />
+          </div>
+          {onQuickFill && (
+            // mt-6 (1.5rem) = label line-height (text-sm = 1.25rem) + mb-1 (0.25rem),
+            // pushing the button past the Combobox label so it visually aligns
+            // with the input box; flex-stretch fills the input's height.
+            <button
+              ref={historyButtonRef}
+              type="button"
+              onClick={() => setShowRecentPopover((v) => !v)}
+              aria-label={
+                selectedPayeeId || watchedPayeeName
+                  ? 'Show recent transactions for this payee'
+                  : 'Show recent transactions'
+              }
+              aria-haspopup="dialog"
+              aria-expanded={showRecentPopover}
+              title="Quick fill from a recent transaction"
+              className="flex-shrink-0 mt-6 flex items-center justify-center px-2.5 border border-gray-300 dark:border-gray-600 rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                className="h-5 w-5"
+                aria-hidden="true"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M10 18a8 8 0 100-16 8 8 0 000 16zm.75-13a.75.75 0 00-1.5 0v5c0 .2.08.39.22.53l3 3a.75.75 0 101.06-1.06L10.75 9.69V5z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            </button>
+          )}
+          {showRecentPopover && onQuickFill && (
+            <RecentTransactionsPopover
+              anchorRef={historyButtonRef}
+              payeeId={selectedPayeeId || undefined}
+              payeeName={selectedPayeeId ? undefined : watchedPayeeName || undefined}
+              onSelect={(t) => {
+                onQuickFill(t);
+                setShowRecentPopover(false);
+              }}
+              onClose={() => setShowRecentPopover(false)}
+            />
+          )}
+        </div>
         <div>
-          <div className="flex items-end sm:space-x-2">
+          <div className="flex items-stretch sm:space-x-2">
             <div className="flex-1">
               <Combobox
                 label="Category"
@@ -119,10 +178,11 @@ export function NormalTransactionFields({
                 error={errors.categoryId?.message as string | undefined}
               />
             </div>
+            {/* mt-6 + flex-stretch matches the Combobox input height (see Payee row). */}
             <button
               type="button"
               onClick={() => handleModeChange('split')}
-              className="hidden sm:block px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 whitespace-nowrap"
+              className="hidden sm:flex items-center justify-center flex-shrink-0 mt-6 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 whitespace-nowrap"
             >
               Split Transaction
             </button>

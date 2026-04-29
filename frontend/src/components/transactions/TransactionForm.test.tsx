@@ -178,6 +178,7 @@ const mockCreate = vi.fn().mockResolvedValue({});
 const mockUpdate = vi.fn().mockResolvedValue({});
 const mockCreateTransfer = vi.fn().mockResolvedValue({});
 const mockUpdateTransfer = vi.fn().mockResolvedValue({});
+const mockGetRecent = vi.fn().mockResolvedValue([]);
 
 vi.mock('@/lib/transactions', () => ({
   transactionsApi: {
@@ -185,6 +186,7 @@ vi.mock('@/lib/transactions', () => ({
     update: (...args: any[]) => mockUpdate(...args),
     createTransfer: (...args: any[]) => mockCreateTransfer(...args),
     updateTransfer: (...args: any[]) => mockUpdateTransfer(...args),
+    getRecent: (...args: any[]) => mockGetRecent(...args),
   },
 }));
 
@@ -415,6 +417,7 @@ describe('TransactionForm', () => {
     mockAccountsGetAll.mockResolvedValue(mockAccounts);
     mockPayeesGetAll.mockResolvedValue(mockPayees);
     mockCategoriesGetAll.mockResolvedValue(mockCategories);
+    mockGetRecent.mockResolvedValue([]);
   });
 
   // =========================================================================
@@ -2505,6 +2508,107 @@ describe('TransactionForm', () => {
         expect(screen.getByText('Split')).toBeInTheDocument();
         expect(screen.getByText('Transfer')).toBeInTheDocument();
       });
+    });
+  });
+
+  describe('quick-fill from recent transactions (history button)', () => {
+    it('renders the history button when creating a fresh transaction in normal mode', async () => {
+      render(<TransactionForm onSuccess={mockOnSuccess} onCancel={mockOnCancel} />);
+
+      await waitFor(() => {
+        expect(
+          screen.getByLabelText('Show recent transactions'),
+        ).toBeInTheDocument();
+      });
+    });
+
+    it('does not render the history button when editing an existing transaction', async () => {
+      const existing = createExistingTransaction();
+
+      render(
+        <TransactionForm
+          transaction={existing}
+          onSuccess={mockOnSuccess}
+          onCancel={mockOnCancel}
+        />
+      );
+
+      await waitFor(() => {
+        expect(mockAccountsGetAll).toHaveBeenCalled();
+      });
+      expect(
+        screen.queryByLabelText('Show recent transactions'),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByLabelText('Show recent transactions for this payee'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('does not render the history button when duplicating a transaction', async () => {
+      const source = createExistingTransaction();
+
+      render(
+        <TransactionForm
+          duplicateFrom={source}
+          onSuccess={mockOnSuccess}
+          onCancel={mockOnCancel}
+        />
+      );
+
+      await waitFor(() => {
+        expect(mockAccountsGetAll).toHaveBeenCalled();
+      });
+      expect(
+        screen.queryByLabelText('Show recent transactions'),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByLabelText('Show recent transactions for this payee'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('keeps the history button visible after switching to split mode', async () => {
+      render(<TransactionForm onSuccess={mockOnSuccess} onCancel={mockOnCancel} />);
+
+      await waitFor(() => {
+        expect(
+          screen.getByLabelText('Show recent transactions'),
+        ).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByText('Split'));
+
+      await waitFor(() => {
+        expect(
+          screen.getByLabelText('Show recent transactions'),
+        ).toBeInTheDocument();
+      });
+    });
+
+    it('hides the history button in transfer mode', async () => {
+      render(<TransactionForm onSuccess={mockOnSuccess} onCancel={mockOnCancel} />);
+
+      await waitFor(() => {
+        expect(
+          screen.getByLabelText('Show recent transactions'),
+        ).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByText('Transfer'));
+
+      await waitFor(() => {
+        expect(
+          screen.queryByLabelText('Show recent transactions'),
+        ).not.toBeInTheDocument();
+      });
+    });
+
+    it('does not fetch recent transactions on mount (lazy fetch only when popover opens)', async () => {
+      render(<TransactionForm onSuccess={mockOnSuccess} onCancel={mockOnCancel} />);
+
+      await waitFor(() => {
+        expect(mockAccountsGetAll).toHaveBeenCalled();
+      });
+      expect(mockGetRecent).not.toHaveBeenCalled();
     });
   });
 });
