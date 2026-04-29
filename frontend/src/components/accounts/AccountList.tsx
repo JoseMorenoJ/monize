@@ -12,7 +12,7 @@ import { getErrorMessage } from '@/lib/errors';
 import { AccountRow } from './AccountRow';
 import { useTableDensity, nextDensity, type DensityLevel } from '@/hooks/useTableDensity';
 import { SortIcon } from '@/components/ui/SortIcon';
-import { formatAccountType } from '@/lib/account-utils';
+import { formatAccountType, countLogicalAccounts } from '@/lib/account-utils';
 
 type SortField = 'name' | 'type' | 'balance' | 'status';
 type SortDirection = 'asc' | 'desc';
@@ -41,27 +41,6 @@ const ACCOUNT_TYPE_ORDER: AccountType[] = [
   'MORTGAGE',
   'OTHER',
 ];
-
-// Count accounts treating a linked investment brokerage/cash pair as one
-// logical account (matches the per-group header count).
-function countLogicalAccounts(accounts: Account[]): number {
-  const ids = new Set(accounts.map((a) => a.id));
-  const counted = new Set<string>();
-  let count = 0;
-  for (const account of accounts) {
-    if (counted.has(account.id)) continue;
-    counted.add(account.id);
-    if (
-      account.accountType === 'INVESTMENT' &&
-      account.linkedAccountId &&
-      ids.has(account.linkedAccountId)
-    ) {
-      counted.add(account.linkedAccountId);
-    }
-    count += 1;
-  }
-  return count;
-}
 
 // Helper to get stored value
 function getStoredValue<T>(key: string, defaultValue: T): T {

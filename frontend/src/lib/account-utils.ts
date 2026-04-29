@@ -71,6 +71,26 @@ export const isInvestmentBrokerageAccount = (account: Account): boolean => {
 };
 
 /**
+ * Count accounts treating a linked brokerage/cash investment pair as one
+ * logical account. Both halves of the pair must appear in the input list
+ * for the dedup to apply.
+ */
+export function countLogicalAccounts(accounts: Account[]): number {
+  const ids = new Set(accounts.map((a) => a.id));
+  const counted = new Set<string>();
+  let count = 0;
+  for (const account of accounts) {
+    if (counted.has(account.id)) continue;
+    counted.add(account.id);
+    if (account.linkedAccountId && ids.has(account.linkedAccountId)) {
+      counted.add(account.linkedAccountId);
+    }
+    count += 1;
+  }
+  return count;
+}
+
+/**
  * Build a human-readable label describing which accounts are currently in
  * a filter, for use in section headers.
  *
