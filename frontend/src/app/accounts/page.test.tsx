@@ -327,6 +327,19 @@ describe('AccountsPage', () => {
     });
   });
 
+  it('counts linked brokerage/cash pair as a single account in the Total Active Accounts widget', async () => {
+    mockGetAll.mockResolvedValue([
+      { id: 'acc-1', name: 'Checking', accountType: 'CHECKING', accountSubType: null, currencyCode: 'USD', currentBalance: 5000, isClosed: false, canDelete: true, linkedAccountId: null },
+      { id: 'acc-brokerage', name: 'Brokerage', accountType: 'INVESTMENT', accountSubType: 'INVESTMENT_BROKERAGE', currencyCode: 'USD', currentBalance: 0, isClosed: false, canDelete: false, linkedAccountId: 'acc-cash' },
+      { id: 'acc-cash', name: 'Brokerage Cash', accountType: 'INVESTMENT', accountSubType: 'INVESTMENT_CASH', currencyCode: 'USD', currentBalance: 5000, isClosed: false, canDelete: false, linkedAccountId: 'acc-brokerage' },
+    ]);
+    render(<AccountsPage />);
+    await waitFor(() => {
+      // 1 chequing + 1 linked brokerage/cash pair = 2, not 3.
+      expect(screen.getByTestId('summary-Total Active Accounts')).toHaveTextContent('2');
+    });
+  });
+
   it('does not double-count investment cash in brokerage and linked cash account', async () => {
     mockGetAll.mockResolvedValue([
       { id: 'acc-brokerage', name: 'My Investments - Brokerage', accountType: 'INVESTMENT', accountSubType: 'INVESTMENT_BROKERAGE', currencyCode: 'USD', currentBalance: 0, isClosed: false, canDelete: false, linkedAccountId: 'acc-cash' },
