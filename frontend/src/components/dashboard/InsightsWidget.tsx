@@ -38,11 +38,6 @@ export function InsightsWidget({ isLoading: parentLoading }: InsightsWidgetProps
   }, [parentLoading]);
 
   const sectionTitle = 'Spending Insights';
-  const betaBadge = (
-    <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300">
-      Beta
-    </span>
-  );
 
   if (isLoading || parentLoading) {
     return (
@@ -52,7 +47,6 @@ export function InsightsWidget({ isLoading: parentLoading }: InsightsWidgetProps
           className="text-lg font-semibold text-gray-900 dark:text-gray-100 hover:text-blue-600 dark:hover:text-blue-400 transition-colors mb-4"
         >
           {sectionTitle}
-          {betaBadge}
         </button>
         <div className="animate-pulse space-y-3">
           {[1, 2, 3].map((i) => (
@@ -71,7 +65,6 @@ export function InsightsWidget({ isLoading: parentLoading }: InsightsWidgetProps
           className="text-lg font-semibold text-gray-900 dark:text-gray-100 hover:text-blue-600 dark:hover:text-blue-400 transition-colors mb-4"
         >
           {sectionTitle}
-          {betaBadge}
         </button>
         <p className="text-gray-500 dark:text-gray-400 text-sm">
           No insights available. Visit the Insights page to generate your first analysis.
@@ -94,7 +87,6 @@ export function InsightsWidget({ isLoading: parentLoading }: InsightsWidgetProps
           className="text-lg font-semibold text-gray-900 dark:text-gray-100 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
         >
           {sectionTitle}
-          {betaBadge}
         </button>
         <span className="text-sm text-gray-500 dark:text-gray-400">
           {insights.length} active

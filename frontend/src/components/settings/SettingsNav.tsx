@@ -9,12 +9,7 @@ export interface SettingsSection {
   readonly label: string;
   /** If set, renders as a navigation link instead of a scroll-to button */
   readonly href?: string;
-  /** Optional badge (e.g. "Beta") shown next to the label */
-  readonly badge?: string;
 }
-
-const BETA_BADGE_CLASSES =
-  'ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300';
 
 interface SettingsNavProps {
   readonly sections: readonly SettingsSection[];
@@ -81,7 +76,6 @@ export function SettingsNav({
               >
                 <span className="inline-flex items-center">
                   {section.label}
-                  {section.badge && <span className={BETA_BADGE_CLASSES}>{section.badge}</span>}
                 </span>
                 <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
               </Link>
@@ -104,7 +98,6 @@ export function SettingsNav({
               aria-selected={isActive}
             >
               {section.label}
-              {section.badge && <span className={BETA_BADGE_CLASSES}>{section.badge}</span>}
             </button>
           );
         })}
@@ -138,7 +131,6 @@ export function SettingsNav({
                 >
                   <span className="inline-flex items-center">
                     {section.label}
-                    {section.badge && <span className={BETA_BADGE_CLASSES}>{section.badge}</span>}
                   </span>
                   <ArrowTopRightOnSquareIcon className="h-4 w-4 opacity-50" />
                 </Link>
@@ -160,7 +152,6 @@ export function SettingsNav({
                 `}
               >
                 {section.label}
-                {section.badge && <span className={BETA_BADGE_CLASSES}>{section.badge}</span>}
               </button>
             </li>
           );
