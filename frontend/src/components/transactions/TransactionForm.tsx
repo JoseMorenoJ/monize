@@ -909,12 +909,14 @@ export function TransactionForm({ transaction, duplicateFrom, defaultAccountId, 
           watchedAccountId={watchedAccountId}
           watchedAmount={watchedAmount}
           watchedCurrencyCode={watchedCurrencyCode}
+          watchedPayeeName={watchedPayeeName}
           accounts={accounts}
           selectedPayeeId={selectedPayeeId}
           payees={payees}
           handlePayeeChange={handlePayeeChange}
           handlePayeeCreate={handlePayeeCreate}
           handleAmountChange={handleSplitTotalChange}
+          onQuickFill={!transaction && !duplicateFrom ? handleQuickFill : undefined}
           transaction={transaction}
           createdAtSlot={createdAtSlot}
         />

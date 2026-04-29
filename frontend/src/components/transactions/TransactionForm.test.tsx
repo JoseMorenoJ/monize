@@ -2566,7 +2566,7 @@ describe('TransactionForm', () => {
       ).not.toBeInTheDocument();
     });
 
-    it('does not render the history button when switching out of normal mode', async () => {
+    it('keeps the history button visible after switching to split mode', async () => {
       render(<TransactionForm onSuccess={mockOnSuccess} onCancel={mockOnCancel} />);
 
       await waitFor(() => {
@@ -2576,6 +2576,24 @@ describe('TransactionForm', () => {
       });
 
       fireEvent.click(screen.getByText('Split'));
+
+      await waitFor(() => {
+        expect(
+          screen.getByLabelText('Show recent transactions'),
+        ).toBeInTheDocument();
+      });
+    });
+
+    it('hides the history button in transfer mode', async () => {
+      render(<TransactionForm onSuccess={mockOnSuccess} onCancel={mockOnCancel} />);
+
+      await waitFor(() => {
+        expect(
+          screen.getByLabelText('Show recent transactions'),
+        ).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByText('Transfer'));
 
       await waitFor(() => {
         expect(
