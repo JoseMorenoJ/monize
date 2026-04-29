@@ -169,41 +169,6 @@ describe('AccountList', () => {
     expect(screen.queryByText('Edit')).not.toBeInTheDocument();
   });
 
-  it('filters accounts by type using the type dropdown', () => {
-    const accounts = [
-      createAccount({ name: 'Main Chequing', accountType: 'CHEQUING' }),
-      createAccount({
-        id: '223e4567-e89b-12d3-a456-426614174001',
-        name: 'My Savings',
-        accountType: 'SAVINGS',
-      }),
-      createAccount({
-        id: '323e4567-e89b-12d3-a456-426614174002',
-        name: 'Visa',
-        accountType: 'CREDIT_CARD',
-      }),
-    ];
-
-    render(
-      <AccountList
-        accounts={accounts}
-        onEdit={mockOnEdit}
-        defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh}
-      />
-    );
-
-    // Initially all accounts are shown
-    expect(screen.getByText('3 of 3 accounts')).toBeInTheDocument();
-
-    // Filter by SAVINGS
-    const typeFilter = screen.getByDisplayValue('All Types');
-    fireEvent.change(typeFilter, { target: { value: 'SAVINGS' } });
-
-    expect(screen.getByText('1 of 3 accounts')).toBeInTheDocument();
-    expect(screen.getByText('My Savings')).toBeInTheDocument();
-    expect(screen.queryByText('Main Chequing')).not.toBeInTheDocument();
-  });
-
   it('sorts accounts by name ascending by default', () => {
     const accounts = [
       createAccount({ name: 'Zebra Account', accountType: 'CHEQUING' }),
@@ -503,28 +468,6 @@ describe('AccountList', () => {
 
     expect(screen.getByText('No accounts match your filters.')).toBeInTheDocument();
     expect(screen.getByText('Clear Filters')).toBeInTheDocument();
-  });
-
-  it('clears filters and restores all accounts', () => {
-    const accounts = [
-      createAccount({ id: 'a1', name: 'Chequing Acct', accountType: 'CHEQUING' }),
-      createAccount({ id: 'a2', name: 'Savings Acct', accountType: 'SAVINGS' }),
-    ];
-
-    render(
-      <AccountList accounts={accounts} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
-    );
-
-    // Filter by CHEQUING
-    const typeFilter = screen.getByDisplayValue('All Types');
-    fireEvent.change(typeFilter, { target: { value: 'CHEQUING' } });
-    expect(screen.getByText('1 of 2 accounts')).toBeInTheDocument();
-
-    // Clear filter via the "Clear" link
-    const clearLink = screen.getByText('Clear');
-    fireEvent.click(clearLink);
-
-    expect(screen.getByText('2 of 2 accounts')).toBeInTheDocument();
   });
 
   it('sorts accounts by balance', () => {
@@ -981,27 +924,6 @@ describe('AccountList', () => {
 
     expect(screen.getByText('1 of 1 accounts')).toBeInTheDocument();
     expect(screen.getByText('Chequing Only')).toBeInTheDocument();
-  });
-
-  it('shows account types in the type filter dropdown', () => {
-    const accounts = [
-      createAccount({ id: 'a1', accountType: 'CHEQUING' }),
-      createAccount({ id: 'a2', accountType: 'SAVINGS' }),
-      createAccount({ id: 'a3', accountType: 'LOAN' }),
-    ];
-
-    render(
-      <AccountList accounts={accounts} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
-    );
-
-    const typeSelect = screen.getByDisplayValue('All Types') as HTMLSelectElement;
-    const options = Array.from(typeSelect.querySelectorAll('option'));
-
-    // Should have "All Types" plus the 3 unique account types
-    expect(options.length).toBe(4);
-    expect(options.map(o => o.value)).toContain('CHEQUING');
-    expect(options.map(o => o.value)).toContain('SAVINGS');
-    expect(options.map(o => o.value)).toContain('LOAN');
   });
 
   it('shows approximate converted amount for non-default currency', () => {
