@@ -133,6 +133,26 @@ describe('RecentTransactionsPopover', () => {
     });
   });
 
+  it('renders a Split row label with split categories', async () => {
+    const splitTxn: Transaction = txn({
+      id: 'split-1',
+      isSplit: true,
+      category: null,
+      categoryId: null,
+      splits: [
+        { id: 'sp-1', transactionId: 'split-1', categoryId: 'c1', category: { id: 'c1', name: 'Groceries' } as any, transferAccountId: null, transferAccount: null, linkedTransactionId: null, amount: -30, memo: null, createdAt: '2026-01-15T00:00:00Z' },
+        { id: 'sp-2', transactionId: 'split-1', categoryId: 'c2', category: { id: 'c2', name: 'Household' } as any, transferAccountId: null, transferAccount: null, linkedTransactionId: null, amount: -20, memo: null, createdAt: '2026-01-15T00:00:00Z' },
+      ],
+    });
+    mockGetRecent.mockResolvedValue([splitTxn]);
+
+    render(<Harness onSelect={vi.fn()} onClose={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Split: Groceries, Household/)).toBeInTheDocument();
+    });
+  });
+
   it('closes when Escape is pressed', async () => {
     mockGetRecent.mockResolvedValue([]);
     const onClose = vi.fn();

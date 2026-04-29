@@ -350,7 +350,9 @@ export function TransactionForm({ transaction, duplicateFrom, defaultAccountId, 
 
   // Quick-fill the form from a previously entered transaction (chosen from
   // the history popover next to the Payee field). Resets date to today and
-  // status to UNRECONCILED, otherwise mirrors duplicateFrom behaviour.
+  // status to UNRECONCILED, otherwise mirrors duplicateFrom behaviour. When
+  // the source is a split, the form switches into split mode and the splits
+  // state is restored so the user gets back the same split breakdown.
   const handleQuickFill = (source: Transaction) => {
     const amount = Math.round(Number(source.amount) * 100) / 100;
     setValue('accountId', source.accountId, { shouldDirty: true, shouldValidate: true });
@@ -367,6 +369,16 @@ export function TransactionForm({ transaction, duplicateFrom, defaultAccountId, 
     setSelectedPayeeId(source.payeeId || '');
     setSelectedCategoryId(source.categoryId || '');
     setSelectedTagIds(source.tags?.map((t) => t.id) || []);
+
+    if (source.isSplit && source.splits && source.splits.length > 0) {
+      setSplits(toSplitRows(source.splits));
+      setIsSplitMode(true);
+      setMode('split');
+    } else {
+      setSplits([]);
+      setIsSplitMode(false);
+      setMode('normal');
+    }
   };
 
   // Handle payee selection

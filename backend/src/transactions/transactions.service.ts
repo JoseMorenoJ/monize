@@ -220,14 +220,12 @@ export class TransactionsService {
     const isPayeeFiltered = !!(filter?.payeeId || filter?.payeeName);
     // For payee-scoped requests, raw last-N is what's wanted: same payee, just
     // different historical entries. For the unfiltered case we pull a 6x window
-    // so dedup-by-(payee+category) can still yield safeLimit distinct rows.
+    // so dedup can still yield safeLimit distinct rows.
     const window = isPayeeFiltered ? safeLimit : safeLimit * 6;
 
-    const where: Record<string, unknown> = {
-      userId,
-      isSplit: false,
-      isTransfer: false,
-    };
+    // Excludes transfers (those are handled by their own form mode). Splits
+    // ARE included so a user can quick-fill a recurring split entry.
+    const where: Record<string, unknown> = { userId, isTransfer: false };
     if (filter?.payeeId) {
       where.payeeId = filter.payeeId;
     } else if (filter?.payeeName) {
@@ -238,13 +236,25 @@ export class TransactionsService {
       where,
       order: { transactionDate: "DESC", createdAt: "DESC" },
       take: window,
-      relations: ["payee", "category", "account", "tags"],
+      relations: [
+        "payee",
+        "category",
+        "account",
+        "tags",
+        "splits",
+        "splits.category",
+        "splits.transferAccount",
+        "splits.tags",
+      ],
     });
 
     if (isPayeeFiltered) {
       return rows.slice(0, safeLimit);
     }
 
+    // Split parents have categoryId=null (categories live on the splits), so
+    // the dedup key `payeeId|categoryId` collapses to one row per payee for
+    // splits, and to one row per (payee, category) pair for normals.
     const seen = new Set<string>();
     const result: Transaction[] = [];
     for (const row of rows) {

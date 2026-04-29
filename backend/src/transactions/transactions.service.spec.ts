@@ -437,18 +437,57 @@ describe("TransactionsService", () => {
   });
 
   describe("getRecent", () => {
-    it("filters by userId and excludes splits/transfers", async () => {
+    it("filters by userId and excludes transfers, but includes splits", async () => {
       transactionsRepository.find.mockResolvedValue([]);
 
       await service.getRecent("user-1", 5);
 
-      expect(transactionsRepository.find).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { userId: "user-1", isSplit: false, isTransfer: false },
-          order: { transactionDate: "DESC", createdAt: "DESC" },
-          take: 30,
-        }),
+      const call = transactionsRepository.find.mock.calls[0][0];
+      expect(call.where).toEqual({ userId: "user-1", isTransfer: false });
+      expect(call.order).toEqual({
+        transactionDate: "DESC",
+        createdAt: "DESC",
+      });
+      expect(call.take).toBe(30);
+      expect(call.relations).toEqual(
+        expect.arrayContaining([
+          "payee",
+          "category",
+          "account",
+          "tags",
+          "splits",
+          "splits.category",
+          "splits.transferAccount",
+          "splits.tags",
+        ]),
       );
+    });
+
+    it("returns split parents in the result mixed with normals", async () => {
+      const rows = [
+        {
+          id: "s1",
+          payeeId: "p1",
+          payeeName: "A",
+          categoryId: null,
+          isSplit: true,
+          transactionDate: "2026-01-04",
+          splits: [{ id: "sp1", categoryId: "c1", amount: -10 }],
+        },
+        {
+          id: "n1",
+          payeeId: "p2",
+          payeeName: "B",
+          categoryId: "c2",
+          isSplit: false,
+          transactionDate: "2026-01-03",
+        },
+      ];
+      transactionsRepository.find.mockResolvedValue(rows);
+
+      const result = await service.getRecent("user-1", 5);
+
+      expect(result.map((r: any) => r.id)).toEqual(["s1", "n1"]);
     });
 
     it("scopes to payeeId without dedup and uses limit-sized window", async () => {
@@ -483,7 +522,6 @@ describe("TransactionsService", () => {
         expect.objectContaining({
           where: {
             userId: "user-1",
-            isSplit: false,
             isTransfer: false,
             payeeId: "p1",
           },
@@ -502,7 +540,6 @@ describe("TransactionsService", () => {
         expect.objectContaining({
           where: {
             userId: "user-1",
-            isSplit: false,
             isTransfer: false,
             payeeName: "Free-text Coffee",
           },
@@ -522,7 +559,6 @@ describe("TransactionsService", () => {
       const call = transactionsRepository.find.mock.calls[0][0];
       expect(call.where).toEqual({
         userId: "user-1",
-        isSplit: false,
         isTransfer: false,
         payeeId: "p1",
       });

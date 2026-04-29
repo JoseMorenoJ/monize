@@ -24,6 +24,18 @@ interface RecentTransactionsPopoverProps {
 
 const POPOVER_WIDTH = 360;
 
+function formatSplitCategoryLabel(t: Transaction): string {
+  const categories = (t.splits ?? [])
+    .map((s) => s.category?.name)
+    .filter((name): name is string => !!name);
+  if (categories.length === 0) {
+    return `Split (${(t.splits ?? []).length} items)`;
+  }
+  const unique = Array.from(new Set(categories));
+  if (unique.length <= 2) return `Split: ${unique.join(', ')}`;
+  return `Split: ${unique.slice(0, 2).join(', ')} +${unique.length - 2}`;
+}
+
 export function RecentTransactionsPopover({
   anchorRef,
   payeeId,
@@ -128,7 +140,9 @@ export function RecentTransactionsPopover({
           <ul>
             {transactions.map((t) => {
               const payeeLabel = t.payeeName || t.payee?.name || '(no payee)';
-              const categoryLabel = t.category?.name || '(uncategorized)';
+              const categoryLabel = t.isSplit
+                ? formatSplitCategoryLabel(t)
+                : t.category?.name || '(uncategorized)';
               return (
                 <li key={t.id}>
                   <button
