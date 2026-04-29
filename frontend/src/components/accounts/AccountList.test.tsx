@@ -863,6 +863,33 @@ describe('AccountList', () => {
     expect(screen.getByText(/Paired with Inv Cash/)).toBeInTheDocument();
   });
 
+  it('counts a linked investment brokerage/cash pair as a single account in the header', () => {
+    const accounts = [
+      createAccount({ id: 'a1', name: 'Chequing', accountType: 'CHEQUING' }),
+      createAccount({
+        id: 'cash-1',
+        name: 'Inv Cash',
+        accountType: 'INVESTMENT',
+        accountSubType: 'INVESTMENT_CASH',
+        linkedAccountId: 'broker-1',
+      }),
+      createAccount({
+        id: 'broker-1',
+        name: 'Inv Brokerage',
+        accountType: 'INVESTMENT',
+        accountSubType: 'INVESTMENT_BROKERAGE',
+        linkedAccountId: 'cash-1',
+      }),
+    ];
+
+    render(
+      <AccountList accounts={accounts} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
+    );
+
+    // 1 chequing + 1 logical investment account (the linked pair) = 2
+    expect(screen.getByText('2 of 2 accounts')).toBeInTheDocument();
+  });
+
   it('shows Brokerage and Inv. Cash type labels for investment subtypes', () => {
     const accounts = [
       createAccount({

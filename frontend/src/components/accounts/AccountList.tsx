@@ -42,6 +42,27 @@ const ACCOUNT_TYPE_ORDER: AccountType[] = [
   'OTHER',
 ];
 
+// Count accounts treating a linked investment brokerage/cash pair as one
+// logical account (matches the per-group header count).
+function countLogicalAccounts(accounts: Account[]): number {
+  const ids = new Set(accounts.map((a) => a.id));
+  const counted = new Set<string>();
+  let count = 0;
+  for (const account of accounts) {
+    if (counted.has(account.id)) continue;
+    counted.add(account.id);
+    if (
+      account.accountType === 'INVESTMENT' &&
+      account.linkedAccountId &&
+      ids.has(account.linkedAccountId)
+    ) {
+      counted.add(account.linkedAccountId);
+    }
+    count += 1;
+  }
+  return count;
+}
+
 // Helper to get stored value
 function getStoredValue<T>(key: string, defaultValue: T): T {
   if (typeof window === 'undefined') return defaultValue;
@@ -369,26 +390,10 @@ export function AccountList({ accounts, brokerageMarketValues, defaultCurrency, 
     let rowIndex = 0;
     for (const { type, accounts: groupAccounts } of groupedAccounts) {
       const isCollapsed = collapsedGroups.has(type);
-      // For investments, a linked brokerage/cash pair represents one logical
-      // account, so collapse pairs into a single count.
-      let count = groupAccounts.length;
-      if (type === 'INVESTMENT') {
-        const idsInGroup = new Set(groupAccounts.map((a) => a.id));
-        const counted = new Set<string>();
-        count = 0;
-        for (const account of groupAccounts) {
-          if (counted.has(account.id)) continue;
-          counted.add(account.id);
-          if (account.linkedAccountId && idsInGroup.has(account.linkedAccountId)) {
-            counted.add(account.linkedAccountId);
-          }
-          count += 1;
-        }
-      }
       items.push({
         kind: 'header',
         type,
-        count,
+        count: countLogicalAccounts(groupAccounts),
         total: groupTotals.get(type) ?? 0,
         isCollapsed,
       });
@@ -584,7 +589,7 @@ export function AccountList({ accounts, brokerageMarketValues, defaultCurrency, 
             </div>
           </div>
           <span className="text-sm text-gray-500 dark:text-gray-400">
-            {filteredAndSortedAccounts.length} of {accounts.length} accounts
+            {countLogicalAccounts(filteredAndSortedAccounts)} of {countLogicalAccounts(accounts)} accounts
           </span>
         </div>
       </div>
