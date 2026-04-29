@@ -12,6 +12,7 @@ import { Modal } from '@/components/ui/Modal';
 import { UnsavedChangesDialog } from '@/components/ui/UnsavedChangesDialog';
 import { accountsApi } from '@/lib/accounts';
 import { investmentsApi } from '@/lib/investments';
+import { countLogicalAccounts } from '@/lib/account-utils';
 import { Account } from '@/types/account';
 import { PortfolioSummary } from '@/types/investment';
 import { PageLayout } from '@/components/layout/PageLayout';
@@ -147,19 +148,7 @@ function AccountsContent() {
       }
     });
 
-    // Count a linked brokerage/cash pair as a single logical account.
-    const activeIds = new Set(activeAccounts.map((a) => a.id));
-    const counted = new Set<string>();
-    let accountCount = 0;
-    for (const a of activeAccounts) {
-      if (counted.has(a.id)) continue;
-      counted.add(a.id);
-      if (a.linkedAccountId && activeIds.has(a.linkedAccountId)) {
-        counted.add(a.linkedAccountId);
-      }
-      accountCount += 1;
-    }
-
+    const accountCount = countLogicalAccounts(activeAccounts);
     const totalBalance = totalAssets - totalLiabilities;
     return { totalBalance, totalAssets, totalLiabilities, accountCount };
   };

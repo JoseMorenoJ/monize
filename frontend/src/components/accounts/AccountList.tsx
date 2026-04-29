@@ -12,7 +12,7 @@ import { getErrorMessage } from '@/lib/errors';
 import { AccountRow } from './AccountRow';
 import { useTableDensity, nextDensity, type DensityLevel } from '@/hooks/useTableDensity';
 import { SortIcon } from '@/components/ui/SortIcon';
-import { formatAccountType } from '@/lib/account-utils';
+import { formatAccountType, countLogicalAccounts } from '@/lib/account-utils';
 
 type SortField = 'name' | 'type' | 'balance' | 'status';
 type SortDirection = 'asc' | 'desc';
@@ -369,26 +369,10 @@ export function AccountList({ accounts, brokerageMarketValues, defaultCurrency, 
     let rowIndex = 0;
     for (const { type, accounts: groupAccounts } of groupedAccounts) {
       const isCollapsed = collapsedGroups.has(type);
-      // For investments, a linked brokerage/cash pair represents one logical
-      // account, so collapse pairs into a single count.
-      let count = groupAccounts.length;
-      if (type === 'INVESTMENT') {
-        const idsInGroup = new Set(groupAccounts.map((a) => a.id));
-        const counted = new Set<string>();
-        count = 0;
-        for (const account of groupAccounts) {
-          if (counted.has(account.id)) continue;
-          counted.add(account.id);
-          if (account.linkedAccountId && idsInGroup.has(account.linkedAccountId)) {
-            counted.add(account.linkedAccountId);
-          }
-          count += 1;
-        }
-      }
       items.push({
         kind: 'header',
         type,
-        count,
+        count: countLogicalAccounts(groupAccounts),
         total: groupTotals.get(type) ?? 0,
         isCollapsed,
       });
@@ -584,7 +568,7 @@ export function AccountList({ accounts, brokerageMarketValues, defaultCurrency, 
             </div>
           </div>
           <span className="text-sm text-gray-500 dark:text-gray-400">
-            {filteredAndSortedAccounts.length} of {accounts.length} accounts
+            {countLogicalAccounts(filteredAndSortedAccounts)} of {countLogicalAccounts(accounts)} accounts
           </span>
         </div>
       </div>
