@@ -2511,55 +2511,18 @@ describe('TransactionForm', () => {
     });
   });
 
-  describe('quick-fill from recent transactions', () => {
-    const recentTransaction = {
-      ...createExistingTransaction({
-        id: 'recent-1',
-        payeeId: 'payee-1',
-        payeeName: 'Grocery Store',
-        categoryId: 'cat-1',
-        amount: -42.5,
-        currencyCode: 'CAD',
-        description: 'Weekly shop',
-      }),
-      tags: [{ id: 'tag-1', name: 'Food', color: null, icon: null }],
-    };
-
-    it('fetches recent transactions on mount when creating a fresh transaction', async () => {
-      mockGetRecent.mockResolvedValue([recentTransaction]);
-
+  describe('quick-fill from recent transactions (history button)', () => {
+    it('renders the history button when creating a fresh transaction in normal mode', async () => {
       render(<TransactionForm onSuccess={mockOnSuccess} onCancel={mockOnCancel} />);
 
       await waitFor(() => {
-        expect(mockGetRecent).toHaveBeenCalledWith(5);
+        expect(
+          screen.getByLabelText('Show recent transactions'),
+        ).toBeInTheDocument();
       });
     });
 
-    it('renders the quick-fill combobox when recents are present', async () => {
-      mockGetRecent.mockResolvedValue([recentTransaction]);
-
-      render(<TransactionForm onSuccess={mockOnSuccess} onCancel={mockOnCancel} />);
-
-      await waitFor(() => {
-        expect(screen.getByTestId('combobox-Quick fill from recent')).toBeInTheDocument();
-      });
-    });
-
-    it('hides the quick-fill combobox when there are no recents', async () => {
-      mockGetRecent.mockResolvedValue([]);
-
-      render(<TransactionForm onSuccess={mockOnSuccess} onCancel={mockOnCancel} />);
-
-      await waitFor(() => {
-        expect(mockGetRecent).toHaveBeenCalled();
-      });
-      expect(
-        screen.queryByTestId('combobox-Quick fill from recent'),
-      ).not.toBeInTheDocument();
-    });
-
-    it('does not fetch or render quick-fill when editing an existing transaction', async () => {
-      mockGetRecent.mockResolvedValue([recentTransaction]);
+    it('does not render the history button when editing an existing transaction', async () => {
       const existing = createExistingTransaction();
 
       render(
@@ -2573,14 +2536,15 @@ describe('TransactionForm', () => {
       await waitFor(() => {
         expect(mockAccountsGetAll).toHaveBeenCalled();
       });
-      expect(mockGetRecent).not.toHaveBeenCalled();
       expect(
-        screen.queryByTestId('combobox-Quick fill from recent'),
+        screen.queryByLabelText('Show recent transactions'),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByLabelText('Show recent transactions for this payee'),
       ).not.toBeInTheDocument();
     });
 
-    it('does not fetch or render quick-fill when duplicating a transaction', async () => {
-      mockGetRecent.mockResolvedValue([recentTransaction]);
+    it('does not render the history button when duplicating a transaction', async () => {
       const source = createExistingTransaction();
 
       render(
@@ -2594,41 +2558,39 @@ describe('TransactionForm', () => {
       await waitFor(() => {
         expect(mockAccountsGetAll).toHaveBeenCalled();
       });
-      expect(mockGetRecent).not.toHaveBeenCalled();
       expect(
-        screen.queryByTestId('combobox-Quick fill from recent'),
+        screen.queryByLabelText('Show recent transactions'),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByLabelText('Show recent transactions for this payee'),
       ).not.toBeInTheDocument();
     });
 
-    it('hides the quick-fill combobox when switching out of normal mode', async () => {
-      mockGetRecent.mockResolvedValue([recentTransaction]);
-
+    it('does not render the history button when switching out of normal mode', async () => {
       render(<TransactionForm onSuccess={mockOnSuccess} onCancel={mockOnCancel} />);
 
       await waitFor(() => {
-        expect(screen.getByTestId('combobox-Quick fill from recent')).toBeInTheDocument();
+        expect(
+          screen.getByLabelText('Show recent transactions'),
+        ).toBeInTheDocument();
       });
 
       fireEvent.click(screen.getByText('Split'));
 
       await waitFor(() => {
         expect(
-          screen.queryByTestId('combobox-Quick fill from recent'),
+          screen.queryByLabelText('Show recent transactions'),
         ).not.toBeInTheDocument();
       });
     });
 
-    it('still renders the form when the recents fetch fails', async () => {
-      mockGetRecent.mockRejectedValue(new Error('boom'));
-
+    it('does not fetch recent transactions on mount (lazy fetch only when popover opens)', async () => {
       render(<TransactionForm onSuccess={mockOnSuccess} onCancel={mockOnCancel} />);
 
       await waitFor(() => {
-        expect(screen.getByText('Account')).toBeInTheDocument();
+        expect(mockAccountsGetAll).toHaveBeenCalled();
       });
-      expect(
-        screen.queryByTestId('combobox-Quick fill from recent'),
-      ).not.toBeInTheDocument();
+      expect(mockGetRecent).not.toHaveBeenCalled();
     });
   });
 });

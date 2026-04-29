@@ -7,8 +7,6 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import toast from 'react-hot-toast';
 import { Select } from '@/components/ui/Select';
-import { Combobox } from '@/components/ui/Combobox';
-import { formatCurrency } from '@/lib/format';
 import { SplitEditor, SplitRow, createEmptySplits, toSplitRows, toCreateSplitData } from './SplitEditor';
 import { NormalTransactionFields } from './NormalTransactionFields';
 import { SplitTransactionFields } from './SplitTransactionFields';
@@ -80,7 +78,6 @@ export function TransactionForm({ transaction, duplicateFrom, defaultAccountId, 
   const [payees, setPayees] = useState<Payee[]>([]); // Full list of active payees
   const [payeeAliasMap, setPayeeAliasMap] = useState<Record<string, string[]>>({}); // payeeId -> alias strings
   const [tags, setTags] = useState<Tag[]>([]);
-  const [recentTransactions, setRecentTransactions] = useState<Transaction[]>([]);
   // initSource: the transaction to pre-fill from (either editing or duplicating)
   const initSource = transaction || duplicateFrom;
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>(
@@ -219,6 +216,7 @@ export function TransactionForm({ transaction, duplicateFrom, defaultAccountId, 
   const watchedAccountId = watch('accountId');
   const watchedAmount = watch('amount');
   const watchedCurrencyCode = watch('currencyCode');
+  const watchedPayeeName = watch('payeeName');
 
   // Auto-set currencyCode from the selected account
   useEffect(() => {
@@ -306,20 +304,6 @@ export function TransactionForm({ transaction, duplicateFrom, defaultAccountId, 
     }
   }, [defaultAccountId, transaction, setValue]);
 
-  // Fetch recent transactions for the quick-fill dropdown when creating fresh
-  // (skip when editing an existing transaction or duplicating, since those
-  // already pre-fill the form via initSource).
-  useEffect(() => {
-    if (transaction || duplicateFrom) return;
-    transactionsApi
-      .getRecent(5)
-      .then((rows) => setRecentTransactions(rows))
-      .catch((error) => {
-        // Non-critical: form still works without quick-fill
-        logger.warn('Failed to load recent transactions for quick-fill', error);
-      });
-  }, [transaction, duplicateFrom]);
-
   // Load accounts, categories, active payees on mount
   // When editing, also fetch the transaction's payee if it's inactive so it appears in the dropdown
   useEffect(() => {
@@ -364,14 +348,10 @@ export function TransactionForm({ transaction, duplicateFrom, defaultAccountId, 
       });
   }, [transaction?.payeeId]);
 
-  // Quick-fill the form from a previously entered transaction. Mirrors the
-  // duplicateFrom behaviour but applied inline: copy payee/category/amount/
-  // currency/description/tags, reset date to today and status to UNRECONCILED.
-  const handleQuickFill = (transactionId: string) => {
-    if (!transactionId) return;
-    const source = recentTransactions.find((t) => t.id === transactionId);
-    if (!source) return;
-
+  // Quick-fill the form from a previously entered transaction (chosen from
+  // the history popover next to the Payee field). Resets date to today and
+  // status to UNRECONCILED, otherwise mirrors duplicateFrom behaviour.
+  const handleQuickFill = (source: Transaction) => {
     const amount = Math.round(Number(source.amount) * 100) / 100;
     setValue('accountId', source.accountId, { shouldDirty: true, shouldValidate: true });
     setValue('transactionDate', getLocalDateString(), { shouldDirty: true, shouldValidate: true });
@@ -388,19 +368,6 @@ export function TransactionForm({ transaction, duplicateFrom, defaultAccountId, 
     setSelectedCategoryId(source.categoryId || '');
     setSelectedTagIds(source.tags?.map((t) => t.id) || []);
   };
-
-  const recentOptions = useMemo(
-    () =>
-      recentTransactions.map((t) => {
-        const payeeLabel = t.payeeName || t.payee?.name || '(no payee)';
-        const categoryLabel = t.category?.name || '(uncategorized)';
-        return {
-          value: t.id,
-          label: `${payeeLabel} - ${categoryLabel} - ${formatCurrency(Number(t.amount), t.currencyCode)}`,
-        };
-      }),
-    [recentTransactions],
-  );
 
   // Handle payee selection
   const handlePayeeChange = (payeeId: string, payeeName: string) => {
@@ -844,19 +811,6 @@ export function TransactionForm({ transaction, duplicateFrom, defaultAccountId, 
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-      {/* Quick-fill from recent transactions: only when creating fresh in
-          normal mode and we actually have recents to suggest. */}
-      {!transaction && !duplicateFrom && mode === 'normal' && recentOptions.length > 0 && (
-        <Combobox
-          label="Quick fill from recent"
-          placeholder="Select a recent transaction..."
-          options={recentOptions}
-          onChange={handleQuickFill}
-          usePortal
-          alwaysShowSubtitle
-        />
-      )}
-
       {/* Mode selector - show for new/duplicate transactions, or non-transfer edits */}
       {(!transaction || !transaction.isTransfer) && (
         <div className="flex space-x-2 pb-2 border-b dark:border-gray-700">
@@ -916,6 +870,7 @@ export function TransactionForm({ transaction, duplicateFrom, defaultAccountId, 
           watchedAccountId={watchedAccountId}
           watchedAmount={watchedAmount}
           watchedCurrencyCode={watchedCurrencyCode}
+          watchedPayeeName={watchedPayeeName}
           accounts={accounts}
           selectedPayeeId={selectedPayeeId}
           selectedCategoryId={selectedCategoryId}
@@ -928,6 +883,7 @@ export function TransactionForm({ transaction, duplicateFrom, defaultAccountId, 
           handleCategoryCreate={handleCategoryCreate}
           handleAmountChange={handleAmountChange}
           handleModeChange={handleModeChange}
+          onQuickFill={!transaction && !duplicateFrom ? handleQuickFill : undefined}
           transaction={transaction}
           createdAtSlot={createdAtSlot}
         />

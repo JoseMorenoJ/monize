@@ -211,16 +211,39 @@ export class TransactionsService {
     return result;
   }
 
-  async getRecent(userId: string, limit = 5): Promise<Transaction[]> {
+  async getRecent(
+    userId: string,
+    limit = 5,
+    filter?: { payeeId?: string; payeeName?: string },
+  ): Promise<Transaction[]> {
     const safeLimit = Math.min(20, Math.max(1, Math.floor(limit)));
-    const window = safeLimit * 6;
+    const isPayeeFiltered = !!(filter?.payeeId || filter?.payeeName);
+    // For payee-scoped requests, raw last-N is what's wanted: same payee, just
+    // different historical entries. For the unfiltered case we pull a 6x window
+    // so dedup-by-(payee+category) can still yield safeLimit distinct rows.
+    const window = isPayeeFiltered ? safeLimit : safeLimit * 6;
+
+    const where: Record<string, unknown> = {
+      userId,
+      isSplit: false,
+      isTransfer: false,
+    };
+    if (filter?.payeeId) {
+      where.payeeId = filter.payeeId;
+    } else if (filter?.payeeName) {
+      where.payeeName = filter.payeeName;
+    }
 
     const rows = await this.transactionsRepository.find({
-      where: { userId, isSplit: false, isTransfer: false },
+      where,
       order: { transactionDate: "DESC", createdAt: "DESC" },
       take: window,
       relations: ["payee", "category", "account", "tags"],
     });
+
+    if (isPayeeFiltered) {
+      return rows.slice(0, safeLimit);
+    }
 
     const seen = new Set<string>();
     const result: Transaction[] = [];

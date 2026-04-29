@@ -431,12 +431,23 @@ export class TransactionsController {
   @Get("recent")
   @ApiOperation({
     summary:
-      "Get recent distinct transactions for quick-fill on the new-transaction form",
+      "Get recent transactions for quick-fill. Without a payee filter, returns last-N distinct (deduped by payee+category). With payeeId or payeeName, returns the raw last-N entries for that payee.",
   })
   @ApiQuery({
     name: "limit",
     required: false,
-    description: "Number of recent distinct transactions (1-20, default 5)",
+    description: "Number of recent transactions (1-20, default 5)",
+  })
+  @ApiQuery({
+    name: "payeeId",
+    required: false,
+    description: "Filter to transactions for this payee (UUID); disables dedup",
+  })
+  @ApiQuery({
+    name: "payeeName",
+    required: false,
+    description:
+      "Filter to transactions with this exact free-text payeeName; disables dedup",
   })
   @ApiResponse({
     status: 200,
@@ -444,7 +455,10 @@ export class TransactionsController {
   })
   @ApiResponse({ status: 401, description: "Unauthorized" })
   getRecent(@Request() req, @Query() query: GetRecentTransactionsDto) {
-    return this.transactionsService.getRecent(req.user.id, query.limit ?? 5);
+    return this.transactionsService.getRecent(req.user.id, query.limit ?? 5, {
+      payeeId: query.payeeId,
+      payeeName: query.payeeName,
+    });
   }
 
   // ==================== Reconciliation Endpoints ====================

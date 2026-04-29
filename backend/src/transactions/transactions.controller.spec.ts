@@ -73,7 +73,10 @@ describe("TransactionsController", () => {
       const result = await controller.getRecent(mockReq, {});
 
       expect(result).toEqual(expected);
-      expect(mockService.getRecent).toHaveBeenCalledWith("user-1", 5);
+      expect(mockService.getRecent).toHaveBeenCalledWith("user-1", 5, {
+        payeeId: undefined,
+        payeeName: undefined,
+      });
     });
 
     it("forwards the requested limit when provided", async () => {
@@ -81,7 +84,32 @@ describe("TransactionsController", () => {
 
       await controller.getRecent(mockReq, { limit: 10 });
 
-      expect(mockService.getRecent).toHaveBeenCalledWith("user-1", 10);
+      expect(mockService.getRecent).toHaveBeenCalledWith("user-1", 10, {
+        payeeId: undefined,
+        payeeName: undefined,
+      });
+    });
+
+    it("forwards payeeId for payee-scoped quick-fill", async () => {
+      mockService.getRecent.mockResolvedValue([]);
+
+      await controller.getRecent(mockReq, { payeeId: uuid1 });
+
+      expect(mockService.getRecent).toHaveBeenCalledWith("user-1", 5, {
+        payeeId: uuid1,
+        payeeName: undefined,
+      });
+    });
+
+    it("forwards payeeName when no payeeId is provided", async () => {
+      mockService.getRecent.mockResolvedValue([]);
+
+      await controller.getRecent(mockReq, { payeeName: "Free-text Coffee" });
+
+      expect(mockService.getRecent).toHaveBeenCalledWith("user-1", 5, {
+        payeeId: undefined,
+        payeeName: "Free-text Coffee",
+      });
     });
 
     it("uses authenticated userId, never trusts query params", async () => {
@@ -91,7 +119,10 @@ describe("TransactionsController", () => {
         limit: 5,
       });
 
-      expect(mockService.getRecent).toHaveBeenCalledWith("user-1", 5);
+      expect(mockService.getRecent).toHaveBeenCalledWith("user-1", 5, {
+        payeeId: undefined,
+        payeeName: undefined,
+      });
     });
   });
 

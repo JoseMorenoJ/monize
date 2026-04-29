@@ -451,6 +451,98 @@ describe("TransactionsService", () => {
       );
     });
 
+    it("scopes to payeeId without dedup and uses limit-sized window", async () => {
+      const rows = [
+        {
+          id: "t1",
+          payeeId: "p1",
+          payeeName: "A",
+          categoryId: "c1",
+          transactionDate: "2026-01-04",
+        },
+        {
+          id: "t2",
+          payeeId: "p1",
+          payeeName: "A",
+          categoryId: "c1",
+          transactionDate: "2026-01-03",
+        },
+        {
+          id: "t3",
+          payeeId: "p1",
+          payeeName: "A",
+          categoryId: "c2",
+          transactionDate: "2026-01-02",
+        },
+      ];
+      transactionsRepository.find.mockResolvedValue(rows);
+
+      const result = await service.getRecent("user-1", 5, { payeeId: "p1" });
+
+      expect(transactionsRepository.find).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            userId: "user-1",
+            isSplit: false,
+            isTransfer: false,
+            payeeId: "p1",
+          },
+          take: 5,
+        }),
+      );
+      expect(result.map((r: any) => r.id)).toEqual(["t1", "t2", "t3"]);
+    });
+
+    it("scopes to payeeName when payeeId is not provided", async () => {
+      transactionsRepository.find.mockResolvedValue([]);
+
+      await service.getRecent("user-1", 5, { payeeName: "Free-text Coffee" });
+
+      expect(transactionsRepository.find).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            userId: "user-1",
+            isSplit: false,
+            isTransfer: false,
+            payeeName: "Free-text Coffee",
+          },
+          take: 5,
+        }),
+      );
+    });
+
+    it("prefers payeeId over payeeName when both are provided", async () => {
+      transactionsRepository.find.mockResolvedValue([]);
+
+      await service.getRecent("user-1", 5, {
+        payeeId: "p1",
+        payeeName: "ignored",
+      });
+
+      const call = transactionsRepository.find.mock.calls[0][0];
+      expect(call.where).toEqual({
+        userId: "user-1",
+        isSplit: false,
+        isTransfer: false,
+        payeeId: "p1",
+      });
+    });
+
+    it("caps payee-scoped result at limit even when DB returns more", async () => {
+      const rows = Array.from({ length: 8 }, (_, i) => ({
+        id: `t${i}`,
+        payeeId: "p1",
+        payeeName: "A",
+        categoryId: "c1",
+        transactionDate: `2026-01-${String(20 - i).padStart(2, "0")}`,
+      }));
+      transactionsRepository.find.mockResolvedValue(rows);
+
+      const result = await service.getRecent("user-1", 3, { payeeId: "p1" });
+
+      expect(result.map((r: any) => r.id)).toEqual(["t0", "t1", "t2"]);
+    });
+
     it("returns rows in DB order without modification when all distinct", async () => {
       const rows = [
         {
