@@ -211,6 +211,30 @@ export class TransactionsService {
     return result;
   }
 
+  async getRecent(userId: string, limit = 5): Promise<Transaction[]> {
+    const safeLimit = Math.min(20, Math.max(1, Math.floor(limit)));
+    const window = safeLimit * 6;
+
+    const rows = await this.transactionsRepository.find({
+      where: { userId, isSplit: false, isTransfer: false },
+      order: { transactionDate: "DESC", createdAt: "DESC" },
+      take: window,
+      relations: ["payee", "category", "account", "tags"],
+    });
+
+    const seen = new Set<string>();
+    const result: Transaction[] = [];
+    for (const row of rows) {
+      const payeeKey = row.payeeId ?? row.payeeName ?? "";
+      const key = `${payeeKey}|${row.categoryId ?? ""}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      result.push(row);
+      if (result.length >= safeLimit) break;
+    }
+    return result;
+  }
+
   async findAll(
     userId: string,
     accountIds?: string[],

@@ -103,6 +103,15 @@ export const transactionsApi = {
     return response.data;
   },
 
+  // Get the most recent distinct transactions, used by the new-transaction
+  // form's quick-fill dropdown. Server-side dedup by payee+category.
+  getRecent: async (limit = 5): Promise<Transaction[]> => {
+    const response = await apiClient.get<Transaction[]>('/transactions/recent', {
+      params: { limit },
+    });
+    return response.data;
+  },
+
   // Get single transaction by ID
   getById: async (id: string): Promise<Transaction> => {
     const response = await apiClient.get<Transaction>(`/transactions/${id}`);

@@ -436,6 +436,168 @@ describe("TransactionsService", () => {
     });
   });
 
+  describe("getRecent", () => {
+    it("filters by userId and excludes splits/transfers", async () => {
+      transactionsRepository.find.mockResolvedValue([]);
+
+      await service.getRecent("user-1", 5);
+
+      expect(transactionsRepository.find).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { userId: "user-1", isSplit: false, isTransfer: false },
+          order: { transactionDate: "DESC", createdAt: "DESC" },
+          take: 30,
+        }),
+      );
+    });
+
+    it("returns rows in DB order without modification when all distinct", async () => {
+      const rows = [
+        {
+          id: "t1",
+          payeeId: "p1",
+          payeeName: "A",
+          categoryId: "c1",
+          transactionDate: "2026-01-03",
+        },
+        {
+          id: "t2",
+          payeeId: "p2",
+          payeeName: "B",
+          categoryId: "c2",
+          transactionDate: "2026-01-02",
+        },
+        {
+          id: "t3",
+          payeeId: "p3",
+          payeeName: "C",
+          categoryId: "c1",
+          transactionDate: "2026-01-01",
+        },
+      ];
+      transactionsRepository.find.mockResolvedValue(rows);
+
+      const result = await service.getRecent("user-1", 5);
+
+      expect(result).toEqual(rows);
+    });
+
+    it("dedupes by payeeId+categoryId, keeping the most recent", async () => {
+      const rows = [
+        {
+          id: "t1",
+          payeeId: "p1",
+          payeeName: "A",
+          categoryId: "c1",
+          transactionDate: "2026-01-04",
+        },
+        {
+          id: "t2",
+          payeeId: "p1",
+          payeeName: "A",
+          categoryId: "c1",
+          transactionDate: "2026-01-03",
+        },
+        {
+          id: "t3",
+          payeeId: "p2",
+          payeeName: "B",
+          categoryId: "c2",
+          transactionDate: "2026-01-02",
+        },
+        {
+          id: "t4",
+          payeeId: "p1",
+          payeeName: "A",
+          categoryId: "c1",
+          transactionDate: "2026-01-01",
+        },
+      ];
+      transactionsRepository.find.mockResolvedValue(rows);
+
+      const result = await service.getRecent("user-1", 5);
+
+      expect(result.map((r: any) => r.id)).toEqual(["t1", "t3"]);
+    });
+
+    it("dedupes by payeeName when payeeId is null (free-text payee)", async () => {
+      const rows = [
+        {
+          id: "t1",
+          payeeId: null,
+          payeeName: "Free-text",
+          categoryId: "c1",
+          transactionDate: "2026-01-02",
+        },
+        {
+          id: "t2",
+          payeeId: null,
+          payeeName: "Free-text",
+          categoryId: "c1",
+          transactionDate: "2026-01-01",
+        },
+      ];
+      transactionsRepository.find.mockResolvedValue(rows);
+
+      const result = await service.getRecent("user-1", 5);
+
+      expect(result.map((r: any) => r.id)).toEqual(["t1"]);
+    });
+
+    it("treats different categories on same payee as distinct entries", async () => {
+      const rows = [
+        {
+          id: "t1",
+          payeeId: "p1",
+          payeeName: "A",
+          categoryId: "c1",
+          transactionDate: "2026-01-02",
+        },
+        {
+          id: "t2",
+          payeeId: "p1",
+          payeeName: "A",
+          categoryId: "c2",
+          transactionDate: "2026-01-01",
+        },
+      ];
+      transactionsRepository.find.mockResolvedValue(rows);
+
+      const result = await service.getRecent("user-1", 5);
+
+      expect(result.map((r: any) => r.id)).toEqual(["t1", "t2"]);
+    });
+
+    it("caps result at limit even when more distinct rows exist", async () => {
+      const rows = Array.from({ length: 10 }, (_, i) => ({
+        id: `t${i}`,
+        payeeId: `p${i}`,
+        payeeName: `n${i}`,
+        categoryId: `c${i}`,
+        transactionDate: `2026-01-${String(10 - i).padStart(2, "0")}`,
+      }));
+      transactionsRepository.find.mockResolvedValue(rows);
+
+      const result = await service.getRecent("user-1", 3);
+
+      expect(result.map((r: any) => r.id)).toEqual(["t0", "t1", "t2"]);
+    });
+
+    it("clamps limit to [1, 20]", async () => {
+      transactionsRepository.find.mockResolvedValue([]);
+
+      await service.getRecent("user-1", 0);
+      expect(transactionsRepository.find).toHaveBeenLastCalledWith(
+        expect.objectContaining({ take: 6 }),
+      );
+
+      await service.getRecent("user-1", 999);
+      expect(transactionsRepository.find).toHaveBeenLastCalledWith(
+        expect.objectContaining({ take: 120 }),
+      );
+    });
+  });
+
   describe("findOne", () => {
     it("returns transaction when found and belongs to user", async () => {
       const mockTx = {

@@ -178,6 +178,7 @@ const mockCreate = vi.fn().mockResolvedValue({});
 const mockUpdate = vi.fn().mockResolvedValue({});
 const mockCreateTransfer = vi.fn().mockResolvedValue({});
 const mockUpdateTransfer = vi.fn().mockResolvedValue({});
+const mockGetRecent = vi.fn().mockResolvedValue([]);
 
 vi.mock('@/lib/transactions', () => ({
   transactionsApi: {
@@ -185,6 +186,7 @@ vi.mock('@/lib/transactions', () => ({
     update: (...args: any[]) => mockUpdate(...args),
     createTransfer: (...args: any[]) => mockCreateTransfer(...args),
     updateTransfer: (...args: any[]) => mockUpdateTransfer(...args),
+    getRecent: (...args: any[]) => mockGetRecent(...args),
   },
 }));
 
@@ -415,6 +417,7 @@ describe('TransactionForm', () => {
     mockAccountsGetAll.mockResolvedValue(mockAccounts);
     mockPayeesGetAll.mockResolvedValue(mockPayees);
     mockCategoriesGetAll.mockResolvedValue(mockCategories);
+    mockGetRecent.mockResolvedValue([]);
   });
 
   // =========================================================================
@@ -2505,6 +2508,127 @@ describe('TransactionForm', () => {
         expect(screen.getByText('Split')).toBeInTheDocument();
         expect(screen.getByText('Transfer')).toBeInTheDocument();
       });
+    });
+  });
+
+  describe('quick-fill from recent transactions', () => {
+    const recentTransaction = {
+      ...createExistingTransaction({
+        id: 'recent-1',
+        payeeId: 'payee-1',
+        payeeName: 'Grocery Store',
+        categoryId: 'cat-1',
+        amount: -42.5,
+        currencyCode: 'CAD',
+        description: 'Weekly shop',
+      }),
+      tags: [{ id: 'tag-1', name: 'Food', color: null, icon: null }],
+    };
+
+    it('fetches recent transactions on mount when creating a fresh transaction', async () => {
+      mockGetRecent.mockResolvedValue([recentTransaction]);
+
+      render(<TransactionForm onSuccess={mockOnSuccess} onCancel={mockOnCancel} />);
+
+      await waitFor(() => {
+        expect(mockGetRecent).toHaveBeenCalledWith(5);
+      });
+    });
+
+    it('renders the quick-fill combobox when recents are present', async () => {
+      mockGetRecent.mockResolvedValue([recentTransaction]);
+
+      render(<TransactionForm onSuccess={mockOnSuccess} onCancel={mockOnCancel} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('combobox-Quick fill from recent')).toBeInTheDocument();
+      });
+    });
+
+    it('hides the quick-fill combobox when there are no recents', async () => {
+      mockGetRecent.mockResolvedValue([]);
+
+      render(<TransactionForm onSuccess={mockOnSuccess} onCancel={mockOnCancel} />);
+
+      await waitFor(() => {
+        expect(mockGetRecent).toHaveBeenCalled();
+      });
+      expect(
+        screen.queryByTestId('combobox-Quick fill from recent'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('does not fetch or render quick-fill when editing an existing transaction', async () => {
+      mockGetRecent.mockResolvedValue([recentTransaction]);
+      const existing = createExistingTransaction();
+
+      render(
+        <TransactionForm
+          transaction={existing}
+          onSuccess={mockOnSuccess}
+          onCancel={mockOnCancel}
+        />
+      );
+
+      await waitFor(() => {
+        expect(mockAccountsGetAll).toHaveBeenCalled();
+      });
+      expect(mockGetRecent).not.toHaveBeenCalled();
+      expect(
+        screen.queryByTestId('combobox-Quick fill from recent'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('does not fetch or render quick-fill when duplicating a transaction', async () => {
+      mockGetRecent.mockResolvedValue([recentTransaction]);
+      const source = createExistingTransaction();
+
+      render(
+        <TransactionForm
+          duplicateFrom={source}
+          onSuccess={mockOnSuccess}
+          onCancel={mockOnCancel}
+        />
+      );
+
+      await waitFor(() => {
+        expect(mockAccountsGetAll).toHaveBeenCalled();
+      });
+      expect(mockGetRecent).not.toHaveBeenCalled();
+      expect(
+        screen.queryByTestId('combobox-Quick fill from recent'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('hides the quick-fill combobox when switching out of normal mode', async () => {
+      mockGetRecent.mockResolvedValue([recentTransaction]);
+
+      render(<TransactionForm onSuccess={mockOnSuccess} onCancel={mockOnCancel} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('combobox-Quick fill from recent')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByText('Split'));
+
+      await waitFor(() => {
+        expect(
+          screen.queryByTestId('combobox-Quick fill from recent'),
+        ).not.toBeInTheDocument();
+      });
+    });
+
+    it('still renders the form when the recents fetch fails', async () => {
+      mockGetRecent.mockRejectedValue(new Error('boom'));
+
+      render(<TransactionForm onSuccess={mockOnSuccess} onCancel={mockOnCancel} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Account')).toBeInTheDocument();
+      });
+      expect(
+        screen.queryByTestId('combobox-Quick fill from recent'),
+      ).not.toBeInTheDocument();
     });
   });
 });

@@ -30,6 +30,7 @@ import { CreateTransactionSplitDto } from "./dto/create-transaction-split.dto";
 import { UpdateSplitsDto } from "./dto/update-splits.dto";
 import { CreateTransferDto } from "./dto/create-transfer.dto";
 import { UpdateTransferDto } from "./dto/update-transfer.dto";
+import { GetRecentTransactionsDto } from "./dto/get-recent-transactions.dto";
 import { BulkReconcileDto } from "./dto/bulk-reconcile.dto";
 import { BulkUpdateDto, BulkDeleteDto } from "./dto/bulk-update.dto";
 import { MarkClearedDto } from "./dto/mark-cleared.dto";
@@ -425,6 +426,25 @@ export class TransactionsController {
       parsedAmountTo,
       parseUuids(tagIdsParam),
     );
+  }
+
+  @Get("recent")
+  @ApiOperation({
+    summary:
+      "Get recent distinct transactions for quick-fill on the new-transaction form",
+  })
+  @ApiQuery({
+    name: "limit",
+    required: false,
+    description: "Number of recent distinct transactions (1-20, default 5)",
+  })
+  @ApiResponse({
+    status: 200,
+    description: "Recent transactions retrieved successfully",
+  })
+  @ApiResponse({ status: 401, description: "Unauthorized" })
+  getRecent(@Request() req, @Query() query: GetRecentTransactionsDto) {
+    return this.transactionsService.getRecent(req.user.id, query.limit ?? 5);
   }
 
   // ==================== Reconciliation Endpoints ====================
